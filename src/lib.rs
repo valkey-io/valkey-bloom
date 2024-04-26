@@ -1,7 +1,13 @@
-use redis_module::{redis_module, Context, RedisError, RedisResult, RedisString, Status, RedisValue};
+use redis_module::{redis_module, Context, RedisResult, RedisString, Status};
+use redis_module::configuration::ConfigurationFlags;
+pub mod bloom_config;
+pub mod wrapper;
+pub mod commands;
+use crate::commands::{bloom};
 
-fn initialize(ctx: &Context, _args: &[RedisString]) -> Status {
-    println!("I am loaded");
+pub const MODULE_NAME: &str = "bloom";
+
+fn initialize(_ctx: &Context, _args: &[RedisString]) -> Status {
     Status::Ok
 }
 
@@ -10,21 +16,21 @@ pub fn deinitialize(_ctx: &Context) -> Status {
 }
 
 fn bloom_exists_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    Ok(RedisValue::Integer(0))
+    bloom::bloom_filter_exists(ctx, &args)
 }
 
 fn bloom_add_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    Ok(RedisValue::Integer(1))
+    bloom::bloom_filter_add_value(ctx, &args)
 }
 
 fn bloom_card_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    Ok(RedisValue::Integer(0))
+    bloom::bloom_filter_card(ctx, &args)
 }
 
 //////////////////////////////////////////////////////
 
 redis_module! {
-    name: "bloom",
+    name: MODULE_NAME,
     version: 1,
     allocator: (redis_module::alloc::RedisAlloc, redis_module::alloc::RedisAlloc),
     data_types: [],
@@ -35,4 +41,16 @@ redis_module! {
         ["BF.EXISTS", bloom_exists_command, "readonly", 1, 1, 1],
         ["BF.CARD", bloom_card_command, "readonly", 1, -1, 1],
     ],
+    configurations: [
+        i64: [
+            ["bloom_max_item_size", &*bloom_config::BLOOM_MAX_ITEM_SIZE, bloom_config::BLOOM_MAX_ITEM_SIZE_DEFAULT, bloom_config::BLOOM_MAX_ITEM_SIZE_MIN, bloom_config::BLOOM_MAX_ITEM_SIZE_MAX, ConfigurationFlags::DEFAULT, None],
+        ],
+        string: [
+        ],
+        bool: [
+        ],
+        enum: [
+        ],
+        module_args_as_configuration: true,
+    ]
 }
