@@ -9,7 +9,7 @@ use bloomfilter::Bloom;
 const BLOOM_FILTER_TYPE_ENCODING_VERSION: i32 = 0; 
 
 pub static BLOOM_FILTER_TYPE2: RedisType = RedisType::new(
-    "bloomtype2",
+    "bloomtype",
     BLOOM_FILTER_TYPE_ENCODING_VERSION,
     raw::RedisModuleTypeMethods {
         version: raw::REDISMODULE_TYPE_METHOD_VERSION as u64,
@@ -17,12 +17,12 @@ pub static BLOOM_FILTER_TYPE2: RedisType = RedisType::new(
         rdb_save: Some(bloom_callback::bloom_rdb_save),
         aof_rewrite: None,
 
-        mem_usage: None,
+        mem_usage: Some(bloom_callback::bloom_mem_usage),
         digest: None,
-        free: None,
+        free: Some(bloom_callback::bloom_free),
 
-        aux_load: None,
-        aux_save: None,
+        aux_load: Some(bloom_callback::bloom_aux_load),
+        aux_save: Some(bloom_callback::bloom_aux_save),
         aux_save2: None,
         aux_save_triggers: raw::Aux::Before as i32,
 
