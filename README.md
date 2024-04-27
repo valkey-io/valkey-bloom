@@ -44,6 +44,24 @@ OK
 (integer) 1
 ```
 
+```
+127.0.0.1:6379> bf.reserve key1 0.01 10000
+OK
+127.0.0.1:6379> bf.info key3
+(empty array)
+127.0.0.1:6379> bf.info key1
+ 1) Capacity
+ 2) (integer) 10000
+ 3) Size
+ 4) (integer) 12198
+ 5) Number of filters
+ 6) (integer) 1
+ 7) Number of items inserted
+ 8) (integer) 0
+ 9) Expansion rate
+10) (integer) 2
+```
+
 RDB Load, Save and flushall validation
 ```
 127.0.0.1:6379> info keyspace

@@ -11,10 +11,6 @@ bloomfilter = "1.0.13"
 lazy_static = "1.4.0"
 libc = "0.2"
 
-[build-dependencies]
-cc = "1.0.73"
-bindgen = "0.60.1"
-
 [lib]
 crate-type = ["cdylib"]
 name = "valkey_bloom"

@@ -25,11 +25,8 @@ pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mu
     raw::save_unsigned(rdb, sip_keys[1].0);
     raw::save_unsigned(rdb, sip_keys[1].1);
     raw::save_unsigned(rdb, v.num_items);
-    let mut expansion = 1;
-    if let Some(rate) = v.expansion {
-        expansion = rate;
-    }
-    raw::save_unsigned(rdb, expansion as u64);
+    raw::save_unsigned(rdb, v.capacity as u64);
+    raw::save_unsigned(rdb, v.expansion as u64);
 }
 
 /// # Safety
@@ -74,5 +71,6 @@ pub unsafe extern "C" fn bloom_free(value: *mut c_void) {
 /// Compute the memory usage for a bloom string item
 pub unsafe extern "C" fn bloom_mem_usage(value: *const c_void) -> usize {
     let item = &*value.cast::<bloom_data_type::BloomFilterType2>();
+    // TODO: `bitmap()` is a slow operation. Find an alternative to identify the memory usage.
     bloom_data_type::bloom_get_filter_memory_usage(item.bloom.bitmap().len())
 }

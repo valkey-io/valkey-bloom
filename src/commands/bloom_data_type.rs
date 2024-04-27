@@ -42,7 +42,8 @@ pub static BLOOM_FILTER_TYPE2: RedisType = RedisType::new(
 pub struct BloomFilterType2 {
     pub bloom: Bloom<[u8]>,
     pub num_items: u64,
-    pub expansion: Option<usize>,
+    pub capacity: usize,
+    pub expansion: usize,
 }
 
 pub fn bloom_rdb_load_data_object(
@@ -80,6 +81,9 @@ pub fn bloom_rdb_load_data_object(
     let Ok(num_items) = raw::load_unsigned(rdb) else {
         return None;
     };
+    let Ok(capacity) = raw::load_unsigned(rdb) else {
+        return None;
+    };
     let Ok(expansion) = raw::load_unsigned(rdb) else {
         return None;
     };
@@ -97,7 +101,8 @@ pub fn bloom_rdb_load_data_object(
     let item = BloomFilterType2 {
         bloom,
         num_items,
-        expansion: Some(expansion as usize),
+        capacity: capacity as usize,
+        expansion: expansion as usize,
     };
     Some(item)
 }

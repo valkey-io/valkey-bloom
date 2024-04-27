@@ -32,6 +32,10 @@ fn bloom_reserve_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     bloom::bloom_filter_reserve(ctx, &args)
 }
 
+fn bloom_info_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    bloom::bloom_filter_info(ctx, &args)
+}
+
 //////////////////////////////////////////////////////
 
 redis_module! {
@@ -45,9 +49,10 @@ redis_module! {
     deinit: deinitialize,
     commands: [
         ["BF.ADD", bloom_add_command, "write fast deny-oom", 1, 1, 1],
-        ["BF.EXISTS", bloom_exists_command, "readonly", 1, 1, 1],
-        ["BF.CARD", bloom_card_command, "readonly", 1, 1, 1],
+        ["BF.EXISTS", bloom_exists_command, "readonly fast", 1, 1, 1],
+        ["BF.CARD", bloom_card_command, "readonly fast", 1, 1, 1],
         ["BF.RESERVE", bloom_reserve_command, "write fast deny-oom", 1, 1, 1],
+        ["BF.INFO", bloom_info_command, "readonly fast", 1, 1, 1],
     ],
     configurations: [
         i64: [
