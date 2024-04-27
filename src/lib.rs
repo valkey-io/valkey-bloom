@@ -17,7 +17,11 @@ pub fn deinitialize(_ctx: &Context) -> Status {
 }
 
 fn bloom_exists_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    bloom::bloom_filter_exists(ctx, &args)
+    bloom::bloom_filter_exists(ctx, &args, false)
+}
+
+fn bloom_mexists_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    bloom::bloom_filter_exists(ctx, &args, true)
 }
 
 fn bloom_add_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
@@ -50,6 +54,7 @@ redis_module! {
     commands: [
         ["BF.ADD", bloom_add_command, "write fast deny-oom", 1, 1, 1],
         ["BF.EXISTS", bloom_exists_command, "readonly fast", 1, 1, 1],
+        ["BF.MEXISTS", bloom_mexists_command, "readonly fast", 1, 1, 1],
         ["BF.CARD", bloom_card_command, "readonly fast", 1, 1, 1],
         ["BF.RESERVE", bloom_reserve_command, "write fast deny-oom", 1, 1, 1],
         ["BF.INFO", bloom_info_command, "readonly fast", 1, 1, 1],

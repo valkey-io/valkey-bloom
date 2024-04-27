@@ -20,13 +20,13 @@ pub fn bloom_filter_add_value(ctx: &Context, input_args: &Vec<RedisString>) -> R
     let item = &input_args[curr_cmd_idx];
     // If the filter does not exist, create one
     let filter_key = ctx.open_key_writable(filter_name);
-    let my_value = match filter_key.get_value::<BloomFilterType2>(&BLOOM_FILTER_TYPE2) {
+    let value = match filter_key.get_value::<BloomFilterType2>(&BLOOM_FILTER_TYPE2) {
         Ok(v) => v,
         Err(_e) => {
             return Err(RedisError::Str(ERROR));
         }
     };
-    match my_value {
+    match value {
         Some(val) => {
             // Check if item exists.
             if val.bloom.check(&item) {
@@ -66,33 +66,42 @@ pub fn bloom_filter_add_value(ctx: &Context, input_args: &Vec<RedisString>) -> R
     }
 }
 
-pub fn bloom_filter_exists(ctx: &Context, input_args: &Vec<RedisString>) -> RedisResult {
+pub fn bloom_filter_exists(ctx: &Context, input_args: &Vec<RedisString>, multi: bool) -> RedisResult {
     let argc = input_args.len();
-    if argc != 3 {
+    if (!multi && argc != 3) || argc < 3  {
         return Err(RedisError::Str(ERROR));
     }
     let mut curr_cmd_idx = 1;
     // Parse the filter name
     let filter_name = &input_args[curr_cmd_idx];
-    curr_cmd_idx += 1;
     // Parse the value to be checked whether it exists in the filter
-    let item = &input_args[curr_cmd_idx];
     let filter_key = ctx.open_key(filter_name);
-    let my_value = match filter_key.get_value::<BloomFilterType2>(&BLOOM_FILTER_TYPE2) {
+    let value = match filter_key.get_value::<BloomFilterType2>(&BLOOM_FILTER_TYPE2) {
         Ok(v) => v,
         Err(_e) => {
             return Err(RedisError::Str(ERROR));
         }
     };
-    match my_value {
+    curr_cmd_idx += 1;
+    let mut result = Vec::new();
+    while curr_cmd_idx < argc {
+        let item = &input_args[curr_cmd_idx];
+        result.push(bloom_filter_item_exists(&value, &item));
+        curr_cmd_idx += 1;
+    }
+    return Ok(RedisValue::Array(result));
+}
+
+fn bloom_filter_item_exists(value: &Option<&BloomFilterType2>, item: &RedisString) -> RedisValue {
+    match value {
         Some(val) => {
             // Check if item exists.
             if val.bloom.check(&item) {
-                return Ok(RedisValue::Integer(1));
+                return RedisValue::Integer(1);
             }
-            Ok(RedisValue::Integer(0))
+            RedisValue::Integer(0)
         }
-        None => Ok(RedisValue::Integer(0)),
+        None => RedisValue::Integer(0),
     }
 }
 
@@ -105,13 +114,13 @@ pub fn bloom_filter_card(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
     // Parse the filter name
     let filter_name = &input_args[curr_cmd_idx];
     let filter_key = ctx.open_key(filter_name);
-    let my_value = match filter_key.get_value::<BloomFilterType2>(&BLOOM_FILTER_TYPE2) {
+    let value = match filter_key.get_value::<BloomFilterType2>(&BLOOM_FILTER_TYPE2) {
         Ok(v) => v,
         Err(_e) => {
             return Err(RedisError::Str(ERROR));
         }
     };
-    match my_value {
+    match value {
         Some(val) => Ok(RedisValue::Integer(val.num_items.try_into().unwrap())),
         None => Ok(RedisValue::Integer(0)),
     }
@@ -171,13 +180,13 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &Vec<RedisString>) -> Red
     }
     // If the filter does not exist, create one
     let filter_key = ctx.open_key_writable(filter_name);
-    let my_value = match filter_key.get_value::<BloomFilterType2>(&BLOOM_FILTER_TYPE2) {
+    let value = match filter_key.get_value::<BloomFilterType2>(&BLOOM_FILTER_TYPE2) {
         Ok(v) => v,
         Err(_e) => {
             return Err(RedisError::Str(ERROR));
         }
     };
-    match my_value {
+    match value {
         Some(_) => {
             Err(RedisError::Str("ERR item exists"))
         }
@@ -212,13 +221,13 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
     let filter_name = &input_args[curr_cmd_idx];
     curr_cmd_idx += 1;
     let filter_key = ctx.open_key(filter_name);
-    let my_value = match filter_key.get_value::<BloomFilterType2>(&BLOOM_FILTER_TYPE2) {
+    let value = match filter_key.get_value::<BloomFilterType2>(&BLOOM_FILTER_TYPE2) {
         Ok(v) => v,
         Err(_e) => {
             return Err(RedisError::Str(ERROR));
         }
     };
-    match my_value {
+    match value {
         Some(val) if argc == 3 => {
             match input_args[curr_cmd_idx].to_string_lossy().to_uppercase().as_str() {
                 "CAPACITY" => {
