@@ -18,3 +18,8 @@ bindgen = "0.60.1"
 [lib]
 crate-type = ["cdylib"]
 name = "valkey_bloom"
+
+[profile.dev]
+opt-level = 0
+debug = 2
+debug-assertions = true
