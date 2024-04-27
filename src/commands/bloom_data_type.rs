@@ -42,6 +42,7 @@ pub static BLOOM_FILTER_TYPE2: RedisType = RedisType::new(
 pub struct BloomFilterType2 {
     pub bloom: Bloom<[u8]>,
     pub num_items: u64,
+    pub expansion: Option<usize>,
 }
 
 pub fn bloom_rdb_load_data_object(
@@ -79,17 +80,9 @@ pub fn bloom_rdb_load_data_object(
     let Ok(num_items) = raw::load_unsigned(rdb) else {
         return None;
     };
-
-    // let item = BloomFilterType {
-    //     bitmap: bitmap.as_ref().to_vec(),
-    //     number_of_bits,
-    //     number_of_hash_functions: number_of_hash_functions as u32,
-    //     sip_key_one_a,
-    //     sip_key_one_b,
-    //     sip_key_two_a,
-    //     sip_key_two_b,
-    //     num_items,
-    // };
+    let Ok(expansion) = raw::load_unsigned(rdb) else {
+        return None;
+    };
 
     let sip_keys = [
         (sip_key_one_a, sip_key_one_b),
@@ -104,8 +97,8 @@ pub fn bloom_rdb_load_data_object(
     let item = BloomFilterType2 {
         bloom,
         num_items,
+        expansion: Some(expansion as usize),
     };
-
     Some(item)
 }
 

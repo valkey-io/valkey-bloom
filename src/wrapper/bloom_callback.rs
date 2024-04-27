@@ -25,6 +25,11 @@ pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mu
     raw::save_unsigned(rdb, sip_keys[1].0);
     raw::save_unsigned(rdb, sip_keys[1].1);
     raw::save_unsigned(rdb, v.num_items);
+    let mut expansion = 1;
+    if let Some(rate) = v.expansion {
+        expansion = rate;
+    }
+    raw::save_unsigned(rdb, expansion as u64);
 }
 
 /// # Safety

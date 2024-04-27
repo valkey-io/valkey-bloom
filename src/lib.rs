@@ -28,6 +28,10 @@ fn bloom_card_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     bloom::bloom_filter_card(ctx, &args)
 }
 
+fn bloom_reserve_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    bloom::bloom_filter_reserve(ctx, &args)
+}
+
 //////////////////////////////////////////////////////
 
 redis_module! {
@@ -42,11 +46,13 @@ redis_module! {
     commands: [
         ["BF.ADD", bloom_add_command, "write fast deny-oom", 1, 1, 1],
         ["BF.EXISTS", bloom_exists_command, "readonly", 1, 1, 1],
-        ["BF.CARD", bloom_card_command, "readonly", 1, -1, 1],
+        ["BF.CARD", bloom_card_command, "readonly", 1, 1, 1],
+        ["BF.RESERVE", bloom_reserve_command, "write fast deny-oom", 1, 1, 1],
     ],
     configurations: [
         i64: [
-            ["bloom_max_item_size", &*bloom_config::BLOOM_MAX_ITEM_SIZE, bloom_config::BLOOM_MAX_ITEM_SIZE_DEFAULT, bloom_config::BLOOM_MAX_ITEM_SIZE_MIN, bloom_config::BLOOM_MAX_ITEM_SIZE_MAX, ConfigurationFlags::DEFAULT, None],
+            ["bloom_max_item_size", &*bloom_config::BLOOM_MAX_ITEM_COUNT, bloom_config::BLOOM_MAX_ITEM_COUNT_DEFAULT, bloom_config::BLOOM_MAX_ITEM_COUNT_MIN, bloom_config::BLOOM_MAX_ITEM_COUNT_MAX, ConfigurationFlags::DEFAULT, None],
+            ["bloom_expansion_rate", &*bloom_config::BLOOM_EXPANSION, bloom_config::BLOOM_EXPANSION_DEFAULT, bloom_config::BLOOM_EXPANSION_MIN, bloom_config::BLOOM_EXPANSION_MAX, ConfigurationFlags::DEFAULT, None],
         ],
         string: [
         ],

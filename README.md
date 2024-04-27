@@ -32,6 +32,16 @@ Client Usage
 (integer) 0
 127.0.0.1:6379> bf.card key
 (integer) 1
+127.0.0.1:6379> bf.reserve key 0.01 10000
+(error) ERR item exists
+127.0.0.1:6379> bf.reserve key1 0.01 10000
+OK
+127.0.0.1:6379> bf.card key1
+(integer) 0
+127.0.0.1:6379> bf.add key1 item
+(integer) 1
+127.0.0.1:6379> bf.card key1
+(integer) 1
 ```
 
 RDB Load, Save and flushall validation
