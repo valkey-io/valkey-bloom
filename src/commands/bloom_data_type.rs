@@ -3,6 +3,7 @@ use crate::MODULE_NAME;
 use redis_module::native_types::RedisType;
 use redis_module::{logging, raw};
 use std::os::raw::c_int;
+use bloomfilter::Bloom;
 
 
 const BLOOM_FILTER_TYPE_ENCODING_VERSION: i32 = 0; 
@@ -37,6 +38,36 @@ pub static BLOOM_FILTER_TYPE: RedisType = RedisType::new(
     },
 );
 
+pub static BLOOM_FILTER_TYPE2: RedisType = RedisType::new(
+    "bloomtype2",
+    BLOOM_FILTER_TYPE_ENCODING_VERSION,
+    raw::RedisModuleTypeMethods {
+        version: raw::REDISMODULE_TYPE_METHOD_VERSION as u64,
+        rdb_load: None,
+        rdb_save: None,
+        aof_rewrite: None,
+
+        mem_usage: None,
+        digest: None,
+        free: None,
+
+        aux_load: None,
+        aux_save: None,
+        aux_save2: None,
+        aux_save_triggers: raw::Aux::Before as i32,
+
+        free_effort: None,
+        unlink: None,
+        copy: None, // Redis COPY command is not supported
+        defrag: None,
+
+        mem_usage2: None,
+        free_effort2: None,
+        unlink2: None,
+        copy2: None,
+    },
+);
+
 /// The BloomFilterType structure is currently 40 bytes.
 // #[derive(Debug)]
 pub struct BloomFilterType {
@@ -50,10 +81,15 @@ pub struct BloomFilterType {
     pub num_items: u64,
 }
 
+pub struct BloomFilterType2 {
+    pub bloom: Bloom<[u8]>,
+    pub num_items: u64,
+}
+
 pub fn bloom_rdb_load_data_object(
     rdb: *mut raw::RedisModuleIO,
     encver: i32,
-) -> Option<BloomFilterType> {
+) -> Option<BloomFilterType2> {
     if encver > BLOOM_FILTER_TYPE_ENCODING_VERSION {
         logging::log_warning(format!("{}: Cannot load bloomfilter type version {} because it is higher than the current module's string type version {}", MODULE_NAME, encver, BLOOM_FILTER_TYPE_ENCODING_VERSION).as_str());
         return None;
@@ -86,14 +122,29 @@ pub fn bloom_rdb_load_data_object(
         return None;
     };
 
-    let item = BloomFilterType {
-        bitmap: bitmap.as_ref().to_vec(),
+    // let item = BloomFilterType {
+    //     bitmap: bitmap.as_ref().to_vec(),
+    //     number_of_bits,
+    //     number_of_hash_functions: number_of_hash_functions as u32,
+    //     sip_key_one_a,
+    //     sip_key_one_b,
+    //     sip_key_two_a,
+    //     sip_key_two_b,
+    //     num_items,
+    // };
+
+    let sip_keys = [
+        (sip_key_one_a, sip_key_one_b),
+        (sip_key_two_a, sip_key_two_b),
+    ];
+    let bloom = Bloom::from_existing(
+        bitmap.as_ref(),
         number_of_bits,
-        number_of_hash_functions: number_of_hash_functions as u32,
-        sip_key_one_a,
-        sip_key_one_b,
-        sip_key_two_a,
-        sip_key_two_b,
+        number_of_hash_functions as u32,
+        sip_keys,
+    );
+    let item = BloomFilterType2 {
+        bloom,
         num_items,
     };
 

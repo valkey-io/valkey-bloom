@@ -9,18 +9,21 @@ use std::ptr::null_mut;
 
 /// # Safety
 pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_void) {
-    let v = &*value.cast::<bloom_data_type::BloomFilterType>();
+    let v = &*value.cast::<bloom_data_type::BloomFilterType2>();
+    let bloom = &v.bloom;
+    let bitmap = bloom.bitmap();
     raw::RedisModule_SaveStringBuffer.unwrap()(
         rdb,
-        v.bitmap.as_ptr().cast::<c_char>(),
-        v.bitmap.len(),
+        bitmap.as_ptr().cast::<c_char>(),
+        bitmap.len(),
     );
-    raw::save_unsigned(rdb, v.number_of_bits);
-    raw::save_unsigned(rdb, v.number_of_hash_functions as u64);
-    raw::save_unsigned(rdb, v.sip_key_one_a);
-    raw::save_unsigned(rdb, v.sip_key_one_b);
-    raw::save_unsigned(rdb, v.sip_key_two_a);
-    raw::save_unsigned(rdb, v.sip_key_two_b);
+    raw::save_unsigned(rdb, bloom.number_of_bits());
+    raw::save_unsigned(rdb, bloom.number_of_hash_functions() as u64);
+    let sip_keys = bloom.sip_keys();
+    raw::save_unsigned(rdb, sip_keys[0].0);
+    raw::save_unsigned(rdb, sip_keys[0].1);
+    raw::save_unsigned(rdb, sip_keys[1].0);
+    raw::save_unsigned(rdb, sip_keys[1].1);
     raw::save_unsigned(rdb, v.num_items);
 }
 
@@ -31,7 +34,6 @@ pub unsafe extern "C" fn bloom_rdb_load(
 ) -> *mut c_void {
     if let Some(item) = bloom_data_type::bloom_rdb_load_data_object(rdb, encver) {
         let bb = Box::new(item);
-        // report data usage for metering
         let data = Box::into_raw(bb).cast::<libc::c_void>();
         data
     } else {
@@ -58,15 +60,14 @@ pub unsafe extern "C" fn bloom_aux_load(
 /// # Safety
 /// Free a bloom item
 pub unsafe extern "C" fn bloom_free(value: *mut c_void) {
-    // Decrement the data usage for metering
     drop(Box::from_raw(
-        value.cast::<bloom_data_type::BloomFilterType>(),
+        value.cast::<bloom_data_type::BloomFilterType2>(),
     ));
 }
 
 /// # Safety
 /// Compute the memory usage for a bloom string item
 pub unsafe extern "C" fn bloom_mem_usage(value: *const c_void) -> usize {
-    let item = &*value.cast::<bloom_data_type::BloomFilterType>();
-    bloom_data_type::bloom_get_filter_memory_usage(item.bitmap.len())
+    let item = &*value.cast::<bloom_data_type::BloomFilterType2>();
+    bloom_data_type::bloom_get_filter_memory_usage(item.bloom.bitmap().len())
 }
