@@ -25,7 +25,11 @@ fn bloom_mexists_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
 }
 
 fn bloom_add_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    bloom::bloom_filter_add_value(ctx, &args)
+    bloom::bloom_filter_add_value(ctx, &args, false)
+}
+
+fn bloom_madd_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    bloom::bloom_filter_add_value(ctx, &args, true)
 }
 
 fn bloom_card_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
@@ -53,6 +57,7 @@ redis_module! {
     deinit: deinitialize,
     commands: [
         ["BF.ADD", bloom_add_command, "write fast deny-oom", 1, 1, 1],
+        ["BF.MADD", bloom_madd_command, "write fast deny-oom", 1, 1, 1],
         ["BF.EXISTS", bloom_exists_command, "readonly fast", 1, 1, 1],
         ["BF.MEXISTS", bloom_mexists_command, "readonly fast", 1, 1, 1],
         ["BF.CARD", bloom_card_command, "readonly fast", 1, 1, 1],
