@@ -10,23 +10,28 @@ use std::ptr::null_mut;
 /// # Safety
 pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_void) {
     let v = &*value.cast::<bloom_data_type::BloomFilterType2>();
-    let bloom = &v.bloom;
-    let bitmap = bloom.bitmap();
-    raw::RedisModule_SaveStringBuffer.unwrap()(
-        rdb,
-        bitmap.as_ptr().cast::<c_char>(),
-        bitmap.len(),
-    );
-    raw::save_unsigned(rdb, bloom.number_of_bits());
-    raw::save_unsigned(rdb, bloom.number_of_hash_functions() as u64);
-    let sip_keys = bloom.sip_keys();
-    raw::save_unsigned(rdb, sip_keys[0].0);
-    raw::save_unsigned(rdb, sip_keys[0].1);
-    raw::save_unsigned(rdb, sip_keys[1].0);
-    raw::save_unsigned(rdb, sip_keys[1].1);
-    raw::save_unsigned(rdb, v.num_items);
-    raw::save_unsigned(rdb, v.capacity as u64);
-    raw::save_signed(rdb, v.expansion as i64);
+    raw::save_unsigned(rdb, v.num_filters);
+    raw::save_signed(rdb, v.expansion);
+    raw::save_float(rdb, v.fp_rate as f32);
+    let filter_list = &v.filters;
+    for filter in filter_list {
+        let bloom = &filter.bloom;
+        let bitmap = bloom.bitmap();
+        raw::RedisModule_SaveStringBuffer.unwrap()(
+            rdb,
+            bitmap.as_ptr().cast::<c_char>(),
+            bitmap.len(),
+        );
+        raw::save_unsigned(rdb, bloom.number_of_bits());
+        raw::save_unsigned(rdb, bloom.number_of_hash_functions() as u64);
+        let sip_keys = bloom.sip_keys();
+        raw::save_unsigned(rdb, sip_keys[0].0);
+        raw::save_unsigned(rdb, sip_keys[0].1);
+        raw::save_unsigned(rdb, sip_keys[1].0);
+        raw::save_unsigned(rdb, sip_keys[1].1);
+        raw::save_unsigned(rdb, filter.num_items);
+        raw::save_unsigned(rdb, filter.capacity);
+    }
 }
 
 /// # Safety
@@ -72,5 +77,5 @@ pub unsafe extern "C" fn bloom_free(value: *mut c_void) {
 pub unsafe extern "C" fn bloom_mem_usage(value: *const c_void) -> usize {
     let item = &*value.cast::<bloom_data_type::BloomFilterType2>();
     // TODO: `bitmap()` is a slow operation. Find an alternative to identify the memory usage.
-    bloom_data_type::bloom_get_filter_memory_usage(item.bloom.bitmap().len())
+    item.get_memory_usage()
 }

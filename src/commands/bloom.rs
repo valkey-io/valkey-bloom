@@ -1,11 +1,9 @@
 use crate::bloom_config;
 use crate::commands::bloom_data_type::BLOOM_FILTER_TYPE2;
-use bloomfilter::Bloom;
 use redis_module::{Context, RedisError, RedisResult, RedisString, RedisValue};
 use std::sync::atomic::Ordering;
 use redis_module::key::RedisKeyWritable;
 use crate::commands::bloom_data_type::BloomFilterType2;
-use crate::commands::bloom_data_type;
 
 pub fn bloom_filter_add_value(ctx: &Context, input_args: &Vec<RedisString>, multi: bool) -> RedisResult {
     let argc = input_args.len();
@@ -40,33 +38,16 @@ pub fn bloom_filter_add_value(ctx: &Context, input_args: &Vec<RedisString>, mult
 fn bloom_filter_add_item(filter_key: &RedisKeyWritable, value: &mut Option<&mut BloomFilterType2>, item: &RedisString) -> RedisValue {
     match value {
         Some(val) => {
-            // Check if item exists already.
-            if val.bloom.check(&item) {
-                return RedisValue::Integer(0);
-            }
-            // Add item.
-            val.bloom.set(&item);
-            val.num_items += 1;
-            RedisValue::Integer(1)
+            // Add to an existing filter.
+            val.add_item(item)
         }
         None => {
             // Instantiate empty bloom filter.
             // TODO: Define false positive rate as a config.
             let fp_rate = 0.001;
             let capacity = bloom_config::BLOOM_MAX_ITEM_COUNT.load(Ordering::Relaxed) as usize;
-            let mut bloom = Bloom::new_for_fp_rate(
-                capacity,
-                fp_rate,
-            );
-            // Add item.
-            bloom.set(item.as_slice());
-
-            let value = BloomFilterType2 {
-                bloom: bloom,
-                num_items: 1,
-                capacity,
-                expansion: bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed),
-            };
+            let expansion = bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed);
+            let value = BloomFilterType2::new_with_item(fp_rate, capacity, expansion, item);
             match filter_key.set_value(&BLOOM_FILTER_TYPE2, value) {
                 Ok(_v) => {
                     RedisValue::Integer(1)
@@ -96,29 +77,27 @@ pub fn bloom_filter_exists(ctx: &Context, input_args: &Vec<RedisString>, multi: 
     };
     if !multi {
         let item = &input_args[curr_cmd_idx];
-        return Ok(bloom_filter_item_exists(&value, &item));
+        return Ok(bloom_filter_item_exists(value, &item));
     }
     let mut result = Vec::new();
     while curr_cmd_idx < argc {
         let item = &input_args[curr_cmd_idx];
-        result.push(bloom_filter_item_exists(&value, &item));
+        result.push(bloom_filter_item_exists(value, &item));
         curr_cmd_idx += 1;
     }
     return Ok(RedisValue::Array(result));
 }
 
-fn bloom_filter_item_exists(value: &Option<&BloomFilterType2>, item: &RedisString) -> RedisValue {
-    match value {
-        Some(val) => {
-            if val.bloom.check(&item) {
-                return RedisValue::Integer(1);
-            }
-            // Item has not been added to the filter.
-            RedisValue::Integer(0)
+fn bloom_filter_item_exists(value: Option<&BloomFilterType2>, item: &RedisString) -> RedisValue {
+    if let Some(val) = value {
+        if val.item_exists(&item) {
+            return RedisValue::Integer(1);
         }
-        // Key does not exist.
-        None => RedisValue::Integer(0),
-    }
+        // Item has not been added to the filter.
+        return RedisValue::Integer(0);
+    };
+    // Key does not exist.
+    RedisValue::Integer(0)
 }
 
 pub fn bloom_filter_card(ctx: &Context, input_args: &Vec<RedisString>) -> RedisResult {
@@ -137,7 +116,7 @@ pub fn bloom_filter_card(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
         }
     };
     match value {
-        Some(val) => Ok(RedisValue::Integer(val.num_items.try_into().unwrap())),
+        Some(val) => Ok(RedisValue::Integer(val.cardinality() as i64)),
         None => Ok(RedisValue::Integer(0)),
     }
 }
@@ -207,17 +186,8 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &Vec<RedisString>) -> Red
             Err(RedisError::Str("item exists"))
         }
         None => {
-            let bloom = Bloom::new_for_fp_rate(
-                capacity,
-                error_rate,
-            );
-            let value = BloomFilterType2 {
-                bloom,
-                num_items: 0,
-                capacity,
-                expansion,
-            };
-            match filter_key.set_value(&BLOOM_FILTER_TYPE2, value) {
+            let bloom = BloomFilterType2::new_reserved(error_rate, capacity, expansion);
+            match filter_key.set_value(&BLOOM_FILTER_TYPE2, bloom) {
                 Ok(_v) => {
                     Ok(RedisValue::SimpleStringStatic("OK"))
                 }
@@ -247,17 +217,17 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
         Some(val) if argc == 3 => {
             match input_args[curr_cmd_idx].to_string_lossy().to_uppercase().as_str() {
                 "CAPACITY" => {
-                    return Ok(RedisValue::Integer(val.capacity as i64));
+                    return Ok(RedisValue::Integer(val.capacity() as i64));
                 }
                 "SIZE" => {
                     // TODO: `bitmap()` is a slow operation. Find an alternative to identify the memory usage.
-                    return Ok(RedisValue::Integer(bloom_data_type::bloom_get_filter_memory_usage(val.bloom.bitmap().len()) as i64))
+                    return Ok(RedisValue::Integer(val.get_memory_usage() as i64))
                 }
                 "FILTERS" => {
                     return Ok(RedisValue::Integer(1));
                 }
                 "ITEMS" => {
-                    return Ok(RedisValue::Integer(val.num_items as i64));
+                    return Ok(RedisValue::Integer(val.cardinality() as i64));
                 }
                 "EXPANSION" => {
                     return Ok(RedisValue::Integer(val.expansion as i64));
@@ -270,14 +240,13 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
         Some(val) if argc == 2 => {
             let mut result = Vec::new();
             result.push(RedisValue::SimpleStringStatic("Capacity"));
-            result.push(RedisValue::Integer(val.capacity as i64));
+            result.push(RedisValue::Integer(val.capacity() as i64));
             result.push(RedisValue::SimpleStringStatic("Size"));
-            // TODO: `bitmap()` is a slow operation. Find an alternative to identify the memory usage.
-            result.push(RedisValue::Integer(bloom_data_type::bloom_get_filter_memory_usage(val.bloom.bitmap().len()) as i64));
+            result.push(RedisValue::Integer(val.get_memory_usage() as i64));
             result.push(RedisValue::SimpleStringStatic("Number of filters"));
             result.push(RedisValue::Integer(1));
             result.push(RedisValue::SimpleStringStatic("Number of items inserted"));
-            result.push(RedisValue::Integer(val.num_items as i64));
+            result.push(RedisValue::Integer(val.cardinality() as i64));
             result.push(RedisValue::SimpleStringStatic("Expansion rate"));
             result.push(RedisValue::Integer(val.expansion as i64));
             return Ok(RedisValue::Array(result));
