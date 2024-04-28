@@ -2,6 +2,7 @@ use crate::commands::bloom_data_type;
 use redis_module::raw;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
+use crate::commands::bloom_util::BloomFilterType2;
 
 // Note: methods in this mod are for the bloom module data type callbacks.
 // The reason they are unsafe is because the callback methods are expected to be
@@ -9,7 +10,7 @@ use std::ptr::null_mut;
 
 /// # Safety
 pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_void) {
-    let v = &*value.cast::<bloom_data_type::BloomFilterType2>();
+    let v = &*value.cast::<BloomFilterType2>();
     raw::save_unsigned(rdb, v.filters.len() as u64);
     raw::save_signed(rdb, v.expansion);
     raw::save_float(rdb, v.fp_rate as f32);
@@ -68,14 +69,14 @@ pub unsafe extern "C" fn bloom_aux_load(
 /// Free a bloom item
 pub unsafe extern "C" fn bloom_free(value: *mut c_void) {
     drop(Box::from_raw(
-        value.cast::<bloom_data_type::BloomFilterType2>(),
+        value.cast::<BloomFilterType2>(),
     ));
 }
 
 /// # Safety
 /// Compute the memory usage for a bloom string item
 pub unsafe extern "C" fn bloom_mem_usage(value: *const c_void) -> usize {
-    let item = &*value.cast::<bloom_data_type::BloomFilterType2>();
+    let item = &*value.cast::<BloomFilterType2>();
     // TODO: `bitmap()` is a slow operation. Find an alternative to identify the memory usage.
     item.get_memory_usage()
 }

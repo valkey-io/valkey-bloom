@@ -3,7 +3,7 @@ use crate::commands::bloom_data_type::BLOOM_FILTER_TYPE2;
 use redis_module::{Context, RedisError, RedisResult, RedisString, RedisValue};
 use std::sync::atomic::Ordering;
 use redis_module::key::RedisKeyWritable;
-use crate::commands::bloom_data_type::BloomFilterType2;
+use crate::commands::bloom_util::BloomFilterType2;
 
 pub fn bloom_filter_add_value(ctx: &Context, input_args: &Vec<RedisString>, multi: bool) -> RedisResult {
     let argc = input_args.len();
@@ -24,22 +24,22 @@ pub fn bloom_filter_add_value(ctx: &Context, input_args: &Vec<RedisString>, mult
     };
     if !multi {
         let item = &input_args[curr_cmd_idx];
-        return Ok(bloom_filter_add_item(&filter_key, &mut value, &item));
+        return Ok(bloom_filter_add_item(&filter_key, &mut value, item));
     }
     let mut result = Vec::new();
     while curr_cmd_idx < argc {
         let item = &input_args[curr_cmd_idx];
-        result.push(bloom_filter_add_item(&filter_key, &mut value, &item));
+        result.push(bloom_filter_add_item(&filter_key, &mut value, item));
         curr_cmd_idx += 1;
     }
     return Ok(RedisValue::Array(result));
 }
 
-fn bloom_filter_add_item(filter_key: &RedisKeyWritable, value: &mut Option<&mut BloomFilterType2>, item: &RedisString) -> RedisValue {
+fn bloom_filter_add_item(filter_key: &RedisKeyWritable, value: &mut Option<&mut BloomFilterType2>, item: &[u8]) -> RedisValue {
     match value {
         Some(val) => {
             // Add to an existing filter.
-            val.add_item(item)
+            RedisValue::Integer(val.add_item(item))
         }
         None => {
             // Instantiate empty bloom filter.
@@ -77,20 +77,20 @@ pub fn bloom_filter_exists(ctx: &Context, input_args: &Vec<RedisString>, multi: 
     };
     if !multi {
         let item = &input_args[curr_cmd_idx];
-        return Ok(bloom_filter_item_exists(value, &item));
+        return Ok(bloom_filter_item_exists(value, item));
     }
     let mut result = Vec::new();
     while curr_cmd_idx < argc {
         let item = &input_args[curr_cmd_idx];
-        result.push(bloom_filter_item_exists(value, &item));
+        result.push(bloom_filter_item_exists(value, item));
         curr_cmd_idx += 1;
     }
     return Ok(RedisValue::Array(result));
 }
 
-fn bloom_filter_item_exists(value: Option<&BloomFilterType2>, item: &RedisString) -> RedisValue {
+fn bloom_filter_item_exists(value: Option<&BloomFilterType2>, item: &[u8]) -> RedisValue {
     if let Some(val) = value {
-        if val.item_exists(&item) {
+        if val.item_exists(item) {
             return RedisValue::Integer(1);
         }
         // Item has not been added to the filter.
