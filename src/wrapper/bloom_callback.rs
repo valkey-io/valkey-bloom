@@ -68,6 +68,7 @@ pub unsafe extern "C" fn bloom_aux_load(
 /// # Safety
 /// Free a bloom item
 pub unsafe extern "C" fn bloom_free(value: *mut c_void) {
+    // TODO: Run with ASAN.
     drop(Box::from_raw(
         value.cast::<BloomFilterType2>(),
     ));
@@ -77,6 +78,5 @@ pub unsafe extern "C" fn bloom_free(value: *mut c_void) {
 /// Compute the memory usage for a bloom string item
 pub unsafe extern "C" fn bloom_mem_usage(value: *const c_void) -> usize {
     let item = &*value.cast::<BloomFilterType2>();
-    // TODO: `bitmap()` is a slow operation. Find an alternative to identify the memory usage.
     item.get_memory_usage()
 }

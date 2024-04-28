@@ -5,6 +5,8 @@ use std::sync::atomic::Ordering;
 use redis_module::key::RedisKeyWritable;
 use crate::commands::bloom_util::BloomFilterType2;
 
+// TODO: Replace string literals in error messages with static 
+
 pub fn bloom_filter_add_value(ctx: &Context, input_args: &Vec<RedisString>, multi: bool) -> RedisResult {
     let argc = input_args.len();
     if (!multi && argc != 3) || argc < 3  {
@@ -220,7 +222,6 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
                     return Ok(RedisValue::Integer(val.capacity() as i64));
                 }
                 "SIZE" => {
-                    // TODO: `bitmap()` is a slow operation. Find an alternative to identify the memory usage.
                     return Ok(RedisValue::Integer(val.get_memory_usage() as i64))
                 }
                 "FILTERS" => {

@@ -5,6 +5,7 @@ pub mod wrapper;
 pub mod commands;
 use crate::commands::{bloom};
 use crate::commands::bloom_data_type::BLOOM_FILTER_TYPE2;
+use redis_module::RedisError;
 
 pub const MODULE_NAME: &str = "bloom";
 
@@ -44,6 +45,11 @@ fn bloom_info_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     bloom::bloom_filter_info(ctx, &args)
 }
 
+fn bloom_insert_command(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
+    // TODO: Add support for BF.INSERT
+    Err(RedisError::Str("NOT YET SUPPORTED"))
+}
+
 //////////////////////////////////////////////////////
 
 redis_module! {
@@ -63,6 +69,7 @@ redis_module! {
         ["BF.CARD", bloom_card_command, "readonly fast", 1, 1, 1],
         ["BF.RESERVE", bloom_reserve_command, "write fast deny-oom", 1, 1, 1],
         ["BF.INFO", bloom_info_command, "readonly fast", 1, 1, 1],
+        ["BF.INSERT", bloom_insert_command, "write fast deny-oom", 1, 1, 1],
     ],
     configurations: [
         i64: [

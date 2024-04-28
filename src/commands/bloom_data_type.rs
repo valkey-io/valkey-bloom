@@ -28,7 +28,7 @@ pub static BLOOM_FILTER_TYPE2: RedisType = RedisType::new(
 
         free_effort: None,
         unlink: None,
-        copy: None, // Redis COPY command is not supported
+        copy: None, // TODO: Add support for copy
         defrag: None,
 
         mem_usage2: None,
