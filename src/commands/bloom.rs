@@ -1,9 +1,9 @@
 use crate::bloom_config;
-use crate::commands::bloom_data_type::BLOOM_FILTER_TYPE2;
-use redis_module::{Context, RedisError, RedisResult, RedisString, RedisValue};
+use crate::commands::bloom_data_type::BLOOM_FILTER_TYPE;
+use redis_module::{Context, RedisError, RedisResult, RedisString, RedisValue, REDIS_OK};
 use std::sync::atomic::Ordering;
 use redis_module::key::RedisKeyWritable;
-use crate::commands::bloom_util::BloomFilterType2;
+use crate::commands::bloom_util::{BloomFilterType, ERROR};
 
 // TODO: Replace string literals in error messages with static 
 
@@ -18,10 +18,10 @@ pub fn bloom_filter_add_value(ctx: &Context, input_args: &Vec<RedisString>, mult
     curr_cmd_idx += 1;
     // If the filter does not exist, create one
     let filter_key = ctx.open_key_writable(filter_name);
-    let mut value = match filter_key.get_value::<BloomFilterType2>(&BLOOM_FILTER_TYPE2) {
+    let mut value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(RedisError::Str("ERROR"));
+            return Err(RedisError::Str(ERROR));
         }
     };
     if !multi {
@@ -37,7 +37,7 @@ pub fn bloom_filter_add_value(ctx: &Context, input_args: &Vec<RedisString>, mult
     return Ok(RedisValue::Array(result));
 }
 
-fn bloom_filter_add_item(filter_key: &RedisKeyWritable, value: &mut Option<&mut BloomFilterType2>, item: &[u8]) -> RedisValue {
+fn bloom_filter_add_item(filter_key: &RedisKeyWritable, value: &mut Option<&mut BloomFilterType>, item: &[u8]) -> RedisValue {
     match value {
         Some(val) => {
             // Add to an existing filter.
@@ -49,8 +49,8 @@ fn bloom_filter_add_item(filter_key: &RedisKeyWritable, value: &mut Option<&mut 
             let fp_rate = 0.001;
             let capacity = bloom_config::BLOOM_MAX_ITEM_COUNT.load(Ordering::Relaxed) as usize;
             let expansion = bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed);
-            let value = BloomFilterType2::new_with_item(fp_rate, capacity, expansion, item);
-            match filter_key.set_value(&BLOOM_FILTER_TYPE2, value) {
+            let value = BloomFilterType::new_with_item(fp_rate, capacity, expansion, item);
+            match filter_key.set_value(&BLOOM_FILTER_TYPE, value) {
                 Ok(_v) => {
                     RedisValue::Integer(1)
                 }
@@ -71,10 +71,10 @@ pub fn bloom_filter_exists(ctx: &Context, input_args: &Vec<RedisString>, multi: 
     curr_cmd_idx += 1;
     // Parse the value to be checked whether it exists in the filter
     let filter_key = ctx.open_key(filter_name);
-    let value = match filter_key.get_value::<BloomFilterType2>(&BLOOM_FILTER_TYPE2) {
+    let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(RedisError::Str("ERROR"));
+            return Err(RedisError::Str(ERROR));
         }
     };
     if !multi {
@@ -90,7 +90,7 @@ pub fn bloom_filter_exists(ctx: &Context, input_args: &Vec<RedisString>, multi: 
     return Ok(RedisValue::Array(result));
 }
 
-fn bloom_filter_item_exists(value: Option<&BloomFilterType2>, item: &[u8]) -> RedisValue {
+fn bloom_filter_item_exists(value: Option<&BloomFilterType>, item: &[u8]) -> RedisValue {
     if let Some(val) = value {
         if val.item_exists(item) {
             return RedisValue::Integer(1);
@@ -111,10 +111,10 @@ pub fn bloom_filter_card(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
     // Parse the filter name
     let filter_name = &input_args[curr_cmd_idx];
     let filter_key = ctx.open_key(filter_name);
-    let value = match filter_key.get_value::<BloomFilterType2>(&BLOOM_FILTER_TYPE2) {
+    let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(RedisError::Str("ERROR"));
+            return Err(RedisError::Str(ERROR));
         }
     };
     match value {
@@ -161,7 +161,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &Vec<RedisString>) -> Red
                 parse_expansion = true;
             }
             _ => {
-                return Err(RedisError::Str("ERROR"));
+                return Err(RedisError::Str(ERROR));
             }
         }
     }
@@ -177,10 +177,10 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &Vec<RedisString>) -> Red
     }
     // If the filter does not exist, create one
     let filter_key = ctx.open_key_writable(filter_name);
-    let value = match filter_key.get_value::<BloomFilterType2>(&BLOOM_FILTER_TYPE2) {
+    let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(RedisError::Str("ERROR"));
+            return Err(RedisError::Str(ERROR));
         }
     };
     match value {
@@ -188,12 +188,12 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &Vec<RedisString>) -> Red
             Err(RedisError::Str("item exists"))
         }
         None => {
-            let bloom = BloomFilterType2::new_reserved(error_rate, capacity, expansion);
-            match filter_key.set_value(&BLOOM_FILTER_TYPE2, bloom) {
+            let bloom = BloomFilterType::new_reserved(error_rate, capacity, expansion);
+            match filter_key.set_value(&BLOOM_FILTER_TYPE, bloom) {
                 Ok(_v) => {
-                    Ok(RedisValue::SimpleStringStatic("OK"))
+                    REDIS_OK
                 }
-                Err(_) => Err(RedisError::Str("ERROR")),
+                Err(_) => Err(RedisError::Str(ERROR)),
             }
         }
     }
@@ -209,10 +209,10 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
     let filter_name = &input_args[curr_cmd_idx];
     curr_cmd_idx += 1;
     let filter_key = ctx.open_key(filter_name);
-    let value = match filter_key.get_value::<BloomFilterType2>(&BLOOM_FILTER_TYPE2) {
+    let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(RedisError::Str("ERROR"));
+            return Err(RedisError::Str(ERROR));
         }
     };
     match value {

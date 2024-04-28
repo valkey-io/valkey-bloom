@@ -3,12 +3,12 @@ use crate::MODULE_NAME;
 use redis_module::native_types::RedisType;
 use redis_module::{logging, raw};
 use std::os::raw::c_int;
-use crate::commands::bloom_util::BloomFilterType2;
+use crate::commands::bloom_util::BloomFilterType;
 use crate::commands::bloom_util::BloomFilter;
 
 const BLOOM_FILTER_TYPE_ENCODING_VERSION: i32 = 0; 
 
-pub static BLOOM_FILTER_TYPE2: RedisType = RedisType::new(
+pub static BLOOM_FILTER_TYPE: RedisType = RedisType::new(
     "bloomtype",
     BLOOM_FILTER_TYPE_ENCODING_VERSION,
     raw::RedisModuleTypeMethods {
@@ -41,7 +41,7 @@ pub static BLOOM_FILTER_TYPE2: RedisType = RedisType::new(
 pub fn bloom_rdb_load_data_object(
     rdb: *mut raw::RedisModuleIO,
     encver: i32,
-) -> Option<BloomFilterType2> {
+) -> Option<BloomFilterType> {
     if encver > BLOOM_FILTER_TYPE_ENCODING_VERSION {
         logging::log_warning(format!("{}: Cannot load bloomfilter type version {} because it is higher than the current module's string type version {}", MODULE_NAME, encver, BLOOM_FILTER_TYPE_ENCODING_VERSION).as_str());
         return None;
@@ -99,7 +99,7 @@ pub fn bloom_rdb_load_data_object(
         );
         filters.push(filter);
     }
-    let item = BloomFilterType2 {
+    let item = BloomFilterType {
         expansion,
         fp_rate: fp_rate as f64,
         filters,

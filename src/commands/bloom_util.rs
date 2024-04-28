@@ -4,28 +4,28 @@ pub const ERROR: &str = "ERROR";
 
 /// The BloomFilterType structure. 40 bytes.
 /// Can contain one or more filters.
-pub struct BloomFilterType2 {
+pub struct BloomFilterType {
     pub expansion: i64,
     pub fp_rate: f64,
     pub filters: Vec<BloomFilter>,
 }
 
-impl BloomFilterType2 {
-    pub fn new_reserved(fp_rate: f64, capacity: usize, expansion: i64) -> BloomFilterType2 {
+impl BloomFilterType {
+    pub fn new_reserved(fp_rate: f64, capacity: usize, expansion: i64) -> BloomFilterType {
         let bloom = BloomFilter::new(
             fp_rate,
             capacity,
         );
         let mut filters = Vec::new();
         filters.push(bloom);
-        BloomFilterType2 {
+        BloomFilterType {
             expansion,
             fp_rate,
             filters,
         }
     }
 
-    pub fn new_with_item(fp_rate: f64, capacity: usize, expansion: i64, item: &[u8]) -> BloomFilterType2 {
+    pub fn new_with_item(fp_rate: f64, capacity: usize, expansion: i64, item: &[u8]) -> BloomFilterType {
         let mut filter = BloomFilter::new(
             fp_rate,
             capacity,
@@ -34,7 +34,7 @@ impl BloomFilterType2 {
         filter.num_items = 1;
         let mut filters = Vec::new();
         filters.push(filter);
-        BloomFilterType2 {
+        BloomFilterType {
             expansion,
             fp_rate,
             filters,
@@ -42,7 +42,7 @@ impl BloomFilterType2 {
     }
 
     pub fn get_memory_usage(&self) -> usize {
-        let mut mem = std::mem::size_of::<BloomFilterType2>();
+        let mut mem = std::mem::size_of::<BloomFilterType>();
         for filter in &self.filters {
             mem += std::mem::size_of::<BloomFilter>() + (filter.bloom.number_of_bits() / 8u64) as usize;
         }

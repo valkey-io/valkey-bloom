@@ -2,7 +2,7 @@ use crate::commands::bloom_data_type;
 use redis_module::raw;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
-use crate::commands::bloom_util::BloomFilterType2;
+use crate::commands::bloom_util::BloomFilterType;
 
 // Note: methods in this mod are for the bloom module data type callbacks.
 // The reason they are unsafe is because the callback methods are expected to be
@@ -10,7 +10,7 @@ use crate::commands::bloom_util::BloomFilterType2;
 
 /// # Safety
 pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_void) {
-    let v = &*value.cast::<BloomFilterType2>();
+    let v = &*value.cast::<BloomFilterType>();
     raw::save_unsigned(rdb, v.filters.len() as u64);
     raw::save_signed(rdb, v.expansion);
     raw::save_float(rdb, v.fp_rate as f32);
@@ -70,13 +70,13 @@ pub unsafe extern "C" fn bloom_aux_load(
 pub unsafe extern "C" fn bloom_free(value: *mut c_void) {
     // TODO: Validate with ASAN.
     drop(Box::from_raw(
-        value.cast::<BloomFilterType2>(),
+        value.cast::<BloomFilterType>(),
     ));
 }
 
 /// # Safety
 /// Compute the memory usage for a bloom string item
 pub unsafe extern "C" fn bloom_mem_usage(value: *const c_void) -> usize {
-    let item = &*value.cast::<BloomFilterType2>();
+    let item = &*value.cast::<BloomFilterType>();
     item.get_memory_usage()
 }

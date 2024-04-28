@@ -4,7 +4,7 @@ pub mod bloom_config;
 pub mod wrapper;
 pub mod commands;
 use crate::commands::{bloom};
-use crate::commands::bloom_data_type::BLOOM_FILTER_TYPE2;
+use crate::commands::bloom_data_type::BLOOM_FILTER_TYPE;
 use redis_module::RedisError;
 
 pub const MODULE_NAME: &str = "bloom";
@@ -57,7 +57,7 @@ redis_module! {
     version: 1,
     allocator: (redis_module::alloc::RedisAlloc, redis_module::alloc::RedisAlloc),
     data_types: [
-        BLOOM_FILTER_TYPE2,
+        BLOOM_FILTER_TYPE,
     ],
     init: initialize,
     deinit: deinitialize,
