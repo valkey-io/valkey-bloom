@@ -224,7 +224,7 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
                     return Ok(RedisValue::Integer(val.get_memory_usage() as i64))
                 }
                 "FILTERS" => {
-                    return Ok(RedisValue::Integer(1));
+                    return Ok(RedisValue::Integer(val.filters.len() as i64));
                 }
                 "ITEMS" => {
                     return Ok(RedisValue::Integer(val.cardinality() as i64));
@@ -244,7 +244,7 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
             result.push(RedisValue::SimpleStringStatic("Size"));
             result.push(RedisValue::Integer(val.get_memory_usage() as i64));
             result.push(RedisValue::SimpleStringStatic("Number of filters"));
-            result.push(RedisValue::Integer(1));
+            result.push(RedisValue::Integer(val.filters.len() as i64));
             result.push(RedisValue::SimpleStringStatic("Number of items inserted"));
             result.push(RedisValue::Integer(val.cardinality() as i64));
             result.push(RedisValue::SimpleStringStatic("Expansion rate"));

@@ -41,7 +41,6 @@ pub static BLOOM_FILTER_TYPE2: RedisType = RedisType::new(
 
 /// The BloomFilterType structure.
 pub struct BloomFilterType2 {
-    pub num_filters: u64,
     pub expansion: i64,
     pub fp_rate: f64,
     pub filters: Vec<BloomFilter>,
@@ -56,7 +55,6 @@ impl BloomFilterType2 {
         let mut filters = Vec::new();
         filters.push(bloom);
         BloomFilterType2 {
-            num_filters: 1,
             expansion,
             fp_rate,
             filters,
@@ -73,7 +71,6 @@ impl BloomFilterType2 {
         let mut filters = Vec::new();
         filters.push(filter);
         BloomFilterType2 {
-            num_filters: 1,
             expansion,
             fp_rate,
             filters,
@@ -84,7 +81,7 @@ impl BloomFilterType2 {
         let mut mem = std::mem::size_of::<BloomFilterType2>();
         for filter in &self.filters {
             // TODO: `bitmap()` is a slow operation. Find an alternative to identify the memory usage.
-            mem += filter.bloom.bitmap().len();
+            mem += std::mem::size_of::<BloomFilter>() + std::mem::size_of::<Bloom<u8>>() + filter.bloom.bitmap().len();
         }
         mem
     }
@@ -231,7 +228,6 @@ pub fn bloom_rdb_load_data_object(
         filters.push(filter);
     }
     let item = BloomFilterType2 {
-        num_filters,
         expansion,
         fp_rate: fp_rate as f64,
         filters,

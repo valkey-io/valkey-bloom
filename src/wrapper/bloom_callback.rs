@@ -10,7 +10,7 @@ use std::ptr::null_mut;
 /// # Safety
 pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_void) {
     let v = &*value.cast::<bloom_data_type::BloomFilterType2>();
-    raw::save_unsigned(rdb, v.num_filters);
+    raw::save_unsigned(rdb, v.filters.len() as u64);
     raw::save_signed(rdb, v.expansion);
     raw::save_float(rdb, v.fp_rate as f32);
     let filter_list = &v.filters;
