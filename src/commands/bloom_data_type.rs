@@ -43,7 +43,7 @@ pub struct BloomFilterType2 {
     pub bloom: Bloom<[u8]>,
     pub num_items: u64,
     pub capacity: usize,
-    pub expansion: usize,
+    pub expansion: i64,
 }
 
 pub fn bloom_rdb_load_data_object(
@@ -84,7 +84,7 @@ pub fn bloom_rdb_load_data_object(
     let Ok(capacity) = raw::load_unsigned(rdb) else {
         return None;
     };
-    let Ok(expansion) = raw::load_unsigned(rdb) else {
+    let Ok(expansion) = raw::load_signed(rdb) else {
         return None;
     };
 
@@ -102,7 +102,7 @@ pub fn bloom_rdb_load_data_object(
         bloom,
         num_items,
         capacity: capacity as usize,
-        expansion: expansion as usize,
+        expansion,
     };
     Some(item)
 }
