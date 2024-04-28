@@ -45,7 +45,7 @@ fn bloom_filter_add_item(filter_key: &RedisKeyWritable, value: &mut Option<&mut 
         }
         None => {
             // Instantiate empty bloom filter.
-            // TODO: Define false positive rate as a config.
+            // TODO: Define the default false positive rate as a config.
             let fp_rate = 0.001;
             let capacity = bloom_config::BLOOM_MAX_ITEM_COUNT.load(Ordering::Relaxed) as usize;
             let expansion = bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed);

@@ -2,7 +2,8 @@ use bloomfilter::Bloom;
 
 pub const ERROR: &str = "ERROR";
 
-/// The BloomFilterType structure.
+/// The BloomFilterType structure. 40 bytes.
+/// Can contain one or more filters.
 pub struct BloomFilterType2 {
     pub expansion: i64,
     pub fp_rate: f64,
@@ -43,8 +44,7 @@ impl BloomFilterType2 {
     pub fn get_memory_usage(&self) -> usize {
         let mut mem = std::mem::size_of::<BloomFilterType2>();
         for filter in &self.filters {
-            // TODO: `bitmap()` is a slow operation. Find an alternative to identify the memory usage.
-            mem += std::mem::size_of::<BloomFilter>() + std::mem::size_of::<Bloom<u8>>() + filter.bloom.bitmap().len();
+            mem += std::mem::size_of::<BloomFilter>() + (filter.bloom.number_of_bits() / 8u64) as usize;
         }
         mem
     }
@@ -103,6 +103,7 @@ impl BloomFilterType2 {
     }
 }
 
+// Structure representing a single bloom filter. 208 Bytes.
 pub struct BloomFilter {
     pub bloom: Bloom<[u8]>,
     pub num_items: u64,

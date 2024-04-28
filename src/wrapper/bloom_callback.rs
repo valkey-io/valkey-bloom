@@ -68,7 +68,7 @@ pub unsafe extern "C" fn bloom_aux_load(
 /// # Safety
 /// Free a bloom item
 pub unsafe extern "C" fn bloom_free(value: *mut c_void) {
-    // TODO: Run with ASAN.
+    // TODO: Validate with ASAN.
     drop(Box::from_raw(
         value.cast::<BloomFilterType2>(),
     ));
