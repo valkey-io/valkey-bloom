@@ -1,7 +1,12 @@
 [package]
 name = "valkey-bloom"
+authors = ["Karthik Subbarao"]
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/KarthikSubbarao/valkey-bloom"
+readme = "README.md"
+description = "A bloom filter module for Valkey"
+homepage = "https://github.com/KarthikSubbarao/valkey-bloom"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
