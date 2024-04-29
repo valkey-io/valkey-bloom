@@ -1,4 +1,6 @@
 use crate::bloom_config;
+use crate::bloom_config::BLOOM_EXPANSION_MAX;
+use crate::bloom_config::BLOOM_MAX_ITEM_COUNT_MAX;
 use crate::commands::bloom_data_type::BLOOM_FILTER_TYPE;
 use redis_module::{Context, RedisError, RedisResult, RedisString, RedisValue, REDIS_OK};
 use std::sync::atomic::Ordering;
@@ -41,8 +43,8 @@ pub fn bloom_filter_add_value(ctx: &Context, input_args: &Vec<RedisString>, mult
             // Instantiate empty bloom filter.
             // TODO: Define the default false positive rate as a config.
             let fp_rate = 0.001;
-            let capacity = bloom_config::BLOOM_MAX_ITEM_COUNT.load(Ordering::Relaxed) as usize;
-            let expansion = bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed);
+            let capacity = bloom_config::BLOOM_MAX_ITEM_COUNT.load(Ordering::Relaxed) as u32;
+            let expansion = bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
             let mut bf = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
             let result = match multi {
                 true => {
@@ -126,7 +128,7 @@ pub fn bloom_filter_card(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
         }
     };
     match value {
-        Some(val) => Ok(RedisValue::Integer(val.cardinality() as i64)),
+        Some(val) => Ok(RedisValue::Integer(val.cardinality())),
         None => Ok(RedisValue::Integer(0)),
     }
 }
@@ -140,8 +142,8 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &Vec<RedisString>) -> Red
     // Parse the filter name
     let filter_name = &input_args[curr_cmd_idx];
     curr_cmd_idx += 1;
-    // Parse the error_rate
-    let error_rate = match input_args[curr_cmd_idx].to_string_lossy().parse::<f64>() {
+    // Parse the error rate
+    let fp_rate = match input_args[curr_cmd_idx].to_string_lossy().parse::<f32>() {
         Ok(num) if num >= 0.0 && num < 1.0  => num,
         _ => {
             return Err(RedisError::Str("ERR (0 < error rate range < 1)"));
@@ -149,23 +151,23 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &Vec<RedisString>) -> Red
     };
     curr_cmd_idx += 1;
     // Parse the capacity
-    let capacity = match input_args[curr_cmd_idx].to_string_lossy().parse::<usize>() {
-        Ok(num) if num > 0 => num,
+    let capacity = match input_args[curr_cmd_idx].to_string_lossy().parse::<u32>() {
+        Ok(num) if num > 0 && num < BLOOM_MAX_ITEM_COUNT_MAX => num,
         _ => {
             return Err(RedisError::Str("ERR Bad capacity"));
         }
     };
     curr_cmd_idx += 1;
-    let mut expansion = bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed);
+    let mut expansion = bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
     if argc > 4 {
         match input_args[curr_cmd_idx].to_string_lossy().to_uppercase().as_str() {
             "NONSCALING" if argc == 5 => {
-                expansion = -1;
+                expansion = 0;
             }
             "EXPANSION" if argc == 6 => {
                 curr_cmd_idx += 1;
-                expansion = match input_args[curr_cmd_idx].to_string_lossy().parse::<i64>() {
-                    Ok(num) if num > 0 => num,
+                expansion = match input_args[curr_cmd_idx].to_string_lossy().parse::<u32>() {
+                    Ok(num) if num > 0 && num <= BLOOM_EXPANSION_MAX => num,
                     _ => {
                         return Err(RedisError::Str("ERR bad expansion"));
                     }
@@ -189,7 +191,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &Vec<RedisString>) -> Red
             Err(RedisError::Str("ERR item exists"))
         }
         None => {
-            let bloom = BloomFilterType::new_reserved(error_rate, capacity, expansion);
+            let bloom = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bloom) {
                 Ok(_v) => {
                     REDIS_OK
@@ -212,14 +214,14 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &Vec<RedisString>) -> Redi
     idx += 1;
     // TODO: Create and use a config for the default fp_rate.
     let mut fp_rate = 0.001;
-    let mut capacity = bloom_config::BLOOM_MAX_ITEM_COUNT.load(Ordering::Relaxed) as usize;
-    let mut expansion = bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed);
+    let mut capacity = bloom_config::BLOOM_MAX_ITEM_COUNT.load(Ordering::Relaxed) as u32;
+    let mut expansion = bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
     let mut nocreate = false;
     while idx < argc {
         match input_args[idx].to_string_lossy().to_uppercase().as_str() {
             "ERROR" if idx < (argc - 1) => {
                 idx += 1;
-                fp_rate = match input_args[idx].to_string_lossy().parse::<f64>() {
+                fp_rate = match input_args[idx].to_string_lossy().parse::<f32>() {
                     Ok(num) if num >= 0.0 && num < 1.0  => num,
                     Ok(num) if num < 0.0 && num >= 1.0 => {
                         return Err(RedisError::Str("ERR (0 < error rate range < 1)"));
@@ -231,8 +233,8 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &Vec<RedisString>) -> Redi
             }
             "CAPACITY" if idx < (argc - 1) => {
                 idx += 1;
-                capacity = match input_args[idx].to_string_lossy().parse::<usize>() {
-                    Ok(num) if num > 0 => num,
+                capacity = match input_args[idx].to_string_lossy().parse::<u32>() {
+                    Ok(num) if num > 0 && num < BLOOM_MAX_ITEM_COUNT_MAX => num,
                     _ => {
                         return Err(RedisError::Str("ERR Bad capacity"));
                     }
@@ -242,12 +244,12 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &Vec<RedisString>) -> Redi
                 nocreate = true;
             }
             "NONSCALING" => {
-                expansion = -1;
+                expansion = 0;
             }
             "EXPANSION" if idx < (argc - 1) => {
                 idx += 1;
-                expansion = match input_args[idx].to_string_lossy().parse::<i64>() {
-                    Ok(num) if num > 0 => num,
+                expansion = match input_args[idx].to_string_lossy().parse::<u32>() {
+                    Ok(num) if num > 0 && num <= BLOOM_EXPANSION_MAX => num,
                     _ => {
                         return Err(RedisError::Str("ERR bad expansion"));
                     }
@@ -321,7 +323,7 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
         Some(val) if argc == 3 => {
             match input_args[curr_cmd_idx].to_string_lossy().to_uppercase().as_str() {
                 "CAPACITY" => {
-                    return Ok(RedisValue::Integer(val.capacity() as i64));
+                    return Ok(RedisValue::Integer(val.capacity()));
                 }
                 "SIZE" => {
                     return Ok(RedisValue::Integer(val.get_memory_usage() as i64))
@@ -330,9 +332,12 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
                     return Ok(RedisValue::Integer(val.filters.len() as i64));
                 }
                 "ITEMS" => {
-                    return Ok(RedisValue::Integer(val.cardinality() as i64));
+                    return Ok(RedisValue::Integer(val.cardinality()));
                 }
                 "EXPANSION" => {
+                    if val.expansion == 0 {
+                        return Ok(RedisValue::Integer(-1));
+                    }
                     return Ok(RedisValue::Integer(val.expansion as i64));
                 }
                 _ => {
@@ -343,15 +348,19 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
         Some(val) if argc == 2 => {
             let mut result = Vec::new();
             result.push(RedisValue::SimpleStringStatic("Capacity"));
-            result.push(RedisValue::Integer(val.capacity() as i64));
+            result.push(RedisValue::Integer(val.capacity()));
             result.push(RedisValue::SimpleStringStatic("Size"));
             result.push(RedisValue::Integer(val.get_memory_usage() as i64));
             result.push(RedisValue::SimpleStringStatic("Number of filters"));
             result.push(RedisValue::Integer(val.filters.len() as i64));
             result.push(RedisValue::SimpleStringStatic("Number of items inserted"));
-            result.push(RedisValue::Integer(val.cardinality() as i64));
+            result.push(RedisValue::Integer(val.cardinality()));
             result.push(RedisValue::SimpleStringStatic("Expansion rate"));
-            result.push(RedisValue::Integer(val.expansion as i64));
+            if val.expansion == 0 {
+                result.push(RedisValue::Integer(-1));
+            } else {
+                result.push(RedisValue::Integer(val.expansion as i64));
+            }
             return Ok(RedisValue::Array(result));
         }
         _ => Err(RedisError::Str("ERR not found")),

@@ -71,8 +71,8 @@ redis_module! {
     ],
     configurations: [
         i64: [
-            ["bloom_max_item_size", &*bloom_config::BLOOM_MAX_ITEM_COUNT, bloom_config::BLOOM_MAX_ITEM_COUNT_DEFAULT, bloom_config::BLOOM_MAX_ITEM_COUNT_MIN, bloom_config::BLOOM_MAX_ITEM_COUNT_MAX, ConfigurationFlags::DEFAULT, None],
-            ["bloom_expansion_rate", &*bloom_config::BLOOM_EXPANSION, bloom_config::BLOOM_EXPANSION_DEFAULT, bloom_config::BLOOM_EXPANSION_MIN, bloom_config::BLOOM_EXPANSION_MAX, ConfigurationFlags::DEFAULT, None],
+            ["bloom_max_item_size", &*bloom_config::BLOOM_MAX_ITEM_COUNT, bloom_config::BLOOM_MAX_ITEM_COUNT_DEFAULT, bloom_config::BLOOM_MAX_ITEM_COUNT_MIN, bloom_config::BLOOM_MAX_ITEM_COUNT_MAX as i64, ConfigurationFlags::DEFAULT, None],
+            ["bloom_expansion_rate", &*bloom_config::BLOOM_EXPANSION, bloom_config::BLOOM_EXPANSION_DEFAULT, bloom_config::BLOOM_EXPANSION_MIN, bloom_config::BLOOM_EXPANSION_MAX as i64, ConfigurationFlags::DEFAULT, None],
         ],
         string: [
         ],

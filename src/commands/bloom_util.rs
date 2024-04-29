@@ -2,16 +2,16 @@ use bloomfilter::Bloom;
 
 pub const ERROR: &str = "ERROR";
 
-/// The BloomFilterType structure. 40 bytes.
+/// The BloomFilterType structure. 32 bytes.
 /// Can contain one or more filters.
 pub struct BloomFilterType {
-    pub expansion: i64,
-    pub fp_rate: f64,
+    pub expansion: u32,
+    pub fp_rate: f32,
     pub filters: Vec<BloomFilter>,
 }
 
 impl BloomFilterType {
-    pub fn new_reserved(fp_rate: f64, capacity: usize, expansion: i64) -> BloomFilterType {
+    pub fn new_reserved(fp_rate: f32, capacity: u32, expansion: u32) -> BloomFilterType {
         let bloom = BloomFilter::new(
             fp_rate,
             capacity,
@@ -43,22 +43,22 @@ impl BloomFilterType {
         false
     }
 
-    pub fn cardinality(&self) -> u64  {
+    pub fn cardinality(&self) -> i64  {
         let mut cardinality = 0;
         // Check if item exists already.
         for filter in &self.filters {
             cardinality += filter.num_items;
         }
-        cardinality
+        cardinality as i64
     }
 
-    pub fn capacity(&self) -> u64  {
+    pub fn capacity(&self) -> i64  {
         let mut capacity = 0;
         // Check if item exists already.
         for filter in &self.filters {
             capacity += filter.capacity;
         }
-        capacity
+        capacity as i64
     }
 
     pub fn add_item(&mut self, item: &[u8]) -> i64 {
@@ -67,15 +67,15 @@ impl BloomFilterType {
             return 0;
         }
         if let Some(filter) = self.filters.last_mut() {
-            if self.expansion == -1 || filter.num_items < filter.capacity  {
+            if self.expansion == 0 || filter.num_items < filter.capacity  {
                 // Add item.
                 filter.bloom.set(item);
                 filter.num_items += 1;
                 return 1;
             }
             if filter.num_items >= filter.capacity {
-                let new_capacity = filter.capacity * (self.expansion as u64);
-                let mut new_filter = BloomFilter::new(self.fp_rate, new_capacity as usize);
+                let new_capacity = filter.capacity * self.expansion;
+                let mut new_filter = BloomFilter::new(self.fp_rate, new_capacity);
                 // Add item.
                 new_filter.bloom.set(item);
                 new_filter.num_items += 1;
@@ -87,32 +87,32 @@ impl BloomFilterType {
     }
 }
 
-// Structure representing a single bloom filter. 208 Bytes.
+// Structure representing a single bloom filter. 200 Bytes.
 pub struct BloomFilter {
     pub bloom: Bloom<[u8]>,
-    pub num_items: u64,
-    pub capacity: u64,
+    pub num_items: u32,
+    pub capacity: u32,
 }
 
 impl BloomFilter {
-    pub fn new(fp_rate: f64, capacity: usize) -> BloomFilter {
+    pub fn new(fp_rate: f32, capacity: u32) -> BloomFilter {
         // Instantiate empty bloom filter.
         let bloom = Bloom::new_for_fp_rate(
-            capacity,
-            fp_rate,
+            capacity as usize,
+            fp_rate as f64,
         );
         BloomFilter {
             bloom,
             num_items: 0,
-            capacity: capacity as u64,
+            capacity,
         }
     }
 
-    pub fn from_existing(bitmap: &[u8], number_of_bits: u64, number_of_hash_functions: u32, sip_keys: [(u64, u64); 2], num_items: u64, capacity: u64) -> BloomFilter {
+    pub fn from_existing(bitmap: &[u8], number_of_bits: u64, number_of_hash_functions: u32, sip_keys: [(u64, u64); 2], num_items: u32, capacity: u32) -> BloomFilter {
         let bloom = Bloom::from_existing(
             bitmap,
             number_of_bits,
-            number_of_hash_functions as u32,
+            number_of_hash_functions,
             sip_keys,
         );
         BloomFilter {

@@ -12,8 +12,8 @@ use crate::commands::bloom_util::BloomFilterType;
 pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_void) {
     let v = &*value.cast::<BloomFilterType>();
     raw::save_unsigned(rdb, v.filters.len() as u64);
-    raw::save_signed(rdb, v.expansion);
-    raw::save_float(rdb, v.fp_rate as f32);
+    raw::save_unsigned(rdb, v.expansion as u64);
+    raw::save_float(rdb, v.fp_rate);
     let filter_list = &v.filters;
     for filter in filter_list {
         let bloom = &filter.bloom;
@@ -30,8 +30,8 @@ pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mu
         raw::save_unsigned(rdb, sip_keys[0].1);
         raw::save_unsigned(rdb, sip_keys[1].0);
         raw::save_unsigned(rdb, sip_keys[1].1);
-        raw::save_unsigned(rdb, filter.num_items);
-        raw::save_unsigned(rdb, filter.capacity);
+        raw::save_unsigned(rdb, filter.num_items as u64);
+        raw::save_unsigned(rdb, filter.capacity as u64);
     }
 }
 

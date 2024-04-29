@@ -94,14 +94,14 @@ pub fn bloom_rdb_load_data_object(
             number_of_bits,
             number_of_hash_functions as u32,
             sip_keys,
-            num_items,
-            capacity,
+            num_items as u32,
+            capacity as u32,
         );
         filters.push(filter);
     }
     let item = BloomFilterType {
-        expansion,
-        fp_rate: fp_rate as f64,
+        expansion: expansion as u32,
+        fp_rate: fp_rate,
         filters,
     };
     Some(item)
