@@ -101,7 +101,7 @@ pub fn bloom_rdb_load_data_object(
     }
     let item = BloomFilterType {
         expansion: expansion as u32,
-        fp_rate: fp_rate,
+        fp_rate,
         filters,
     };
     Some(item)

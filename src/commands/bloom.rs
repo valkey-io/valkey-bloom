@@ -97,7 +97,7 @@ pub fn bloom_filter_exists(ctx: &Context, input_args: &Vec<RedisString>, multi: 
         result.push(bloom_filter_item_exists(value, item));
         curr_cmd_idx += 1;
     }
-    return Ok(RedisValue::Array(result));
+    Ok(RedisValue::Array(result))
 }
 
 fn bloom_filter_item_exists(value: Option<&BloomFilterType>, item: &[u8]) -> RedisValue {
@@ -135,7 +135,7 @@ pub fn bloom_filter_card(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
 
 pub fn bloom_filter_reserve(ctx: &Context, input_args: &Vec<RedisString>) -> RedisResult {
     let argc = input_args.len();
-    if argc < 4 || argc > 6 {
+    if !(4..=6).contains(&argc) {
         return Err(RedisError::WrongArity);
     }
     let mut curr_cmd_idx = 1;
@@ -222,8 +222,8 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &Vec<RedisString>) -> Redi
             "ERROR" if idx < (argc - 1) => {
                 idx += 1;
                 fp_rate = match input_args[idx].to_string_lossy().parse::<f32>() {
-                    Ok(num) if num >= 0.0 && num < 1.0  => num,
-                    Ok(num) if num < 0.0 && num >= 1.0 => {
+                    Ok(num) if (0.0..1.0).contains(&num)  => num,
+                    Ok(num) if !(0.0..1.0).contains(&num) => {
                         return Err(RedisError::Str("ERR (0 < error rate range < 1)"));
                     }
                     _ => {
@@ -305,7 +305,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &Vec<RedisString>) -> Redi
 
 pub fn bloom_filter_info(ctx: &Context, input_args: &Vec<RedisString>) -> RedisResult {
     let argc = input_args.len();
-    if argc < 2 || argc > 3 {
+    if !(2..=3).contains(&argc) {
         return Err(RedisError::WrongArity);
     }
     let mut curr_cmd_idx = 1;
@@ -323,28 +323,28 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
         Some(val) if argc == 3 => {
             match input_args[curr_cmd_idx].to_string_lossy().to_uppercase().as_str() {
                 "CAPACITY" => {
-                    return Ok(RedisValue::Integer(val.capacity()));
+                    Ok(RedisValue::Integer(val.capacity()))
                 }
                 "SIZE" => {
-                    return Ok(RedisValue::Integer(val.get_memory_usage() as i64))
+                    Ok(RedisValue::Integer(val.get_memory_usage() as i64))
                 }
                 "FILTERS" => {
-                    return Ok(RedisValue::Integer(val.filters.len() as i64));
+                    Ok(RedisValue::Integer(val.filters.len() as i64))
                 }
                 "ITEMS" => {
-                    return Ok(RedisValue::Integer(val.cardinality()));
+                    Ok(RedisValue::Integer(val.cardinality()))
                 }
                 "EXPANSION" => {
                     if val.expansion == 0 {
                         return Ok(RedisValue::Integer(-1));
                     }
-                    return Ok(RedisValue::Integer(val.expansion as i64));
+                    Ok(RedisValue::Integer(val.expansion as i64))
                 }
                 _ => {
-                    return Err(RedisError::Str("ERR Invalid information value"));
+                    Err(RedisError::Str("ERR Invalid information value"))
                 }
             }
-        },
+        }
         Some(val) if argc == 2 => {
             let mut result = Vec::new();
             result.push(RedisValue::SimpleStringStatic("Capacity"));
@@ -361,8 +361,8 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
             } else {
                 result.push(RedisValue::Integer(val.expansion as i64));
             }
-            return Ok(RedisValue::Array(result));
+            Ok(RedisValue::Array(result))
         }
-        _ => Err(RedisError::Str("ERR not found")),
+        _ => Err(RedisError::Str("ERR not found"))
     }
 }

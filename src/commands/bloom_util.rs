@@ -16,8 +16,7 @@ impl BloomFilterType {
             fp_rate,
             capacity,
         );
-        let mut filters = Vec::new();
-        filters.push(bloom);
+        let filters = vec![bloom];
         BloomFilterType {
             expansion,
             fp_rate,
