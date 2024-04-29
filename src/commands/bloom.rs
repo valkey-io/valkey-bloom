@@ -144,7 +144,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &Vec<RedisString>) -> Red
     curr_cmd_idx += 1;
     // Parse the error rate
     let fp_rate = match input_args[curr_cmd_idx].to_string_lossy().parse::<f32>() {
-        Ok(num) if num >= 0.0 && num < 1.0  => num,
+        Ok(num) if (0.0..1.0).contains(&num)  => num,
         _ => {
             return Err(RedisError::Str("ERR (0 < error rate range < 1)"));
         }

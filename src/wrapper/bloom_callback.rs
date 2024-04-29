@@ -42,8 +42,7 @@ pub unsafe extern "C" fn bloom_rdb_load(
 ) -> *mut c_void {
     if let Some(item) = bloom_data_type::bloom_rdb_load_data_object(rdb, encver) {
         let bb = Box::new(item);
-        let data = Box::into_raw(bb).cast::<libc::c_void>();
-        data
+        Box::into_raw(bb).cast::<libc::c_void>()
     } else {
         null_mut()
     }
