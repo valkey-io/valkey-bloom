@@ -25,22 +25,6 @@ impl BloomFilterType {
         }
     }
 
-    pub fn new_with_item(fp_rate: f64, capacity: usize, expansion: i64, item: &[u8]) -> BloomFilterType {
-        let mut filter = BloomFilter::new(
-            fp_rate,
-            capacity,
-        );
-        filter.bloom.set(item);
-        filter.num_items = 1;
-        let mut filters = Vec::new();
-        filters.push(filter);
-        BloomFilterType {
-            expansion,
-            fp_rate,
-            filters,
-        }
-    }
-
     pub fn get_memory_usage(&self) -> usize {
         let mut mem = std::mem::size_of::<BloomFilterType>();
         for filter in &self.filters {
