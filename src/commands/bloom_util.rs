@@ -1,4 +1,4 @@
-use bloomfilter::Bloom;
+use bloomfilter;
 
 pub const ERROR: &str = "ERROR";
 
@@ -88,7 +88,7 @@ impl BloomFilterType {
 
 // Structure representing a single bloom filter. 200 Bytes.
 pub struct BloomFilter {
-    pub bloom: Bloom<[u8]>,
+    pub bloom: bloomfilter::Bloom<[u8]>,
     pub num_items: u32,
     pub capacity: u32,
 }
@@ -96,7 +96,7 @@ pub struct BloomFilter {
 impl BloomFilter {
     pub fn new(fp_rate: f32, capacity: u32) -> BloomFilter {
         // Instantiate empty bloom filter.
-        let bloom = Bloom::new_for_fp_rate(
+        let bloom = bloomfilter::Bloom::new_for_fp_rate(
             capacity as usize,
             fp_rate as f64,
         );
@@ -108,7 +108,7 @@ impl BloomFilter {
     }
 
     pub fn from_existing(bitmap: &[u8], number_of_bits: u64, number_of_hash_functions: u32, sip_keys: [(u64, u64); 2], num_items: u32, capacity: u32) -> BloomFilter {
-        let bloom = Bloom::from_existing(
+        let bloom = bloomfilter::Bloom::from_existing(
             bitmap,
             number_of_bits,
             number_of_hash_functions,

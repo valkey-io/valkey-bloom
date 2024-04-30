@@ -9,7 +9,7 @@ use crate::commands::bloom_util::{BloomFilterType, ERROR};
 // TODO: Replace string literals in error messages with static
 // TODO: Check all int / usize casting.
 
-pub fn bloom_filter_add_value(ctx: &Context, input_args: &Vec<RedisString>, multi: bool) -> RedisResult {
+pub fn bloom_filter_add_value(ctx: &Context, input_args: &[RedisString], multi: bool) -> RedisResult {
     let argc = input_args.len();
     if (!multi && argc != 3) || argc < 3  {
         return Err(RedisError::WrongArity);
@@ -29,13 +29,12 @@ pub fn bloom_filter_add_value(ctx: &Context, input_args: &Vec<RedisString>, mult
     match value {
         Some(bf) => {
             if !multi {
-                let item = &input_args[curr_cmd_idx];
+                let item = input_args[curr_cmd_idx].as_slice();
                 return Ok(RedisValue::Integer(bf.add_item(item)));
             }
             let mut result = Vec::new();
-            for idx in curr_cmd_idx..argc {
-                let item = &input_args[idx];
-                result.push(RedisValue::Integer(bf.add_item(item)));
+            for item in input_args.iter().take(argc).skip(curr_cmd_idx) {
+                result.push(RedisValue::Integer(bf.add_item(item.as_slice())));
             }
             Ok(RedisValue::Array(result))
         }
@@ -49,14 +48,13 @@ pub fn bloom_filter_add_value(ctx: &Context, input_args: &Vec<RedisString>, mult
             let result = match multi {
                 true => {
                     let mut result = Vec::new();
-                    for idx in curr_cmd_idx..argc {
-                        let item = &input_args[idx];
-                        result.push(RedisValue::Integer(bf.add_item(item)));
+                    for item in input_args.iter().take(argc).skip(curr_cmd_idx) {
+                        result.push(RedisValue::Integer(bf.add_item(item.as_slice())));
                     }
                     Ok(RedisValue::Array(result))
                 }
                 false => {
-                    let item = &input_args[curr_cmd_idx];
+                    let item = input_args[curr_cmd_idx].as_slice();
                     Ok(RedisValue::Integer(bf.add_item(item)))
                 }
             };
@@ -70,7 +68,7 @@ pub fn bloom_filter_add_value(ctx: &Context, input_args: &Vec<RedisString>, mult
     }
 }
 
-pub fn bloom_filter_exists(ctx: &Context, input_args: &Vec<RedisString>, multi: bool) -> RedisResult {
+pub fn bloom_filter_exists(ctx: &Context, input_args: &[RedisString], multi: bool) -> RedisResult {
     let argc = input_args.len();
     if (!multi && argc != 3) || argc < 3  {
         return Err(RedisError::WrongArity);
@@ -88,12 +86,12 @@ pub fn bloom_filter_exists(ctx: &Context, input_args: &Vec<RedisString>, multi: 
         }
     };
     if !multi {
-        let item = &input_args[curr_cmd_idx];
+        let item = input_args[curr_cmd_idx].as_slice();
         return Ok(bloom_filter_item_exists(value, item));
     }
     let mut result = Vec::new();
     while curr_cmd_idx < argc {
-        let item = &input_args[curr_cmd_idx];
+        let item = input_args[curr_cmd_idx].as_slice();
         result.push(bloom_filter_item_exists(value, item));
         curr_cmd_idx += 1;
     }
@@ -112,7 +110,7 @@ fn bloom_filter_item_exists(value: Option<&BloomFilterType>, item: &[u8]) -> Red
     RedisValue::Integer(0)
 }
 
-pub fn bloom_filter_card(ctx: &Context, input_args: &Vec<RedisString>) -> RedisResult {
+pub fn bloom_filter_card(ctx: &Context, input_args: &[RedisString]) -> RedisResult {
     let argc = input_args.len();
     if argc != 2 {
         return Err(RedisError::WrongArity);
@@ -133,7 +131,7 @@ pub fn bloom_filter_card(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
     }
 }
 
-pub fn bloom_filter_reserve(ctx: &Context, input_args: &Vec<RedisString>) -> RedisResult {
+pub fn bloom_filter_reserve(ctx: &Context, input_args: &[RedisString]) -> RedisResult {
     let argc = input_args.len();
     if !(4..=6).contains(&argc) {
         return Err(RedisError::WrongArity);
@@ -202,7 +200,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &Vec<RedisString>) -> Red
     }
 }
 
-pub fn bloom_filter_insert(ctx: &Context, input_args: &Vec<RedisString>) -> RedisResult {
+pub fn bloom_filter_insert(ctx: &Context, input_args: &[RedisString]) -> RedisResult {
     let argc = input_args.len();
     // At the very least, we need: BF.INSERT <key> ITEM <item>
     if argc < 4 {
@@ -276,9 +274,8 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &Vec<RedisString>) -> Redi
     let mut result = Vec::new();
     match value {
         Some(bf) => {
-            for i in idx..argc {
-                let item = &input_args[i];
-                result.push(RedisValue::Integer(bf.add_item(item)));
+            for item in input_args.iter().take(argc).skip(idx) {
+                result.push(RedisValue::Integer(bf.add_item(item.as_slice())));
             }
             Ok(RedisValue::Array(result))
         }
@@ -287,9 +284,8 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &Vec<RedisString>) -> Redi
                 return Err(RedisError::Str("ERR not found"));
             }
             let mut bf = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
-            for i in idx..argc {
-                let item = &input_args[i];
-                result.push(RedisValue::Integer(bf.add_item(item)));
+            for item in input_args.iter().take(argc).skip(idx) {
+                result.push(RedisValue::Integer(bf.add_item(item.as_slice())));
             }
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bf) {
                 Ok(_) => {
@@ -303,7 +299,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &Vec<RedisString>) -> Redi
     }
 }
 
-pub fn bloom_filter_info(ctx: &Context, input_args: &Vec<RedisString>) -> RedisResult {
+pub fn bloom_filter_info(ctx: &Context, input_args: &[RedisString]) -> RedisResult {
     let argc = input_args.len();
     if !(2..=3).contains(&argc) {
         return Err(RedisError::WrongArity);
@@ -346,16 +342,17 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &Vec<RedisString>) -> RedisR
             }
         }
         Some(val) if argc == 2 => {
-            let mut result = Vec::new();
-            result.push(RedisValue::SimpleStringStatic("Capacity"));
-            result.push(RedisValue::Integer(val.capacity()));
-            result.push(RedisValue::SimpleStringStatic("Size"));
-            result.push(RedisValue::Integer(val.get_memory_usage() as i64));
-            result.push(RedisValue::SimpleStringStatic("Number of filters"));
-            result.push(RedisValue::Integer(val.filters.len() as i64));
-            result.push(RedisValue::SimpleStringStatic("Number of items inserted"));
-            result.push(RedisValue::Integer(val.cardinality()));
-            result.push(RedisValue::SimpleStringStatic("Expansion rate"));
+            let mut result = vec![
+                RedisValue::SimpleStringStatic("Capacity"),
+                RedisValue::Integer(val.capacity()),
+                RedisValue::SimpleStringStatic("Size"),
+                RedisValue::Integer(val.get_memory_usage() as i64),
+                RedisValue::SimpleStringStatic("Number of filters"),
+                RedisValue::Integer(val.filters.len() as i64),
+                RedisValue::SimpleStringStatic("Number of items inserted"),
+                RedisValue::Integer(val.cardinality()),
+                RedisValue::SimpleStringStatic("Expansion rate"),
+            ];
             if val.expansion == 0 {
                 result.push(RedisValue::Integer(-1));
             } else {

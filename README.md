@@ -1,13 +1,30 @@
 # valkey-bloom
 
-Tested on Linux so far.
+Valkey-Bloom is a Rust Valkey-Module which brings a native and space efficient probabilistic Module data type to Valkey. With this, users can create filters (space-efficient probabilistic Module data type) to add elements, perform “check” operation to test whether an element exists, auto scale their filters, perform RDB Save and load operations, etc.
 
+Valkey-Bloom is built using bloomfilter::Bloom (https://crates.io/crates/bloomfilter which has a BSD-2-Clause license).
+
+It is compatible with the BloomFilter (BF.*) command APIs of the ReBloom Module from Redis Ltd.
+
+The following commands are supported.
+```
+BF.EXISTS
+BF.ADD
+BF.MEXISTS
+BF.MADD
+BF.CARD
+BF.RESERVE
+BF.INFO
+BF.INSERT
+```
+
+Build instructions for Linux.
 ```
 curl https://sh.rustup.rs -sSf | sh
 sudo yum install clang
 git clone https://github.com/KarthikSubbarao/valkey-bloom.git
 cd valkey-bloom
-cargo build --all --all-targets  --release
+cargo build --features clippy --all --all-targets  --release
 find . -name "libvalkey_bloom.so"  
 valkey-server --loadmodule ./target/release/libvalkey_bloom.so
 ```
