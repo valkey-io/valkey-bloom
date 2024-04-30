@@ -3,6 +3,7 @@ name = "valkey-bloom"
 authors = ["Karthik Subbarao"]
 version = "0.1.0"
 edition = "2021"
+license = "BSD-3-Clause"
 repository = "https://github.com/KarthikSubbarao/valkey-bloom"
 readme = "README.md"
 description = "A bloom filter module for Valkey"
