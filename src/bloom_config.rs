@@ -5,7 +5,7 @@ use std::sync::atomic::AtomicI64;
 
 pub const BLOOM_MAX_ITEM_COUNT_DEFAULT: i64 = 100000;
 pub const BLOOM_MAX_ITEM_COUNT_MIN: i64 = 1;
-pub const BLOOM_MAX_ITEM_COUNT_MAX: u32 = u32::MAX ;
+pub const BLOOM_MAX_ITEM_COUNT_MAX: u32 = u32::MAX;
 
 pub const BLOOM_EXPANSION_DEFAULT: i64 = 2;
 pub const BLOOM_EXPANSION_MIN: i64 = 1;

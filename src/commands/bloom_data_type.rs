@@ -1,12 +1,12 @@
+use crate::commands::bloom_util::BloomFilter;
+use crate::commands::bloom_util::BloomFilterType;
 use crate::wrapper::bloom_callback;
 use crate::MODULE_NAME;
 use redis_module::native_types::RedisType;
 use redis_module::{logging, raw};
 use std::os::raw::c_int;
-use crate::commands::bloom_util::BloomFilterType;
-use crate::commands::bloom_util::BloomFilter;
 
-const BLOOM_FILTER_TYPE_ENCODING_VERSION: i32 = 0; 
+const BLOOM_FILTER_TYPE_ENCODING_VERSION: i32 = 0;
 
 pub static BLOOM_FILTER_TYPE: RedisType = RedisType::new(
     "bloomtype",
@@ -84,7 +84,7 @@ pub fn bloom_rdb_load_data_object(
         let Ok(capacity) = raw::load_unsigned(rdb) else {
             return None;
         };
-    
+
         let sip_keys = [
             (sip_key_one_a, sip_key_one_b),
             (sip_key_two_a, sip_key_two_b),

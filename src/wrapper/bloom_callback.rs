@@ -1,8 +1,8 @@
 use crate::commands::bloom_data_type;
+use crate::commands::bloom_util::BloomFilterType;
 use redis_module::raw;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
-use crate::commands::bloom_util::BloomFilterType;
 
 // Note: methods in this mod are for the bloom module data type callbacks.
 // The reason they are unsafe is because the callback methods are expected to be
@@ -68,9 +68,7 @@ pub unsafe extern "C" fn bloom_aux_load(
 /// Free a bloom item
 pub unsafe extern "C" fn bloom_free(value: *mut c_void) {
     // TODO: Validate with ASAN.
-    drop(Box::from_raw(
-        value.cast::<BloomFilterType>(),
-    ));
+    drop(Box::from_raw(value.cast::<BloomFilterType>()));
 }
 
 /// # Safety

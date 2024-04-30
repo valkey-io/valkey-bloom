@@ -1,9 +1,9 @@
-use redis_module::{redis_module, Context, RedisResult, RedisString, Status};
 use redis_module::configuration::ConfigurationFlags;
+use redis_module::{redis_module, Context, RedisResult, RedisString, Status};
 pub mod bloom_config;
-pub mod wrapper;
 pub mod commands;
-use crate::commands::{bloom};
+pub mod wrapper;
+use crate::commands::bloom;
 use crate::commands::bloom_data_type::BLOOM_FILTER_TYPE;
 
 pub const MODULE_NAME: &str = "bloom";

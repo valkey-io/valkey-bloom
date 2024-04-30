@@ -12,10 +12,7 @@ pub struct BloomFilterType {
 
 impl BloomFilterType {
     pub fn new_reserved(fp_rate: f32, capacity: u32, expansion: u32) -> BloomFilterType {
-        let bloom = BloomFilter::new(
-            fp_rate,
-            capacity,
-        );
+        let bloom = BloomFilter::new(fp_rate, capacity);
         let filters = vec![bloom];
         BloomFilterType {
             expansion,
@@ -27,7 +24,8 @@ impl BloomFilterType {
     pub fn get_memory_usage(&self) -> usize {
         let mut mem = std::mem::size_of::<BloomFilterType>();
         for filter in &self.filters {
-            mem += std::mem::size_of::<BloomFilter>() + (filter.bloom.number_of_bits() / 8u64) as usize;
+            mem += std::mem::size_of::<BloomFilter>()
+                + (filter.bloom.number_of_bits() / 8u64) as usize;
         }
         mem
     }
@@ -42,7 +40,7 @@ impl BloomFilterType {
         false
     }
 
-    pub fn cardinality(&self) -> i64  {
+    pub fn cardinality(&self) -> i64 {
         let mut cardinality = 0;
         // Check if item exists already.
         for filter in &self.filters {
@@ -51,7 +49,7 @@ impl BloomFilterType {
         cardinality as i64
     }
 
-    pub fn capacity(&self) -> i64  {
+    pub fn capacity(&self) -> i64 {
         let mut capacity = 0;
         // Check if item exists already.
         for filter in &self.filters {
@@ -66,7 +64,7 @@ impl BloomFilterType {
             return 0;
         }
         if let Some(filter) = self.filters.last_mut() {
-            if self.expansion == 0 || filter.num_items < filter.capacity  {
+            if self.expansion == 0 || filter.num_items < filter.capacity {
                 // Add item.
                 filter.bloom.set(item);
                 filter.num_items += 1;
@@ -96,10 +94,7 @@ pub struct BloomFilter {
 impl BloomFilter {
     pub fn new(fp_rate: f32, capacity: u32) -> BloomFilter {
         // Instantiate empty bloom filter.
-        let bloom = bloomfilter::Bloom::new_for_fp_rate(
-            capacity as usize,
-            fp_rate as f64,
-        );
+        let bloom = bloomfilter::Bloom::new_for_fp_rate(capacity as usize, fp_rate as f64);
         BloomFilter {
             bloom,
             num_items: 0,
@@ -107,7 +102,14 @@ impl BloomFilter {
         }
     }
 
-    pub fn from_existing(bitmap: &[u8], number_of_bits: u64, number_of_hash_functions: u32, sip_keys: [(u64, u64); 2], num_items: u32, capacity: u32) -> BloomFilter {
+    pub fn from_existing(
+        bitmap: &[u8],
+        number_of_bits: u64,
+        number_of_hash_functions: u32,
+        sip_keys: [(u64, u64); 2],
+        num_items: u32,
+        capacity: u32,
+    ) -> BloomFilter {
         let bloom = bloomfilter::Bloom::from_existing(
             bitmap,
             number_of_bits,
