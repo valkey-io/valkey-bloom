@@ -1,6 +1,7 @@
 use crate::commands::bloom_data_type;
 use crate::commands::bloom_util::BloomFilterType;
 use redis_module::raw;
+use redis_module::RedisModuleString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
 
@@ -76,4 +77,17 @@ pub unsafe extern "C" fn bloom_free(value: *mut c_void) {
 pub unsafe extern "C" fn bloom_mem_usage(value: *const c_void) -> usize {
     let item = &*value.cast::<BloomFilterType>();
     item.get_memory_usage()
+}
+
+/// # Safety
+/// Raw handler for the COPY command.
+pub unsafe extern "C" fn bloom_copy(
+    _from_key: *mut RedisModuleString,
+    _to_key: *mut RedisModuleString,
+    value: *const c_void,
+) -> *mut c_void {
+    let cur_item = &*value.cast::<BloomFilterType>();
+    let new_item = BloomFilterType::create_copy_from(cur_item);
+    let bb = Box::new(new_item);
+    Box::into_raw(bb).cast::<libc::c_void>()
 }

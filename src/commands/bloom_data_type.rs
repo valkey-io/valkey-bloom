@@ -28,7 +28,7 @@ pub static BLOOM_FILTER_TYPE: RedisType = RedisType::new(
 
         free_effort: None,
         unlink: None,
-        copy: None, // TODO: Add support for copy
+        copy: Some(bloom_callback::bloom_copy),
         defrag: None,
 
         mem_usage2: None,
