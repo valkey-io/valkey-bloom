@@ -1,9 +1,9 @@
 use crate::commands::bloom_data_type;
 use crate::commands::bloom_util::BloomFilterType;
-use redis_module::raw;
-use redis_module::RedisModuleString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
+use valkey_module::raw;
+use valkey_module::RedisModuleString;
 
 // Note: methods in this mod are for the bloom module data type callbacks.
 // The reason they are unsafe is because the callback methods are expected to be
