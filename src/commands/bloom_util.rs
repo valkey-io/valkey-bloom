@@ -11,6 +11,7 @@ pub struct BloomFilterType {
 }
 
 impl BloomFilterType {
+    /// Create a new BloomFilterType object.
     pub fn new_reserved(fp_rate: f32, capacity: u32, expansion: u32) -> BloomFilterType {
         let bloom = BloomFilter::new(fp_rate, capacity);
         let filters = vec![bloom];

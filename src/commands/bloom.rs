@@ -44,7 +44,6 @@ pub fn bloom_filter_add_value(
         }
         None => {
             // Instantiate empty bloom filter.
-            // TODO: Define the default false positive rate as a config.
             let fp_rate = 0.001;
             let capacity = bloom_config::BLOOM_MAX_ITEM_COUNT.load(Ordering::Relaxed) as u32;
             let expansion = bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
@@ -204,7 +203,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[RedisString]) -> RedisR
 
 pub fn bloom_filter_insert(ctx: &Context, input_args: &[RedisString]) -> RedisResult {
     let argc = input_args.len();
-    // At the very least, we need: BF.INSERT <key> ITEM <item>
+    // At the very least, we need: BF.INSERT <key> ITEMS <item>
     if argc < 4 {
         return Err(RedisError::WrongArity);
     }
@@ -212,7 +211,6 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[RedisString]) -> RedisRe
     // Parse the filter name
     let filter_name = &input_args[idx];
     idx += 1;
-    // TODO: Create and use a config for the default fp_rate.
     let mut fp_rate = 0.001;
     let mut capacity = bloom_config::BLOOM_MAX_ITEM_COUNT.load(Ordering::Relaxed) as u32;
     let mut expansion = bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;

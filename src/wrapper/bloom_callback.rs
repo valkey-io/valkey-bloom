@@ -73,7 +73,7 @@ pub unsafe extern "C" fn bloom_free(value: *mut c_void) {
 }
 
 /// # Safety
-/// Compute the memory usage for a bloom string item
+/// Compute the memory usage for a bloom object.
 pub unsafe extern "C" fn bloom_mem_usage(value: *const c_void) -> usize {
     let item = &*value.cast::<BloomFilterType>();
     item.get_memory_usage()
