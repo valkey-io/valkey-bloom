@@ -15,22 +15,30 @@ pub static BLOOM_FILTER_TYPE: ValkeyType = ValkeyType::new(
         version: raw::REDISMODULE_TYPE_METHOD_VERSION as u64,
         rdb_load: Some(bloom_callback::bloom_rdb_load),
         rdb_save: Some(bloom_callback::bloom_rdb_save),
+        // TODO: We need to decide if AOF Rewrite should be supported.
+        // The reason being we can create bloom obects through AOF Rewrite. However, it will not
+        // have any items "added" to it.
         aof_rewrite: None,
 
         mem_usage: Some(bloom_callback::bloom_mem_usage),
+        // TODO
         digest: None,
         free: Some(bloom_callback::bloom_free),
 
         aux_load: Some(bloom_callback::bloom_aux_load),
-        aux_save: Some(bloom_callback::bloom_aux_save),
+        // Callback not needed as there is no AUX (out of keyspace) data to be saved.
+        aux_save: None,
         aux_save2: None,
         aux_save_triggers: raw::Aux::Before as i32,
 
-        free_effort: None,
+        free_effort: Some(bloom_callback::bloom_free_effort),
+        // Callback not needed as it just notifies us when a bloom item is about to be freed.
         unlink: None,
         copy: Some(bloom_callback::bloom_copy),
+        // TODO
         defrag: None,
 
+        // The callbacks below are not needed since the version 1 variants are used when implemented.
         mem_usage2: None,
         free_effort2: None,
         unlink2: None,
@@ -38,6 +46,7 @@ pub static BLOOM_FILTER_TYPE: ValkeyType = ValkeyType::new(
     },
 );
 
+/// Callback to load and parse RDB data of a bloom item and create it.
 pub fn bloom_rdb_load_data_object(
     rdb: *mut raw::RedisModuleIO,
     encver: i32,
@@ -107,13 +116,8 @@ pub fn bloom_rdb_load_data_object(
     Some(item)
 }
 
-// Save the auxiliary data outside of the regular keyspace to the RDB file
-pub fn bloom_rdb_aux_save(_rdb: *mut raw::RedisModuleIO) {
-    logging::log_notice("NOOP for now");
-}
-
-// Load the auxiliary data outside of the regular keyspace from the RDB file
+/// Load the auxiliary data outside of the regular keyspace from the RDB file
 pub fn bloom_rdb_aux_load(_rdb: *mut raw::RedisModuleIO) -> c_int {
-    logging::log_notice("NOOP for now");
+    logging::log_notice("Ignoring AUX fields during RDB load.");
     raw::Status::Ok as i32
 }

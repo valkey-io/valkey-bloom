@@ -46,6 +46,17 @@ impl BloomFilterType {
         mem
     }
 
+    /// Returns the Bloom object's free_effort.
+    /// We return 1 if there are no filters (BF.RESERVE) or if there is 1 filter.
+    /// Else, we return the number of filters as the free_effort.
+    /// This is similar to how the core handles aggregated objects.
+    pub fn free_effort(&self) -> usize {
+        if self.filters.is_empty() {
+            return 1;
+        }
+        self.filters.len()
+    }
+
     /// Check if item exists already.
     pub fn item_exists(&self, item: &[u8]) -> bool {
         for filter in &self.filters {
