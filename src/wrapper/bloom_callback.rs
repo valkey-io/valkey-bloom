@@ -3,7 +3,7 @@ use crate::commands::bloom_util::BloomFilterType;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
 use valkey_module::raw;
-use valkey_module::RedisModuleString;
+use valkey_module::{RedisModuleDefragCtx, RedisModuleString};
 
 // Note: methods in this mod are for the bloom module data type callbacks.
 // The reason they are unsafe is because the callback methods are expected to be
@@ -88,13 +88,25 @@ pub unsafe extern "C" fn bloom_copy(
 
 /// # Safety
 /// Raw handler for the Bloom object's free_effort callback.
-/// We return 1 if there are no filters (BF.RESERVE) or if there is 1 filter.
-/// Else, we return the number of filters as the free_effort.
-/// This is similar to how the core handles aggregated objects.
 pub unsafe extern "C" fn bloom_free_effort(
     _from_key: *mut RedisModuleString,
     value: *const c_void,
 ) -> usize {
     let curr_item = &*value.cast::<BloomFilterType>();
     curr_item.free_effort()
+}
+
+/// # Safety
+/// Raw handler for the Bloom object's defrag callback.
+pub unsafe extern "C" fn bloom_defrag(
+    _defrag_ctx: *mut RedisModuleDefragCtx,
+    _from_key: *mut RedisModuleString,
+    value: *mut *mut c_void,
+) -> i32 {
+    let curr_item = &*(*value).cast::<BloomFilterType>();
+    let new_item = BloomFilterType::create_copy_from(curr_item);
+    let bb = Box::new(new_item);
+    drop(Box::from_raw((*value).cast::<BloomFilterType>()));
+    *value = Box::into_raw(bb).cast::<libc::c_void>();
+    0
 }

@@ -35,8 +35,7 @@ pub static BLOOM_FILTER_TYPE: ValkeyType = ValkeyType::new(
         // Callback not needed as it just notifies us when a bloom item is about to be freed.
         unlink: None,
         copy: Some(bloom_callback::bloom_copy),
-        // TODO
-        defrag: None,
+        defrag: Some(bloom_callback::bloom_defrag),
 
         // The callbacks below are not needed since the version 1 variants are used when implemented.
         mem_usage2: None,

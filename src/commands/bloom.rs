@@ -44,7 +44,7 @@ pub fn bloom_filter_add_value(
         }
         None => {
             // Instantiate empty bloom filter.
-            let fp_rate = 0.001;
+            let fp_rate = bloom_config::BLOOM_FP_RATE_DEFAULT;
             let capacity = bloom_config::BLOOM_MAX_ITEM_COUNT.load(Ordering::Relaxed) as u32;
             let expansion = bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
             let mut bf = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
@@ -215,7 +215,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
     // Parse the filter name
     let filter_name = &input_args[idx];
     idx += 1;
-    let mut fp_rate = 0.001;
+    let mut fp_rate = bloom_config::BLOOM_FP_RATE_DEFAULT;
     let mut capacity = bloom_config::BLOOM_MAX_ITEM_COUNT.load(Ordering::Relaxed) as u32;
     let mut expansion = bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
     let mut nocreate = false;
