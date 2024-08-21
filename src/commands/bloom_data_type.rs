@@ -15,9 +15,7 @@ pub static BLOOM_FILTER_TYPE: ValkeyType = ValkeyType::new(
         version: raw::REDISMODULE_TYPE_METHOD_VERSION as u64,
         rdb_load: Some(bloom_callback::bloom_rdb_load),
         rdb_save: Some(bloom_callback::bloom_rdb_save),
-        // TODO: We need to decide if AOF Rewrite should be supported.
-        // The reason being we can create bloom obects through AOF Rewrite. However, it will not
-        // have any items "added" to it.
+        // TODO
         aof_rewrite: None,
 
         mem_usage: Some(bloom_callback::bloom_mem_usage),

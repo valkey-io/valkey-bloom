@@ -1,9 +1,25 @@
 use bloomfilter;
+use crate::bloom_config::TIGHTENING_RATIO;
 
+/// Constants
 pub const ERROR: &str = "ERROR";
+pub const NON_SCALING_FILTER_FULL: &str = "ERR non scaling filter is full";
+
+pub enum BloomError {
+    NonScalingFilterFull,
+}
+
+impl BloomError {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            BloomError::NonScalingFilterFull => NON_SCALING_FILTER_FULL,
+        }
+    }
+}
 
 /// The BloomFilterType structure. 32 bytes.
 /// Can contain one or more filters.
+/// This is a generic top level structure which is not coupled to any bloom crate.
 pub struct BloomFilterType {
     pub expansion: u32,
     pub fp_rate: f32,
@@ -40,8 +56,7 @@ impl BloomFilterType {
     pub fn get_memory_usage(&self) -> usize {
         let mut mem = std::mem::size_of::<BloomFilterType>();
         for filter in &self.filters {
-            mem += std::mem::size_of::<BloomFilter>()
-                + (filter.bloom.number_of_bits() / 8u64) as usize;
+            mem += filter.number_of_bytes();
         }
         mem
     }
@@ -59,12 +74,7 @@ impl BloomFilterType {
 
     /// Check if item exists already.
     pub fn item_exists(&self, item: &[u8]) -> bool {
-        for filter in &self.filters {
-            if filter.bloom.check(item) {
-                return true;
-            }
-        }
-        false
+        self.filters.iter().any(|filter| filter.check(item))
     }
 
     /// Return a count of number of items added to all sub filters in the BloomFilterType object.
@@ -88,34 +98,41 @@ impl BloomFilterType {
 
     /// Add an item to the BloomFilterType object.
     /// If scaling is enabled, this can result in a new sub filter creation.
-    pub fn add_item(&mut self, item: &[u8]) -> i64 {
+    pub fn add_item(&mut self, item: &[u8]) -> Result<i64, BloomError>  {
         // Check if item exists already.
         if self.item_exists(item) {
-            return 0;
+            return Ok(0);
         }
+        let num_filters = self.filters.len() as i32;
         if let Some(filter) = self.filters.last_mut() {
-            if self.expansion == 0 || filter.num_items < filter.capacity {
+            if filter.num_items < filter.capacity {
                 // Add item.
-                filter.bloom.set(item);
+                filter.set(item);
                 filter.num_items += 1;
-                return 1;
+                return Ok(1);
+            }
+            // Non Scaling Filters that are filled to capacity cannot handle more inserts.
+            if self.expansion == 0 {
+                return Err(BloomError::NonScalingFilterFull);
             }
             // Scale out by adding a new filter.
             if filter.num_items >= filter.capacity {
+                let new_fp_rate = self.fp_rate * TIGHTENING_RATIO.powi(num_filters);
                 let new_capacity = filter.capacity * self.expansion;
-                let mut new_filter = BloomFilter::new(self.fp_rate, new_capacity);
+                let mut new_filter = BloomFilter::new(new_fp_rate, new_capacity);
                 // Add item.
-                new_filter.bloom.set(item);
+                new_filter.set(item);
                 new_filter.num_items += 1;
                 self.filters.push(new_filter);
-                return 1;
+                return Ok(1);
             }
         }
-        0
+        Ok(0)
     }
 }
 
 // Structure representing a single bloom filter. 200 Bytes.
+// Using Crate: "bloomfilter"
 pub struct BloomFilter {
     pub bloom: bloomfilter::Bloom<[u8]>,
     pub num_items: u32,
@@ -153,6 +170,19 @@ impl BloomFilter {
             num_items,
             capacity,
         }
+    }
+
+    pub fn number_of_bytes(&self) -> usize {
+        std::mem::size_of::<BloomFilter>()
+                + (self.bloom.number_of_bits() / 8) as usize
+    }
+
+    pub fn check(&self, item: &[u8]) -> bool {
+        self.bloom.check(item)
+    }
+
+    pub fn set(&mut self, item: &[u8]) {
+        self.bloom.set(item)
     }
 
     /// Create a new BloomFilter from an existing BloomFilter object (COPY command).
