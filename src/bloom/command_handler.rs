@@ -1,35 +1,58 @@
-use crate::bloom_config;
-use crate::bloom_config::BLOOM_EXPANSION_MAX;
-use crate::bloom_config::BLOOM_MAX_ITEM_COUNT_MAX;
-use crate::commands::bloom_data_type::BLOOM_FILTER_TYPE;
-use crate::commands::bloom_util::{BloomFilterType, ERROR};
+use crate::bloom::data_type::BLOOM_FILTER_TYPE;
+use crate::bloom::utils::{BloomFilterType, ERROR};
+use crate::configs;
+use crate::configs::BLOOM_CAPACITY_MAX;
+use crate::configs::BLOOM_EXPANSION_MAX;
 use std::sync::atomic::Ordering;
 use valkey_module::{Context, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue, VALKEY_OK};
 
 // TODO: Replace string literals in error messages with static
 
-
-fn bloom_single_add_helper(item: &[u8], bf: &mut BloomFilterType) -> Result<ValkeyValue, ValkeyError> {
+fn bloom_single_add_helper(
+    ctx: &Context,
+    item: &[u8],
+    bf: &mut BloomFilterType,
+    replicate_on_success: bool,
+) -> Result<ValkeyValue, ValkeyError> {
     match bf.add_item(item) {
-        Ok(result) => Ok(ValkeyValue::Integer(result)),
+        Ok(result) => {
+            if replicate_on_success && result == 1 {
+                ctx.replicate_verbatim();
+            }
+            Ok(ValkeyValue::Integer(result))
+        }
         Err(err) => Err(ValkeyError::Str(err.as_str())),
     }
 }
 
-fn bloom_multi_add_helper(args: &[ValkeyString], argc: usize, skip_idx: usize, bf: &mut BloomFilterType) -> Vec<ValkeyValue> {
+fn bloom_multi_add_helper(
+    ctx: &Context,
+    args: &[ValkeyString],
+    argc: usize,
+    skip_idx: usize,
+    bf: &mut BloomFilterType,
+    replicate_on_success: bool,
+) -> Result<ValkeyValue, ValkeyError> {
     let mut result = Vec::new();
+    let mut write_operation = false;
     for item in args.iter().take(argc).skip(skip_idx) {
         match bf.add_item(item.as_slice()) {
             Ok(add_result) => {
+                if add_result == 1 {
+                    write_operation = true;
+                }
                 result.push(ValkeyValue::Integer(add_result));
-            },
+            }
             Err(err) => {
                 result.push(ValkeyValue::StaticError(err.as_str()));
-                return result;
+                continue;
             }
         };
     }
-    result
+    if replicate_on_success && write_operation {
+        ctx.replicate_verbatim();
+    }
+    Ok(ValkeyValue::Array(result))
 }
 
 pub fn bloom_filter_add_value(
@@ -57,27 +80,28 @@ pub fn bloom_filter_add_value(
         Some(bf) => {
             if !multi {
                 let item = input_args[curr_cmd_idx].as_slice();
-                return bloom_single_add_helper(item, bf);
+                return bloom_single_add_helper(ctx, item, bf, true);
             }
-            Ok(ValkeyValue::Array(bloom_multi_add_helper(input_args, argc, curr_cmd_idx, bf)))
+            bloom_multi_add_helper(ctx, input_args, argc, curr_cmd_idx, bf, true)
         }
         None => {
             // Instantiate empty bloom filter.
-            let fp_rate = bloom_config::BLOOM_FP_RATE_DEFAULT;
-            let capacity = bloom_config::BLOOM_MAX_ITEM_COUNT.load(Ordering::Relaxed) as u32;
-            let expansion = bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
+            let fp_rate = configs::BLOOM_FP_RATE_DEFAULT;
+            let capacity = configs::BLOOM_CAPACITY.load(Ordering::Relaxed) as u32;
+            let expansion = configs::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
             let mut bf = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
             let result = match multi {
-                true => {
-                    Ok(ValkeyValue::Array(bloom_multi_add_helper(input_args, argc, curr_cmd_idx, &mut bf)))
-                }
+                true => bloom_multi_add_helper(ctx, input_args, argc, curr_cmd_idx, &mut bf, false),
                 false => {
                     let item = input_args[curr_cmd_idx].as_slice();
-                    return bloom_single_add_helper(item, &mut bf);
+                    bloom_single_add_helper(ctx, item, &mut bf, false)
                 }
             };
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bf) {
-                Ok(_) => result,
+                Ok(_) => {
+                    ctx.replicate_verbatim();
+                    result
+                }
                 Err(_) => Err(ValkeyError::Str(ERROR)),
             }
         }
@@ -170,7 +194,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
     curr_cmd_idx += 1;
     // Parse the capacity
     let capacity = match input_args[curr_cmd_idx].to_string_lossy().parse::<u32>() {
-        Ok(num) if num > 0 && num < BLOOM_MAX_ITEM_COUNT_MAX => num,
+        Ok(num) if num > 0 && num < BLOOM_CAPACITY_MAX => num,
         Ok(0) => {
             return Err(ValkeyError::Str("ERR (capacity should be larger than 0)"));
         }
@@ -179,7 +203,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
         }
     };
     curr_cmd_idx += 1;
-    let mut expansion = bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
+    let mut expansion = configs::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
     if argc > 4 {
         match input_args[curr_cmd_idx]
             .to_string_lossy()
@@ -216,7 +240,10 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
         None => {
             let bloom = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bloom) {
-                Ok(_v) => VALKEY_OK,
+                Ok(_v) => {
+                    ctx.replicate_verbatim();
+                    VALKEY_OK
+                }
                 Err(_) => Err(ValkeyError::Str(ERROR)),
             }
         }
@@ -233,9 +260,9 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
     // Parse the filter name
     let filter_name = &input_args[idx];
     idx += 1;
-    let mut fp_rate = bloom_config::BLOOM_FP_RATE_DEFAULT;
-    let mut capacity = bloom_config::BLOOM_MAX_ITEM_COUNT.load(Ordering::Relaxed) as u32;
-    let mut expansion = bloom_config::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
+    let mut fp_rate = configs::BLOOM_FP_RATE_DEFAULT;
+    let mut capacity = configs::BLOOM_CAPACITY.load(Ordering::Relaxed) as u32;
+    let mut expansion = configs::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
     let mut nocreate = false;
     while idx < argc {
         match input_args[idx].to_string_lossy().to_uppercase().as_str() {
@@ -254,7 +281,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
             "CAPACITY" if idx < (argc - 1) => {
                 idx += 1;
                 capacity = match input_args[idx].to_string_lossy().parse::<u32>() {
-                    Ok(num) if num > 0 && num < BLOOM_MAX_ITEM_COUNT_MAX => num,
+                    Ok(num) if num > 0 && num < BLOOM_CAPACITY_MAX => num,
                     Ok(0) => {
                         return Err(ValkeyError::Str("ERR (capacity should be larger than 0)"));
                     }
@@ -297,17 +324,18 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
         }
     };
     match value {
-        Some(bf) => {
-            Ok(ValkeyValue::Array(bloom_multi_add_helper(input_args, argc, idx, bf)))
-        }
+        Some(bf) => bloom_multi_add_helper(ctx, input_args, argc, idx, bf, true),
         None => {
             if nocreate {
                 return Err(ValkeyError::Str("ERR not found"));
             }
             let mut bf = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
-            let result = bloom_multi_add_helper(input_args, argc, idx, &mut bf);
+            let result = bloom_multi_add_helper(ctx, input_args, argc, idx, &mut bf, false);
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bf) {
-                Ok(_) => Ok(ValkeyValue::Array(result)),
+                Ok(_) => {
+                    ctx.replicate_verbatim();
+                    result
+                }
                 Err(_) => Err(ValkeyError::Str(ERROR)),
             }
         }

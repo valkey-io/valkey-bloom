@@ -1,5 +1,5 @@
-use crate::commands::bloom_data_type;
-use crate::commands::bloom_util::BloomFilterType;
+use crate::bloom;
+use crate::bloom::utils::BloomFilterType;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
 use valkey_module::raw;
@@ -41,7 +41,7 @@ pub unsafe extern "C" fn bloom_rdb_load(
     rdb: *mut raw::RedisModuleIO,
     encver: c_int,
 ) -> *mut c_void {
-    if let Some(item) = bloom_data_type::bloom_rdb_load_data_object(rdb, encver) {
+    if let Some(item) = bloom::data_type::bloom_rdb_load_data_object(rdb, encver) {
         let bb = Box::new(item);
         Box::into_raw(bb).cast::<libc::c_void>()
     } else {
@@ -56,7 +56,7 @@ pub unsafe extern "C" fn bloom_aux_load(
     _encver: c_int,
     _when: c_int,
 ) -> c_int {
-    bloom_data_type::bloom_rdb_aux_load(rdb)
+    bloom::data_type::bloom_rdb_aux_load(rdb)
 }
 
 /// # Safety

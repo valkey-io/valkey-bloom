@@ -1,5 +1,5 @@
-use crate::commands::bloom_util::BloomFilter;
-use crate::commands::bloom_util::BloomFilterType;
+use crate::bloom::utils::BloomFilter;
+use crate::bloom::utils::BloomFilterType;
 use crate::wrapper::bloom_callback;
 use crate::MODULE_NAME;
 use std::os::raw::c_int;
@@ -9,7 +9,7 @@ use valkey_module::{logging, raw};
 const BLOOM_FILTER_TYPE_ENCODING_VERSION: i32 = 0;
 
 pub static BLOOM_FILTER_TYPE: ValkeyType = ValkeyType::new(
-    "bloomtype",
+    "bloom----",
     BLOOM_FILTER_TYPE_ENCODING_VERSION,
     raw::RedisModuleTypeMethods {
         version: raw::REDISMODULE_TYPE_METHOD_VERSION as u64,

@@ -1,5 +1,5 @@
+use crate::configs::TIGHTENING_RATIO;
 use bloomfilter;
-use crate::bloom_config::TIGHTENING_RATIO;
 
 /// Constants
 pub const ERROR: &str = "ERROR";
@@ -98,7 +98,7 @@ impl BloomFilterType {
 
     /// Add an item to the BloomFilterType object.
     /// If scaling is enabled, this can result in a new sub filter creation.
-    pub fn add_item(&mut self, item: &[u8]) -> Result<i64, BloomError>  {
+    pub fn add_item(&mut self, item: &[u8]) -> Result<i64, BloomError> {
         // Check if item exists already.
         if self.item_exists(item) {
             return Ok(0);
@@ -173,8 +173,7 @@ impl BloomFilter {
     }
 
     pub fn number_of_bytes(&self) -> usize {
-        std::mem::size_of::<BloomFilter>()
-                + (self.bloom.number_of_bits() / 8) as usize
+        std::mem::size_of::<BloomFilter>() + (self.bloom.number_of_bits() / 8) as usize
     }
 
     pub fn check(&self, item: &[u8]) -> bool {
