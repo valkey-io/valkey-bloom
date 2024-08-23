@@ -9,7 +9,7 @@ use valkey_module::{logging, raw};
 const BLOOM_FILTER_TYPE_ENCODING_VERSION: i32 = 0;
 
 pub static BLOOM_FILTER_TYPE: ValkeyType = ValkeyType::new(
-    "bloom----",
+    "bloomfltr",
     BLOOM_FILTER_TYPE_ENCODING_VERSION,
     raw::RedisModuleTypeMethods {
         version: raw::REDISMODULE_TYPE_METHOD_VERSION as u64,

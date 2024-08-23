@@ -1,14 +1,13 @@
 use crate::bloom::data_type::BLOOM_FILTER_TYPE;
-use crate::bloom::utils::{BloomFilterType, ERROR};
+use crate::bloom::utils;
+use crate::bloom::utils::BloomFilterType;
 use crate::configs;
 use crate::configs::BLOOM_CAPACITY_MAX;
 use crate::configs::BLOOM_EXPANSION_MAX;
 use std::sync::atomic::Ordering;
 use valkey_module::{Context, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue, VALKEY_OK};
 
-// TODO: Replace string literals in error messages with static
-
-fn bloom_single_add_helper(
+fn single_add_helper(
     ctx: &Context,
     item: &[u8],
     bf: &mut BloomFilterType,
@@ -25,7 +24,7 @@ fn bloom_single_add_helper(
     }
 }
 
-fn bloom_multi_add_helper(
+fn multi_add_helper(
     ctx: &Context,
     args: &[ValkeyString],
     argc: usize,
@@ -73,16 +72,16 @@ pub fn bloom_filter_add_value(
     let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(ValkeyError::Str(ERROR));
+            return Err(ValkeyError::Str(utils::ERROR));
         }
     };
     match value {
         Some(bf) => {
             if !multi {
                 let item = input_args[curr_cmd_idx].as_slice();
-                return bloom_single_add_helper(ctx, item, bf, true);
+                return single_add_helper(ctx, item, bf, true);
             }
-            bloom_multi_add_helper(ctx, input_args, argc, curr_cmd_idx, bf, true)
+            multi_add_helper(ctx, input_args, argc, curr_cmd_idx, bf, true)
         }
         None => {
             // Instantiate empty bloom filter.
@@ -91,10 +90,10 @@ pub fn bloom_filter_add_value(
             let expansion = configs::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
             let mut bf = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
             let result = match multi {
-                true => bloom_multi_add_helper(ctx, input_args, argc, curr_cmd_idx, &mut bf, false),
+                true => multi_add_helper(ctx, input_args, argc, curr_cmd_idx, &mut bf, false),
                 false => {
                     let item = input_args[curr_cmd_idx].as_slice();
-                    bloom_single_add_helper(ctx, item, &mut bf, false)
+                    single_add_helper(ctx, item, &mut bf, false)
                 }
             };
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bf) {
@@ -102,10 +101,22 @@ pub fn bloom_filter_add_value(
                     ctx.replicate_verbatim();
                     result
                 }
-                Err(_) => Err(ValkeyError::Str(ERROR)),
+                Err(_) => Err(ValkeyError::Str(utils::ERROR)),
             }
         }
     }
+}
+
+fn item_exists_helper(value: Option<&BloomFilterType>, item: &[u8]) -> ValkeyValue {
+    if let Some(val) = value {
+        if val.item_exists(item) {
+            return ValkeyValue::Integer(1);
+        }
+        // Item has not been added to the filter.
+        return ValkeyValue::Integer(0);
+    };
+    // Key does not exist.
+    ValkeyValue::Integer(0)
 }
 
 pub fn bloom_filter_exists(
@@ -126,32 +137,20 @@ pub fn bloom_filter_exists(
     let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(ValkeyError::Str(ERROR));
+            return Err(ValkeyError::Str(utils::ERROR));
         }
     };
     if !multi {
         let item = input_args[curr_cmd_idx].as_slice();
-        return Ok(bloom_filter_item_exists(value, item));
+        return Ok(item_exists_helper(value, item));
     }
     let mut result = Vec::new();
     while curr_cmd_idx < argc {
         let item = input_args[curr_cmd_idx].as_slice();
-        result.push(bloom_filter_item_exists(value, item));
+        result.push(item_exists_helper(value, item));
         curr_cmd_idx += 1;
     }
     Ok(ValkeyValue::Array(result))
-}
-
-fn bloom_filter_item_exists(value: Option<&BloomFilterType>, item: &[u8]) -> ValkeyValue {
-    if let Some(val) = value {
-        if val.item_exists(item) {
-            return ValkeyValue::Integer(1);
-        }
-        // Item has not been added to the filter.
-        return ValkeyValue::Integer(0);
-    };
-    // Key does not exist.
-    ValkeyValue::Integer(0)
 }
 
 pub fn bloom_filter_card(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
@@ -166,7 +165,7 @@ pub fn bloom_filter_card(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
     let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(ValkeyError::Str(ERROR));
+            return Err(ValkeyError::Str(utils::ERROR));
         }
     };
     match value {
@@ -187,8 +186,11 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
     // Parse the error rate
     let fp_rate = match input_args[curr_cmd_idx].to_string_lossy().parse::<f32>() {
         Ok(num) if (0.0..1.0).contains(&num) => num,
+        Ok(num) if !(0.0..1.0).contains(&num) => {
+            return Err(ValkeyError::Str(utils::ERROR_RATE_RANGE));
+        }
         _ => {
-            return Err(ValkeyError::Str("ERR (0 < error rate range < 1)"));
+            return Err(ValkeyError::Str(utils::BAD_ERROR_RATE));
         }
     };
     curr_cmd_idx += 1;
@@ -196,10 +198,10 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
     let capacity = match input_args[curr_cmd_idx].to_string_lossy().parse::<u32>() {
         Ok(num) if num > 0 && num < BLOOM_CAPACITY_MAX => num,
         Ok(0) => {
-            return Err(ValkeyError::Str("ERR (capacity should be larger than 0)"));
+            return Err(ValkeyError::Str(utils::CAPACITY_LARGER_THAN_0));
         }
         _ => {
-            return Err(ValkeyError::Str("ERR Bad capacity"));
+            return Err(ValkeyError::Str(utils::BAD_CAPACITY));
         }
     };
     curr_cmd_idx += 1;
@@ -218,12 +220,12 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
                 expansion = match input_args[curr_cmd_idx].to_string_lossy().parse::<u32>() {
                     Ok(num) if num > 0 && num <= BLOOM_EXPANSION_MAX => num,
                     _ => {
-                        return Err(ValkeyError::Str("ERR bad expansion"));
+                        return Err(ValkeyError::Str(utils::BAD_EXPANSION));
                     }
                 };
             }
             _ => {
-                return Err(ValkeyError::Str(ERROR));
+                return Err(ValkeyError::Str(utils::ERROR));
             }
         }
     }
@@ -232,11 +234,11 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
     let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(ValkeyError::Str(ERROR));
+            return Err(ValkeyError::Str(utils::ERROR));
         }
     };
     match value {
-        Some(_) => Err(ValkeyError::Str("ERR item exists")),
+        Some(_) => Err(ValkeyError::Str(utils::ITEM_EXISTS)),
         None => {
             let bloom = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bloom) {
@@ -244,7 +246,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
                     ctx.replicate_verbatim();
                     VALKEY_OK
                 }
-                Err(_) => Err(ValkeyError::Str(ERROR)),
+                Err(_) => Err(ValkeyError::Str(utils::ERROR)),
             }
         }
     }
@@ -271,10 +273,10 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                 fp_rate = match input_args[idx].to_string_lossy().parse::<f32>() {
                     Ok(num) if (0.0..1.0).contains(&num) => num,
                     Ok(num) if !(0.0..1.0).contains(&num) => {
-                        return Err(ValkeyError::Str("ERR (0 < error rate range < 1)"));
+                        return Err(ValkeyError::Str(utils::ERROR_RATE_RANGE));
                     }
                     _ => {
-                        return Err(ValkeyError::Str("ERR Bad error rate"));
+                        return Err(ValkeyError::Str(utils::BAD_ERROR_RATE));
                     }
                 };
             }
@@ -283,10 +285,10 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                 capacity = match input_args[idx].to_string_lossy().parse::<u32>() {
                     Ok(num) if num > 0 && num < BLOOM_CAPACITY_MAX => num,
                     Ok(0) => {
-                        return Err(ValkeyError::Str("ERR (capacity should be larger than 0)"));
+                        return Err(ValkeyError::Str(utils::CAPACITY_LARGER_THAN_0));
                     }
                     _ => {
-                        return Err(ValkeyError::Str("ERR Bad capacity"));
+                        return Err(ValkeyError::Str(utils::BAD_CAPACITY));
                     }
                 };
             }
@@ -301,7 +303,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                 expansion = match input_args[idx].to_string_lossy().parse::<u32>() {
                     Ok(num) if num > 0 && num <= BLOOM_EXPANSION_MAX => num,
                     _ => {
-                        return Err(ValkeyError::Str("ERR bad expansion"));
+                        return Err(ValkeyError::Str(utils::BAD_EXPANSION));
                     }
                 };
             }
@@ -320,23 +322,23 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
     let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(ValkeyError::Str(ERROR));
+            return Err(ValkeyError::Str(utils::ERROR));
         }
     };
     match value {
-        Some(bf) => bloom_multi_add_helper(ctx, input_args, argc, idx, bf, true),
+        Some(bf) => multi_add_helper(ctx, input_args, argc, idx, bf, true),
         None => {
             if nocreate {
-                return Err(ValkeyError::Str("ERR not found"));
+                return Err(ValkeyError::Str(utils::NOT_FOUND));
             }
             let mut bf = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
-            let result = bloom_multi_add_helper(ctx, input_args, argc, idx, &mut bf, false);
+            let result = multi_add_helper(ctx, input_args, argc, idx, &mut bf, false);
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bf) {
                 Ok(_) => {
                     ctx.replicate_verbatim();
                     result
                 }
-                Err(_) => Err(ValkeyError::Str(ERROR)),
+                Err(_) => Err(ValkeyError::Str(utils::ERROR)),
             }
         }
     }
@@ -355,7 +357,7 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
     let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(ValkeyError::Str(ERROR));
+            return Err(ValkeyError::Str(utils::ERROR));
         }
     };
     match value {
@@ -375,7 +377,7 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
                     }
                     Ok(ValkeyValue::Integer(val.expansion as i64))
                 }
-                _ => Err(ValkeyError::Str("ERR Invalid information value")),
+                _ => Err(ValkeyError::Str(utils::INVALID_INFO_VALUE)),
             }
         }
         Some(val) if argc == 2 => {
@@ -397,6 +399,6 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
             }
             Ok(ValkeyValue::Array(result))
         }
-        _ => Err(ValkeyError::Str("ERR not found")),
+        _ => Err(ValkeyError::Str(utils::NOT_FOUND)),
     }
 }
