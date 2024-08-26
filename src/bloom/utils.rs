@@ -1,7 +1,11 @@
 use crate::configs::TIGHTENING_RATIO;
 use bloomfilter;
 
-/// Constants
+/// KeySpace Notification Events
+pub const ADD_EVENT: &str = "bloom.add";
+pub const RESERVE_EVENT: &str = "bloom.reserve";
+
+/// Errors
 pub const ERROR: &str = "ERROR";
 pub const NON_SCALING_FILTER_FULL: &str = "ERR non scaling filter is full";
 pub const NOT_FOUND: &str = "ERR not found";

@@ -5,53 +5,64 @@ use crate::configs;
 use crate::configs::BLOOM_CAPACITY_MAX;
 use crate::configs::BLOOM_EXPANSION_MAX;
 use std::sync::atomic::Ordering;
+use valkey_module::NotifyEvent;
 use valkey_module::{Context, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue, VALKEY_OK};
 
-fn single_add_helper(
-    ctx: &Context,
-    item: &[u8],
+fn handle_bloom_add(
+    args: &[ValkeyString],
+    argc: usize,
+    item_idx: usize,
     bf: &mut BloomFilterType,
-    replicate_on_success: bool,
+    multi: bool,
+    add_succeeded: &mut bool,
 ) -> Result<ValkeyValue, ValkeyError> {
-    match bf.add_item(item) {
-        Ok(result) => {
-            if replicate_on_success && result == 1 {
-                ctx.replicate_verbatim();
+    match multi {
+        true => {
+            let mut result = Vec::new();
+            for item in args.iter().take(argc).skip(item_idx) {
+                match bf.add_item(item.as_slice()) {
+                    Ok(add_result) => {
+                        if add_result == 1 {
+                            *add_succeeded = true;
+                        }
+                        result.push(ValkeyValue::Integer(add_result));
+                    }
+                    Err(err) => {
+                        result.push(ValkeyValue::StaticError(err.as_str()));
+                        break;
+                    }
+                };
             }
-            Ok(ValkeyValue::Integer(result))
+            Ok(ValkeyValue::Array(result))
         }
-        Err(err) => Err(ValkeyError::Str(err.as_str())),
+        false => {
+            let item = args[item_idx].as_slice();
+            match bf.add_item(item) {
+                Ok(add_result) => {
+                    *add_succeeded = add_result == 1;
+                    Ok(ValkeyValue::Integer(add_result))
+                }
+                Err(err) => Err(ValkeyError::Str(err.as_str())),
+            }
+        }
     }
 }
 
-fn multi_add_helper(
+fn replicate_and_post_events(
     ctx: &Context,
-    args: &[ValkeyString],
-    argc: usize,
-    skip_idx: usize,
-    bf: &mut BloomFilterType,
-    replicate_on_success: bool,
-) -> Result<ValkeyValue, ValkeyError> {
-    let mut result = Vec::new();
-    let mut write_operation = false;
-    for item in args.iter().take(argc).skip(skip_idx) {
-        match bf.add_item(item.as_slice()) {
-            Ok(add_result) => {
-                if add_result == 1 {
-                    write_operation = true;
-                }
-                result.push(ValkeyValue::Integer(add_result));
-            }
-            Err(err) => {
-                result.push(ValkeyValue::StaticError(err.as_str()));
-                continue;
-            }
-        };
-    }
-    if replicate_on_success && write_operation {
+    key_name: &ValkeyString,
+    add_operation: bool,
+    reserve_operation: bool,
+) {
+    if add_operation || reserve_operation {
         ctx.replicate_verbatim();
     }
-    Ok(ValkeyValue::Array(result))
+    if add_operation {
+        ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::ADD_EVENT, key_name);
+    }
+    if reserve_operation {
+        ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::RESERVE_EVENT, key_name);
+    }
 }
 
 pub fn bloom_filter_add_value(
@@ -75,13 +86,19 @@ pub fn bloom_filter_add_value(
             return Err(ValkeyError::Str(utils::ERROR));
         }
     };
+    let mut add_succeeded = false;
     match value {
         Some(bf) => {
-            if !multi {
-                let item = input_args[curr_cmd_idx].as_slice();
-                return single_add_helper(ctx, item, bf, true);
-            }
-            multi_add_helper(ctx, input_args, argc, curr_cmd_idx, bf, true)
+            let response = handle_bloom_add(
+                input_args,
+                argc,
+                curr_cmd_idx,
+                bf,
+                multi,
+                &mut add_succeeded,
+            );
+            replicate_and_post_events(ctx, filter_name, add_succeeded, false);
+            response
         }
         None => {
             // Instantiate empty bloom filter.
@@ -89,17 +106,18 @@ pub fn bloom_filter_add_value(
             let capacity = configs::BLOOM_CAPACITY.load(Ordering::Relaxed) as u32;
             let expansion = configs::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
             let mut bf = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
-            let result = match multi {
-                true => multi_add_helper(ctx, input_args, argc, curr_cmd_idx, &mut bf, false),
-                false => {
-                    let item = input_args[curr_cmd_idx].as_slice();
-                    single_add_helper(ctx, item, &mut bf, false)
-                }
-            };
+            let response = handle_bloom_add(
+                input_args,
+                argc,
+                curr_cmd_idx,
+                &mut bf,
+                multi,
+                &mut add_succeeded,
+            );
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bf) {
                 Ok(_) => {
-                    ctx.replicate_verbatim();
-                    result
+                    replicate_and_post_events(ctx, filter_name, add_succeeded, true);
+                    response
                 }
                 Err(_) => Err(ValkeyError::Str(utils::ERROR)),
             }
@@ -107,7 +125,7 @@ pub fn bloom_filter_add_value(
     }
 }
 
-fn item_exists_helper(value: Option<&BloomFilterType>, item: &[u8]) -> ValkeyValue {
+fn handle_item_exists(value: Option<&BloomFilterType>, item: &[u8]) -> ValkeyValue {
     if let Some(val) = value {
         if val.item_exists(item) {
             return ValkeyValue::Integer(1);
@@ -142,12 +160,12 @@ pub fn bloom_filter_exists(
     };
     if !multi {
         let item = input_args[curr_cmd_idx].as_slice();
-        return Ok(item_exists_helper(value, item));
+        return Ok(handle_item_exists(value, item));
     }
     let mut result = Vec::new();
     while curr_cmd_idx < argc {
         let item = input_args[curr_cmd_idx].as_slice();
-        result.push(item_exists_helper(value, item));
+        result.push(handle_item_exists(value, item));
         curr_cmd_idx += 1;
     }
     Ok(ValkeyValue::Array(result))
@@ -243,7 +261,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
             let bloom = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bloom) {
                 Ok(_v) => {
-                    ctx.replicate_verbatim();
+                    replicate_and_post_events(ctx, filter_name, false, true);
                     VALKEY_OK
                 }
                 Err(_) => Err(ValkeyError::Str(utils::ERROR)),
@@ -325,18 +343,24 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
             return Err(ValkeyError::Str(utils::ERROR));
         }
     };
+    let mut add_succeeded = false;
     match value {
-        Some(bf) => multi_add_helper(ctx, input_args, argc, idx, bf, true),
+        Some(bf) => {
+            let response = handle_bloom_add(input_args, argc, idx, bf, true, &mut add_succeeded);
+            replicate_and_post_events(ctx, filter_name, add_succeeded, false);
+            response
+        }
         None => {
             if nocreate {
                 return Err(ValkeyError::Str(utils::NOT_FOUND));
             }
             let mut bf = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
-            let result = multi_add_helper(ctx, input_args, argc, idx, &mut bf, false);
+            let response =
+                handle_bloom_add(input_args, argc, idx, &mut bf, true, &mut add_succeeded);
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bf) {
                 Ok(_) => {
-                    ctx.replicate_verbatim();
-                    result
+                    replicate_and_post_events(ctx, filter_name, add_succeeded, true);
+                    response
                 }
                 Err(_) => Err(ValkeyError::Str(utils::ERROR)),
             }
