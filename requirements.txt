@@ -1,0 +1,2 @@
+valkey
+pytest==4
