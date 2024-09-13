@@ -15,7 +15,7 @@ cargo clippy --profile release --all-targets -- -D clippy::all
 echo "Running cargo build release..."
 cargo build --all --all-targets  --release
 
-# We have waiting on a new feature in the valkey-module-rs to be released which will allow unit testing of Valkey Rust Modules.
+# We are waiting on a new feature in the valkey-module-rs to be released which will allow unit testing of Valkey Rust Modules.
 # echo "Running unit tests..."
 # cargo test
 
@@ -26,7 +26,7 @@ if [ -z "$VERSION" ]; then
 fi
 
 if [ "$VERSION" != "unstable" ] && [ "$VERSION" != "7.2.6" ] && [ "$VERSION" != "7.2.5" ] ; then
-  echo "ERROR: Unsupported version - $VERSIOn"
+  echo "ERROR: Unsupported version - $VERSION"
   exit 1
 fi
 

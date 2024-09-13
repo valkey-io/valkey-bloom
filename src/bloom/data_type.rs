@@ -49,13 +49,13 @@ pub fn bloom_rdb_load_data_object(
     encver: i32,
 ) -> Option<BloomFilterType> {
     if encver > BLOOM_FILTER_TYPE_ENCODING_VERSION {
-        logging::log_warning(format!("{}: Cannot load bloomfilter type version {} because it is higher than the current module's string type version {}", MODULE_NAME, encver, BLOOM_FILTER_TYPE_ENCODING_VERSION).as_str());
+        logging::log_warning(format!("{}: Cannot load bloomfltr data type of version {} because it is higher than the loaded module's bloomfltr supported version {}", MODULE_NAME, encver, BLOOM_FILTER_TYPE_ENCODING_VERSION).as_str());
         return None;
     }
     let Ok(num_filters) = raw::load_unsigned(rdb) else {
         return None;
     };
-    let Ok(expansion) = raw::load_signed(rdb) else {
+    let Ok(expansion) = raw::load_unsigned(rdb) else {
         return None;
     };
     let Ok(fp_rate) = raw::load_float(rdb) else {

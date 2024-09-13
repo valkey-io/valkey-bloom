@@ -2,8 +2,10 @@ use crate::bloom::data_type::BLOOM_FILTER_TYPE;
 use crate::bloom::utils;
 use crate::bloom::utils::BloomFilterType;
 use crate::configs;
-use crate::configs::BLOOM_CAPACITY_MAX;
-use crate::configs::BLOOM_EXPANSION_MAX;
+use crate::configs::{
+    BLOOM_CAPACITY_MAX, BLOOM_CAPACITY_MIN, BLOOM_EXPANSION_MAX, BLOOM_EXPANSION_MIN,
+    BLOOM_FP_RATE_MAX, BLOOM_FP_RATE_MIN,
+};
 use std::sync::atomic::Ordering;
 use valkey_module::NotifyEvent;
 use valkey_module::{Context, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue, VALKEY_OK};
@@ -48,7 +50,7 @@ fn handle_bloom_add(
     }
 }
 
-fn replicate_and_post_events(
+fn replicate_and_notify_events(
     ctx: &Context,
     key_name: &ValkeyString,
     add_operation: bool,
@@ -97,7 +99,7 @@ pub fn bloom_filter_add_value(
                 multi,
                 &mut add_succeeded,
             );
-            replicate_and_post_events(ctx, filter_name, add_succeeded, false);
+            replicate_and_notify_events(ctx, filter_name, add_succeeded, false);
             response
         }
         None => {
@@ -116,7 +118,7 @@ pub fn bloom_filter_add_value(
             );
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bf) {
                 Ok(_) => {
-                    replicate_and_post_events(ctx, filter_name, add_succeeded, true);
+                    replicate_and_notify_events(ctx, filter_name, add_succeeded, true);
                     response
                 }
                 Err(_) => Err(ValkeyError::Str(utils::ERROR)),
@@ -203,8 +205,8 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
     curr_cmd_idx += 1;
     // Parse the error rate
     let fp_rate = match input_args[curr_cmd_idx].to_string_lossy().parse::<f32>() {
-        Ok(num) if (0.0..1.0).contains(&num) => num,
-        Ok(num) if !(0.0..1.0).contains(&num) => {
+        Ok(num) if num > BLOOM_FP_RATE_MIN && num < BLOOM_FP_RATE_MAX => num,
+        Ok(num) if !(num > BLOOM_FP_RATE_MIN && num < BLOOM_FP_RATE_MAX) => {
             return Err(ValkeyError::Str(utils::ERROR_RATE_RANGE));
         }
         _ => {
@@ -214,7 +216,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
     curr_cmd_idx += 1;
     // Parse the capacity
     let capacity = match input_args[curr_cmd_idx].to_string_lossy().parse::<u32>() {
-        Ok(num) if num > 0 && num < BLOOM_CAPACITY_MAX => num,
+        Ok(num) if (BLOOM_CAPACITY_MIN..=BLOOM_CAPACITY_MAX).contains(&num) => num,
         Ok(0) => {
             return Err(ValkeyError::Str(utils::CAPACITY_LARGER_THAN_0));
         }
@@ -236,7 +238,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
             "EXPANSION" if argc == 6 => {
                 curr_cmd_idx += 1;
                 expansion = match input_args[curr_cmd_idx].to_string_lossy().parse::<u32>() {
-                    Ok(num) if num > 0 && num <= BLOOM_EXPANSION_MAX => num,
+                    Ok(num) if (BLOOM_EXPANSION_MIN..=BLOOM_EXPANSION_MAX).contains(&num) => num,
                     _ => {
                         return Err(ValkeyError::Str(utils::BAD_EXPANSION));
                     }
@@ -261,7 +263,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
             let bloom = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bloom) {
                 Ok(_v) => {
-                    replicate_and_post_events(ctx, filter_name, false, true);
+                    replicate_and_notify_events(ctx, filter_name, false, true);
                     VALKEY_OK
                 }
                 Err(_) => Err(ValkeyError::Str(utils::ERROR)),
@@ -289,8 +291,8 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
             "ERROR" if idx < (argc - 1) => {
                 idx += 1;
                 fp_rate = match input_args[idx].to_string_lossy().parse::<f32>() {
-                    Ok(num) if (0.0..1.0).contains(&num) => num,
-                    Ok(num) if !(0.0..1.0).contains(&num) => {
+                    Ok(num) if num > BLOOM_FP_RATE_MIN && num < BLOOM_FP_RATE_MAX => num,
+                    Ok(num) if !(num > BLOOM_FP_RATE_MIN && num < BLOOM_FP_RATE_MAX) => {
                         return Err(ValkeyError::Str(utils::ERROR_RATE_RANGE));
                     }
                     _ => {
@@ -301,7 +303,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
             "CAPACITY" if idx < (argc - 1) => {
                 idx += 1;
                 capacity = match input_args[idx].to_string_lossy().parse::<u32>() {
-                    Ok(num) if num > 0 && num < BLOOM_CAPACITY_MAX => num,
+                    Ok(num) if (BLOOM_CAPACITY_MIN..=BLOOM_CAPACITY_MAX).contains(&num) => num,
                     Ok(0) => {
                         return Err(ValkeyError::Str(utils::CAPACITY_LARGER_THAN_0));
                     }
@@ -319,7 +321,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
             "EXPANSION" if idx < (argc - 1) => {
                 idx += 1;
                 expansion = match input_args[idx].to_string_lossy().parse::<u32>() {
-                    Ok(num) if num > 0 && num <= BLOOM_EXPANSION_MAX => num,
+                    Ok(num) if (BLOOM_EXPANSION_MIN..=BLOOM_EXPANSION_MAX).contains(&num) => num,
                     _ => {
                         return Err(ValkeyError::Str(utils::BAD_EXPANSION));
                     }
@@ -347,7 +349,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
     match value {
         Some(bf) => {
             let response = handle_bloom_add(input_args, argc, idx, bf, true, &mut add_succeeded);
-            replicate_and_post_events(ctx, filter_name, add_succeeded, false);
+            replicate_and_notify_events(ctx, filter_name, add_succeeded, false);
             response
         }
         None => {
@@ -359,7 +361,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                 handle_bloom_add(input_args, argc, idx, &mut bf, true, &mut add_succeeded);
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bf) {
                 Ok(_) => {
-                    replicate_and_post_events(ctx, filter_name, add_succeeded, true);
+                    replicate_and_notify_events(ctx, filter_name, add_succeeded, true);
                     response
                 }
                 Err(_) => Err(ValkeyError::Str(utils::ERROR)),

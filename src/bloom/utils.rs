@@ -1,3 +1,4 @@
+use crate::configs::MAX_FILTERS_PER_OBJ;
 use crate::configs::TIGHTENING_RATIO;
 use bloomfilter;
 
@@ -16,15 +17,18 @@ pub const BAD_CAPACITY: &str = "ERR bad capacity";
 pub const BAD_ERROR_RATE: &str = "ERR bad error rate";
 pub const ERROR_RATE_RANGE: &str = "ERR (0 < error rate range < 1)";
 pub const CAPACITY_LARGER_THAN_0: &str = "ERR (capacity should be larger than 0)";
+pub const MAX_NUM_SCALING_FILTERS: &str = "ERR max number of scaling filters reached";
 
 pub enum BloomError {
     NonScalingFilterFull,
+    MaxNumScalingFilters,
 }
 
 impl BloomError {
     pub fn as_str(&self) -> &'static str {
         match self {
             BloomError::NonScalingFilterFull => NON_SCALING_FILTER_FULL,
+            BloomError::MaxNumScalingFilters => MAX_NUM_SCALING_FILTERS,
         }
     }
 }
@@ -66,7 +70,7 @@ impl BloomFilterType {
 
     /// Return the total memory usage of the BloomFilterType object.
     pub fn get_memory_usage(&self) -> usize {
-        let mut mem = std::mem::size_of::<BloomFilterType>();
+        let mut mem: usize = std::mem::size_of::<BloomFilterType>();
         for filter in &self.filters {
             mem += filter.number_of_bytes();
         }
@@ -91,21 +95,21 @@ impl BloomFilterType {
 
     /// Return a count of number of items added to all sub filters in the BloomFilterType object.
     pub fn cardinality(&self) -> i64 {
-        let mut cardinality = 0;
+        let mut cardinality: i64 = 0;
         for filter in &self.filters {
-            cardinality += filter.num_items;
+            cardinality += filter.num_items as i64;
         }
-        cardinality as i64
+        cardinality
     }
 
     /// Return a total capacity summed across all sub filters in the BloomFilterType object.
     pub fn capacity(&self) -> i64 {
-        let mut capacity = 0;
+        let mut capacity: i64 = 0;
         // Check if item exists already.
         for filter in &self.filters {
-            capacity += filter.capacity;
+            capacity += filter.capacity as i64;
         }
-        capacity as i64
+        capacity
     }
 
     /// Add an item to the BloomFilterType object.
@@ -127,17 +131,21 @@ impl BloomFilterType {
             if self.expansion == 0 {
                 return Err(BloomError::NonScalingFilterFull);
             }
-            // Scale out by adding a new filter.
-            if filter.num_items >= filter.capacity {
-                let new_fp_rate = self.fp_rate * TIGHTENING_RATIO.powi(num_filters);
-                let new_capacity = filter.capacity * self.expansion;
-                let mut new_filter = BloomFilter::new(new_fp_rate, new_capacity);
-                // Add item.
-                new_filter.set(item);
-                new_filter.num_items += 1;
-                self.filters.push(new_filter);
-                return Ok(1);
+            if num_filters == MAX_FILTERS_PER_OBJ {
+                return Err(BloomError::MaxNumScalingFilters);
             }
+            // Scale out by adding a new filter with capacity bounded within the u32 range.
+            let new_fp_rate = self.fp_rate * TIGHTENING_RATIO.powi(num_filters);
+            let new_capacity = match filter.capacity.checked_mul(self.expansion) {
+                Some(new_capacity) => new_capacity,
+                None => u32::MAX,
+            };
+            let mut new_filter = BloomFilter::new(new_fp_rate, new_capacity);
+            // Add item.
+            new_filter.set(item);
+            new_filter.num_items += 1;
+            self.filters.push(new_filter);
+            return Ok(1);
         }
         Ok(0)
     }
@@ -145,6 +153,10 @@ impl BloomFilterType {
 
 // Structure representing a single bloom filter. 200 Bytes.
 // Using Crate: "bloomfilter"
+// The reason for using u32 for num_items and capacity is because
+// we have a limit on the memory usage of a `BloomFilter` to be 64MB.
+// Based on this, we expect the number of items on the `BloomFilter` to be
+// well within the u32::MAX limit.
 pub struct BloomFilter {
     pub bloom: bloomfilter::Bloom<[u8]>,
     pub num_items: u32,

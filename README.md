@@ -24,15 +24,17 @@ curl https://sh.rustup.rs -sSf | sh
 sudo yum install clang
 git clone https://github.com/KarthikSubbarao/valkey-bloom.git
 cd valkey-bloom
-cargo fmt --check
-cargo clippy --profile release --all-targets -- -D clippy::all
 cargo build --all --all-targets  --release
-find . -name "libvalkey_bloom.so"  
 valkey-server --loadmodule ./target/release/libvalkey_bloom.so
 ```
 
-Script to build, run tests, and for release
+Local development script to build, run format checks, run unit / integration tests, and for cargo release:
 ```
+# Builds the valkey-server (unstable) for integration testing.
+VERSION=unstable
+./build.sh
+# Builds the valkey-server (7.2.6) for integration testing.
+VERSION=7.2.6
 ./build.sh
 ```
 

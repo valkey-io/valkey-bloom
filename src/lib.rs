@@ -80,8 +80,8 @@ valkey_module! {
     ],
     configurations: [
         i64: [
-            ["bloom_max_item_size", &*configs::BLOOM_CAPACITY, configs::BLOOM_CAPACITY_DEFAULT, configs::BLOOM_CAPACITY_MIN, configs::BLOOM_CAPACITY_MAX as i64, ConfigurationFlags::DEFAULT, None],
-            ["bloom_expansion_rate", &*configs::BLOOM_EXPANSION, configs::BLOOM_EXPANSION_DEFAULT, configs::BLOOM_EXPANSION_MIN, configs::BLOOM_EXPANSION_MAX as i64, ConfigurationFlags::DEFAULT, None],
+            ["bloom_max_item_size", &*configs::BLOOM_CAPACITY, configs::BLOOM_CAPACITY_DEFAULT, configs::BLOOM_CAPACITY_MIN as i64, configs::BLOOM_CAPACITY_MAX as i64, ConfigurationFlags::DEFAULT, None],
+            ["bloom_expansion_rate", &*configs::BLOOM_EXPANSION, configs::BLOOM_EXPANSION_DEFAULT, configs::BLOOM_EXPANSION_MIN as i64, configs::BLOOM_EXPANSION_MAX as i64, ConfigurationFlags::DEFAULT, None],
         ],
         string: [
         ],
