@@ -1,0 +1,107 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  REPO_URL: https://github.com/valkey-io/valkey.git
+
+jobs:
+  build-ubuntu-latest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['unstable']
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set verison for tests
+      run: echo "VERSION=${{ matrix.version }}" >> $GITHUB_ENV
+    - name: Run cargo and clippy format check
+      run: |
+        cargo fmt --check
+        cargo clippy --profile release --all-targets -- -D clippy::all
+    - name: Build
+      run: cargo build --all --all-targets  --release
+    - name: Run tests
+      run: cargo test --features enable-system-alloc
+    - name: Make valkey-server binary
+      run: |
+        mkdir -p "tests/.build/binaries/${{ matrix.version }}"
+        cd tests/.build
+        rm -rf valkey
+        git clone "${{ env.REPO_URL }}"
+        cd valkey
+        git checkout ${{ matrix.version }}
+        make
+        cp src/valkey-server ../binaries/${{ matrix.version }}/
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: '3.8'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    - name: Update module path
+      run: echo "MODULE_PATH=$(realpath target/release/libvalkey_bloom.so)" >> $GITHUB_ENV
+    - name: Run integration tests 
+      run: python -m pytest --cache-clear -v "tests/" 
+    - name: Show log files if failure occured
+      if: ${{ failure() }}
+      run: find . -name "*logfile*" | xargs cat tail 500
+  
+  build-macos-latest:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run cargo and clippy format check
+      run: |
+        cargo fmt --check
+        cargo clippy --profile release --all-targets -- -D clippy::all
+    - name: Build
+      run: cargo build --all --all-targets --release
+    - name: Run tests
+      run: cargo test --features enable-system-alloc
+
+  asan-build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set verison for tests
+      run: echo "VERSION=unstable" >> $GITHUB_ENV
+    - name: Run cargo and clippy format check
+      run: |
+        cargo fmt --check
+        cargo clippy --profile release --all-targets -- -D clippy::all
+    - name: Build
+      run: cargo build --all --all-targets  --release
+    - name: Run tests
+      run: cargo test --features enable-system-alloc
+    - name: Make Valkey-server binary with asan
+      run: |
+        mkdir -p "tests/.build/binaries/unstable"
+        cd tests/.build
+        rm -rf valkey
+        git clone "${{ env.REPO_URL }}"
+        cd valkey
+        git checkout unstable
+        make SANITIZER=address SERVER_CFLAGS='-Werror' BUILD_TLS=module
+        cp src/valkey-server ../binaries/unstable/
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: '3.8'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    - name: Update module path
+      run: echo "MODULE_PATH=$(realpath target/release/libvalkey_bloom.so)" >> $GITHUB_ENV
+    - name: Run integration tests 
+      run: python -m pytest --cache-clear -v "tests/" 
+    - name: Show log files if failure occured
+      if: ${{ failure() }}
+      run: find . -name "*logfile*" | xargs cat tail 500

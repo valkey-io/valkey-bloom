@@ -13,6 +13,7 @@ from functools import wraps
 from valkey import *
 from valkey.client import Pipeline
 from enum import Enum
+from valkeytests.conftest import resource_port_tracker
 
 class ValkeyServerVersion(Enum):
     LATEST = ".build/binaries/unstable/valkey-server"
@@ -260,8 +261,8 @@ class ValkeyServerHandle(object):
     @wait(1, 60) # wait upto 30 sec checking every sec
     def wait_for_ready_to_accept_connections(self):
         logfile = os.path.join(self.cwd, self.args['logfile'])
-        stings = ['Ready to accept connections']
-        return verify_any_of_strings_in_file(stings, logfile)
+        strings = ['Ready to accept connections']
+        return verify_any_of_strings_in_file(strings, logfile)
 
     def verify_string_in_logfile(self, string):
         logfile = os.path.join(self.cwd, self.args['logfile'])
@@ -378,6 +379,9 @@ class ValkeyTestCaseBase:
 
     @pytest.fixture(autouse=True)
     def port_tracker_fixture(self, resource_port_tracker):
+        '''
+        port_tracker_fixture using resource_port_tracker.
+        '''
         # Inject port tracker
         print ("port tracker")
         self.args = {}

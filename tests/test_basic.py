@@ -1,14 +1,23 @@
 import time
 import pytest
 from valkey import ResponseError
-from valkey_test_case import ValkeyTestCase, ValkeyServerVersion
+from valkeytests.valkey_test_case import *
 import logging
 import os
 
 class TestBloomBasic(ValkeyTestCase):
 
     def get_custom_args(self):
-        self.set_server_version(ValkeyServerVersion.LATEST)
+        if (os.environ['VERSION'] == 'unstable'):
+            version = ValkeyServerVersion.LATEST
+        elif (os.environ['VERSION'] == '7.2.6'):
+            version = ValkeyServerVersion.V7_2_6
+        elif (os.environ['VERSION'] == '7.2.5'):
+            version = ValkeyServerVersion.V7_2_5
+        else:
+            raise RuntimeError(f"Invalid version set")
+
+        self.set_server_version(version)
         return {
             'loadmodule': os.getenv('MODULE_PATH'),
         }
