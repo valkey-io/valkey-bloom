@@ -20,5 +20,5 @@ lazy_static! {
 }
 
 /// Constants
-pub const TIGHTENING_RATIO: f32 = 0.8515625;
+pub const TIGHTENING_RATIO: f32 = 0.5;
 pub const MAX_FILTERS_PER_OBJ: i32 = i32::MAX;

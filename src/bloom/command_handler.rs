@@ -394,7 +394,7 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
                 .as_str()
             {
                 "CAPACITY" => Ok(ValkeyValue::Integer(val.capacity())),
-                "SIZE" => Ok(ValkeyValue::Integer(val.get_memory_usage() as i64)),
+                "SIZE" => Ok(ValkeyValue::Integer(val.memory_usage() as i64)),
                 "FILTERS" => Ok(ValkeyValue::Integer(val.filters.len() as i64)),
                 "ITEMS" => Ok(ValkeyValue::Integer(val.cardinality())),
                 "EXPANSION" => {
@@ -411,7 +411,7 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
                 ValkeyValue::SimpleStringStatic("Capacity"),
                 ValkeyValue::Integer(val.capacity()),
                 ValkeyValue::SimpleStringStatic("Size"),
-                ValkeyValue::Integer(val.get_memory_usage() as i64),
+                ValkeyValue::Integer(val.memory_usage() as i64),
                 ValkeyValue::SimpleStringStatic("Number of filters"),
                 ValkeyValue::Integer(val.filters.len() as i64),
                 ValkeyValue::SimpleStringStatic("Number of items inserted"),
