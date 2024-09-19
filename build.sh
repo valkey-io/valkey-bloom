@@ -18,10 +18,10 @@ cargo build --all --all-targets  --release
 echo "Running unit tests..."
 cargo test --features enable-system-alloc
 
-# Ensure VERSION environment variable is set
-if [ -z "$VERSION" ]; then
-  echo "ERROR: VERSION environment variable is not set."
-  exit 1
+# Ensure SERVER_VERSION environment variable is set
+if [ -z "$SERVER_VERSION" ]; then
+    echo "ERROR: SERVER_VERSION environment variable is not set. Defaulting to unstable."
+    export SERVER_VERSION="unstable"
 fi
 
 if [ "$SERVER_VERSION" != "unstable" ] && [ "$SERVER_VERSION" != "8.0.0" ] ; then
