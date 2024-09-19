@@ -1,14 +1,15 @@
 import time
 import pytest
 from valkey import ResponseError
-from valkey_test_case import ValkeyTestCase, ValkeyServerVersion
+from valkeytests.valkey_test_case import ValkeyTestCase
+from valkeytests.conftest import resource_port_tracker
 import logging
 import os
 
 class TestBloomBasic(ValkeyTestCase):
 
     def get_custom_args(self):
-        self.set_server_version(ValkeyServerVersion.LATEST)
+        self.set_server_version(os.environ['SERVER_VERSION'])
         return {
             'loadmodule': os.getenv('MODULE_PATH'),
         }

@@ -14,11 +14,6 @@ from valkey import *
 from valkey.client import Pipeline
 from enum import Enum
 
-class ValkeyServerVersion(Enum):
-    LATEST = ".build/binaries/unstable/valkey-server"
-    V7_2_6 = ".build/binaries/7.2.6/valkey-server"
-    V7_2_5 = ".build/binaries/7.2.5/valkey-server"
-
 MAX_PING_TRIES = 60
 
 # The maximum wait time for operations in the tests
@@ -181,7 +176,7 @@ class ValkeyServerHandle(object):
     """Handle to a valkey server process"""
 
 
-    def __init__(self, port, version: ValkeyServerVersion, cwd="."):
+    def __init__(self, port, server_path, cwd="."):
         self.server = None
         self.client = None
         self.port = port
@@ -190,7 +185,7 @@ class ValkeyServerHandle(object):
         self.args["logfile"] = "logfile_{}".format(port)
         self.args["dbfilename"] = "testrdb-{}.rdb".format(port)
         self.cwd = cwd
-        self.valkey_path = version.value
+        self.valkey_path = server_path
 
     def set_startup_args(self, args):
         self.args.update(args)
@@ -260,8 +255,8 @@ class ValkeyServerHandle(object):
     @wait(1, 60) # wait upto 30 sec checking every sec
     def wait_for_ready_to_accept_connections(self):
         logfile = os.path.join(self.cwd, self.args['logfile'])
-        stings = ['Ready to accept connections']
-        return verify_any_of_strings_in_file(stings, logfile)
+        strings = ['Ready to accept connections']
+        return verify_any_of_strings_in_file(strings, logfile)
 
     def verify_string_in_logfile(self, string):
         logfile = os.path.join(self.cwd, self.args['logfile'])
@@ -378,6 +373,9 @@ class ValkeyTestCaseBase:
 
     @pytest.fixture(autouse=True)
     def port_tracker_fixture(self, resource_port_tracker):
+        '''
+        port_tracker_fixture using resource_port_tracker.
+        '''
         # Inject port tracker
         print ("port tracker")
         self.args = {}
@@ -448,10 +446,10 @@ class ValkeyTestCase(ValkeyTestCaseBase):
     rdb_size = 168231
     repl_save_info_size = 83 # Bytes used for saving replication info in RDB aux fields
     diskless_overhead = 87 # RDB overhead is 2 x 40 byte EOF marker + 7 characters ("$EOF:" + "\r\n") for the beginning of the EOF marker
-    version = ValkeyServerVersion.LATEST
+    server_path = ".build/binaries/unstable/valkey-server" #Unstable is the default server build
 
     def set_server_version(self, new_version):
-        self.version = new_version
+        self.server_path = f".build/binaries/{new_version}/valkey-server"
 
     def common_setup(self):
         self.maxmemory = "500MB"
@@ -461,7 +459,7 @@ class ValkeyTestCase(ValkeyTestCaseBase):
     def setup(self):
         self.common_setup()
         args = self._get_valkey_args()
-        self.server = ValkeyServerHandle(self.port, self.version, self.testdir)
+        self.server = ValkeyServerHandle(self.port, self.server_path, self.testdir)
         self.server.set_startup_args(args)
         print("startup args are: ", args)
 
