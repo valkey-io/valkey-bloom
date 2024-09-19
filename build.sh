@@ -24,26 +24,26 @@ if [ -z "$VERSION" ]; then
   exit 1
 fi
 
-if [ "$VERSION" != "unstable" ] && [ "$VERSION" != "7.2.6" ] && [ "$VERSION" != "7.2.5" ] ; then
-  echo "ERROR: Unsupported version - $VERSION"
+if [ "$SERVER_VERSION" != "unstable" ] && [ "$SERVER_VERSION" != "8.0.0" ] ; then
+  echo "ERROR: Unsupported version - $SERVER_VERSION"
   exit 1
 fi
 
 REPO_URL="https://github.com/valkey-io/valkey.git"
-BINARY_PATH="tests/.build/binaries/$VERSION/valkey-server"
+BINARY_PATH="tests/.build/binaries/$SERVER_VERSION/valkey-server"
 
 if [ -f "$BINARY_PATH" ] && [ -x "$BINARY_PATH" ]; then
     echo "valkey-server binary '$BINARY_PATH' found."
 else
     echo "valkey-server binary '$BINARY_PATH' not found."
-    mkdir -p "tests/.build/binaries/$VERSION"
+    mkdir -p "tests/.build/binaries/$SERVER_VERSION"
     cd tests/.build
     rm -rf valkey
     git clone "$REPO_URL"
     cd valkey
-    git checkout "$VERSION"
+    git checkout "$SERVER_VERSION"
     make
-    cp src/valkey-server ../binaries/$VERSION/
+    cp src/valkey-server ../binaries/$SERVER_VERSION/
 fi
 
 REQUIREMENTS_FILE="requirements.txt"

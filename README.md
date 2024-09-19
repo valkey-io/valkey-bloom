@@ -31,10 +31,10 @@ valkey-server --loadmodule ./target/release/libvalkey_bloom.so
 Local development script to build, run format checks, run unit / integration tests, and for cargo release:
 ```
 # Builds the valkey-server (unstable) for integration testing.
-VERSION=unstable
+SERVER_VERSION=unstable
 ./build.sh
-# Builds the valkey-server (7.2.6) for integration testing.
-VERSION=7.2.6
+# Builds the valkey-server (8.0.0) for integration testing.
+SERVER_VERSION=8.0.0
 ./build.sh
 ```
 
