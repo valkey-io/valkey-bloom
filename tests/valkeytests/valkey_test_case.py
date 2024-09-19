@@ -93,6 +93,8 @@ class ValkeyInfo:
     def used_memory(self):
         return self.info['used_memory']
 
+    def uptime_in_secs(self):
+        return self.info['uptime_in_seconds']
 
 # An extension of the StrictValkey client
 # that supports additional Valkey functionality
@@ -363,6 +365,10 @@ class ValkeyServerHandle(object):
     @wait()
     def _wait_for_save_in_progress(self):
         return self.client.info_obj().is_save_in_progress()
+
+    def is_rdb_done_loading(self):
+        rdb_load_log = "Done loading RDB"
+        return self.verify_string_in_logfile(rdb_load_log) == True
 
 class ValkeyTestCaseBase:
     testdir = "test-data"

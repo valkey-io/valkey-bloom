@@ -1,5 +1,8 @@
 use crate::bloom::utils::BloomFilter;
 use crate::bloom::utils::BloomFilterType;
+use crate::configs::{
+    FIXED_SIP_KEY_ONE_A, FIXED_SIP_KEY_ONE_B, FIXED_SIP_KEY_TWO_A, FIXED_SIP_KEY_TWO_B,
+};
 use crate::wrapper::bloom_callback;
 use crate::MODULE_NAME;
 use std::os::raw::c_int;
@@ -62,7 +65,7 @@ pub fn bloom_rdb_load_data_object(
         return None;
     };
     let mut filters = Vec::new();
-    for _ in 0..num_filters {
+    for i in 0..num_filters {
         let Ok(bitmap) = raw::load_string_buffer(rdb) else {
             return None;
         };
@@ -72,28 +75,21 @@ pub fn bloom_rdb_load_data_object(
         let Ok(number_of_hash_functions) = raw::load_unsigned(rdb) else {
             return None;
         };
-        let Ok(sip_key_one_a) = raw::load_unsigned(rdb) else {
-            return None;
-        };
-        let Ok(sip_key_one_b) = raw::load_unsigned(rdb) else {
-            return None;
-        };
-        let Ok(sip_key_two_a) = raw::load_unsigned(rdb) else {
-            return None;
-        };
-        let Ok(sip_key_two_b) = raw::load_unsigned(rdb) else {
-            return None;
-        };
-        let Ok(num_items) = raw::load_unsigned(rdb) else {
-            return None;
-        };
         let Ok(capacity) = raw::load_unsigned(rdb) else {
             return None;
         };
-
+        // Only load num_items when it's the last filter
+        let num_items = if i == num_filters - 1 {
+            match raw::load_unsigned(rdb) {
+                Ok(num_items) => num_items,
+                Err(_) => return None,
+            }
+        } else {
+            capacity
+        };
         let sip_keys = [
-            (sip_key_one_a, sip_key_one_b),
-            (sip_key_two_a, sip_key_two_b),
+            (FIXED_SIP_KEY_ONE_A, FIXED_SIP_KEY_ONE_B),
+            (FIXED_SIP_KEY_TWO_A, FIXED_SIP_KEY_TWO_B),
         ];
         let filter = BloomFilter::from_existing(
             bitmap.as_ref(),
