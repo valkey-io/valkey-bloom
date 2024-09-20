@@ -288,7 +288,10 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
     let mut nocreate = false;
     while idx < argc {
         match input_args[idx].to_string_lossy().to_uppercase().as_str() {
-            "ERROR" if idx < (argc - 1) => {
+            "ERROR" => {
+                if idx >= (argc - 1) {
+                    return Err(ValkeyError::WrongArity);
+                }
                 idx += 1;
                 fp_rate = match input_args[idx].to_string_lossy().parse::<f32>() {
                     Ok(num) if num > BLOOM_FP_RATE_MIN && num < BLOOM_FP_RATE_MAX => num,
@@ -300,7 +303,10 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                     }
                 };
             }
-            "CAPACITY" if idx < (argc - 1) => {
+            "CAPACITY" => {
+                if idx >= (argc - 1) {
+                    return Err(ValkeyError::WrongArity);
+                }
                 idx += 1;
                 capacity = match input_args[idx].to_string_lossy().parse::<u32>() {
                     Ok(num) if (BLOOM_CAPACITY_MIN..=BLOOM_CAPACITY_MAX).contains(&num) => num,
@@ -318,7 +324,10 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
             "NONSCALING" => {
                 expansion = 0;
             }
-            "EXPANSION" if idx < (argc - 1) => {
+            "EXPANSION" => {
+                if idx >= (argc - 1) {
+                    return Err(ValkeyError::WrongArity);
+                }
                 idx += 1;
                 expansion = match input_args[idx].to_string_lossy().parse::<u32>() {
                     Ok(num) if (BLOOM_EXPANSION_MIN..=BLOOM_EXPANSION_MAX).contains(&num) => num,
@@ -327,15 +336,19 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                     }
                 };
             }
-            "ITEMS" if idx < (argc - 1) => {
+            "ITEMS" => {
                 idx += 1;
                 break;
             }
             _ => {
-                return Err(ValkeyError::WrongArity);
+                return Err(ValkeyError::Str(utils::UNKNOWN_ARGUMENT));
             }
         }
         idx += 1;
+    }
+    if idx == argc {
+        // No ITEMS argument from the insert command
+        return Err(ValkeyError::WrongArity);
     }
     // If the filter does not exist, create one
     let filter_key = ctx.open_key_writable(filter_name);
@@ -399,7 +412,7 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
                 "ITEMS" => Ok(ValkeyValue::Integer(val.cardinality())),
                 "EXPANSION" => {
                     if val.expansion == 0 {
-                        return Ok(ValkeyValue::Integer(-1));
+                        return Ok(ValkeyValue::Null);
                     }
                     Ok(ValkeyValue::Integer(val.expansion as i64))
                 }
@@ -419,7 +432,7 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
                 ValkeyValue::SimpleStringStatic("Expansion rate"),
             ];
             if val.expansion == 0 {
-                result.push(ValkeyValue::Integer(-1));
+                result.push(ValkeyValue::Null);
             } else {
                 result.push(ValkeyValue::Integer(val.expansion as i64));
             }

@@ -10,13 +10,14 @@ pub const ERROR: &str = "ERROR";
 pub const NON_SCALING_FILTER_FULL: &str = "ERR non scaling filter is full";
 pub const NOT_FOUND: &str = "ERR not found";
 pub const ITEM_EXISTS: &str = "ERR item exists";
-pub const INVALID_INFO_VALUE: &str = "ERR Invalid information value";
+pub const INVALID_INFO_VALUE: &str = "ERR invalid information value";
 pub const BAD_EXPANSION: &str = "ERR bad expansion";
 pub const BAD_CAPACITY: &str = "ERR bad capacity";
 pub const BAD_ERROR_RATE: &str = "ERR bad error rate";
 pub const ERROR_RATE_RANGE: &str = "ERR (0 < error rate range < 1)";
 pub const CAPACITY_LARGER_THAN_0: &str = "ERR (capacity should be larger than 0)";
 pub const MAX_NUM_SCALING_FILTERS: &str = "ERR max number of scaling filters reached";
+pub const UNKNOWN_ARGUMENT: &str = "ERR unknown argument received";
 
 #[derive(Debug, PartialEq)]
 pub enum BloomError {
