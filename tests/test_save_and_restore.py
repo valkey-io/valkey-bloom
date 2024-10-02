@@ -24,8 +24,9 @@ class TestBloomSaveRestore(ValkeyTestCase):
         # save rdb, restart sever
         client.bgsave()
         self.server.wait_for_save_done()
+        # Keep the server running for 1 second more to have a larger uptime.
+        time.sleep(1)
         uptime_in_sec_1 = self.client.info_obj().uptime_in_secs()
-        time.sleep(0.5)
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         uptime_in_sec_2 = self.client.info_obj().uptime_in_secs()
         assert self.server.is_alive()

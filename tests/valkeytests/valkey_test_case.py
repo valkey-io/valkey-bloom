@@ -12,12 +12,17 @@ from contextlib import contextmanager
 from functools import wraps
 from valkey import *
 from valkey.client import Pipeline
+from util.waiters import *
+
 from enum import Enum
 
 MAX_PING_TRIES = 60
 
 # The maximum wait time for operations in the tests
 TEST_MAX_WAIT_TIME_SECONDS = 90
+MAX_REPLICA_WAIT_TIME = 120
+MAX_SYNC_WAIT = 90
+MAX_PING_WAIT_TIME = 30
 
 # Return true if the specified string is present in the provided file
 def verify_string_in_file(string, filename):
@@ -52,22 +57,6 @@ def expect(lhs, op, rhs):
     if not op(lhs, rhs):
         raise ExpectException(lhs, op, rhs)
 
-class wait(object):
-    """Decorator to wait a configurable amount of time for a condition to become true."""
-
-    def __init__(self, sleep = 1, max_time_to_wait=TEST_MAX_WAIT_TIME_SECONDS):
-        self.max_time_to_wait = max_time_to_wait
-        self.sleep = sleep
-
-    def __call__(self, func):
-        @wraps(func)
-        def func_wrapper(*args, **kwargs):
-            for _ in range(self.max_time_to_wait):
-                if func(*args, **kwargs):
-                    return True
-                time.sleep(self.sleep)
-            return False
-        return func_wrapper
 
 @wait()
 def wait_for_true(expr):
@@ -86,6 +75,31 @@ class ValkeyInfo:
         if 'db{}'.format(db) in self.info:
             return self.info['db{}'.format(db)]['keys']
         return 0
+
+    def get_master_repl_offset(self):
+        return self.info['master_repl_offset']
+
+    def get_master_replid(self):
+        return self.info['master_replid']
+
+    def get_replica_repl_offset(self):
+        return self.info['slave_repl_offset']
+
+    def is_master_link_up(self):
+        """Returns True if role is slave and master_link_status is up"""
+        if self.info['role'] == 'slave' and self.info['master_link_status'] == 'up':
+            return True
+        return False
+
+    def num_replicas(self):
+        return self.info['connected_slaves']
+
+    def num_replicas_online(self):
+        count=0
+        for k,v in self.info.items():
+            if re.match('^slave[0-9]', k) and v['state'] == 'online':
+                count += 1
+        return count
 
     def was_save_successful(self):
         return self.info['rdb_last_bgsave_status'] == 'ok'
@@ -176,12 +190,15 @@ class ValkeyClient(StrictValkey):
 
 class ValkeyServerHandle(object):
     """Handle to a valkey server process"""
+    
+    DEFAULT_BIND_IP = "0.0.0.0"
 
-
-    def __init__(self, port, server_path, cwd="."):
+    def __init__(self, bind_ip, port, port_tracker, server_path, cwd='.', server_id=0):
         self.server = None
         self.client = None
         self.port = port
+        self.bind_ip = bind_ip
+        self.server_id = server_id
         self.args = {}
         self.args["port"] = self.port
         self.args["logfile"] = "logfile_{}".format(port)
@@ -229,17 +246,23 @@ class ValkeyServerHandle(object):
         return self.server.poll() != None
 
     def _waitForExit(self):
-        if not self._waitForServerPoll():
+        try:
+            self._waitForServerPoll()
+        except WaitTimeout:
             print("Server did not exit in time, killing...")
-            self.server.kill()
-            if not self._waitForServerPoll():
+            if self.is_alive():
+                # check server is still running before kill it.
+                self.kill()
+            try:
+                self._waitForServerPoll()
+            except WaitTimeout:
                 print("Could not tear down server")
-                assert(False)
+                assert False
 
     def pid(self):
         return self.server.pid
 
-    @wait(1, 5)
+    @wait(timeout = 5)
     def is_down(self):
         return self.server.poll() != None
 
@@ -254,7 +277,10 @@ class ValkeyServerHandle(object):
                 children.append(line)
         return children
 
-    @wait(1, 60) # wait upto 30 sec checking every sec
+    def wait_for_replicas(self, num_of_replicas):
+        wait_for_equal(lambda: self.client.info_obj().num_replicas(), num_of_replicas, timeout=MAX_REPLICA_WAIT_TIME)
+
+    @wait(timeout = 60) # wait upto 30 sec checking every sec
     def wait_for_ready_to_accept_connections(self):
         logfile = os.path.join(self.cwd, self.args['logfile'])
         strings = ['Ready to accept connections']
@@ -278,7 +304,7 @@ class ValkeyServerHandle(object):
             if self.is_alive():
                 pytest.fail(f"Valkey server did not crash as expected within {time.time() - start_time} seconds. ")
 
-    def start(self, connect_client=True):
+    def start(self, wait_for_ping=True, connect_client=True):
         if self.server:
             raise RuntimeError("Server already started")
         server_args = []
@@ -299,7 +325,9 @@ class ValkeyServerHandle(object):
 
         self.server = subprocess.Popen(server_args, cwd=self.cwd)
         if connect_client:
-            if not self.wait_for_ready_to_accept_connections():
+            try:
+                self.wait_for_ready_to_accept_connections()
+            except WaitTimeout:
                 raise RuntimeError("Valkey server is not Ready to accept connections")
             try:
                 self.connect()
@@ -323,7 +351,7 @@ class ValkeyServerHandle(object):
         except:
             return False
 
-    @wait(1, MAX_PING_TRIES)
+    @wait(timeout = MAX_PING_WAIT_TIME)
     def _waitForPing(self, c):
         try:
             return c.ping()
@@ -339,9 +367,15 @@ class ValkeyServerHandle(object):
 
     def connect(self):
         c = ValkeyClient.create_from_server(self)
-        if not self._waitForPing(c):
-            raise RuntimeError("Failed to connect or ping server")
+        try:
+            self._waitForPing(c)
+        except WaitTimeout:
+             raise RuntimeError("Failed to connect or ping server")
         self.client = c
+
+    def wait_for_all_replicas_online(self, num_of_replicas):
+        """Wait for n replicas to show online"""
+        wait_for_equal(lambda: self.client.info_obj().num_replicas_online(), num_of_replicas, timeout=MAX_REPLICA_WAIT_TIME)
 
     @wait()
     def _wait_for_save(self, client=None):
@@ -356,7 +390,10 @@ class ValkeyServerHandle(object):
         """Wait for the save to complete, failing if it does not complete successfully in the timeout"""
         if client is None:
             client = self.client
-        assert(self._wait_for_save(client))
+        try:
+            self._wait_for_save(client)
+        except WaitTimeout:
+            raise RuntimeError("Save failed to complete in time")
         assert(client.info_obj().was_save_successful())
 
     def wait_for_save_in_progress(self):
@@ -373,6 +410,8 @@ class ValkeyServerHandle(object):
 class ValkeyTestCaseBase:
     testdir = "test-data"
     rdbdir = "rdbs"
+
+    DEFAULT_BIND_IP = "0.0.0.0"
 
     def get_custom_args(self):
         return {}
@@ -433,6 +472,13 @@ class ValkeyTestCaseBase:
             num_keys_in_valkey += 1
         return num_keys_in_valkey
 
+    @wait(timeout=MAX_SYNC_WAIT)
+    def waitForReplicaToSyncUpByClient(self, client):
+        return client.info_obj().is_master_link_up()
+
+    def waitForReplicaToSyncUp(self, server):
+        return self.waitForReplicaToSyncUpByClient(server.client)
+
     # Wait until a client in the Valkey is executing a command
     # Used to ensure that a thread running a blocking command has started
     # Return True if the command is running, False if timeout
@@ -445,6 +491,18 @@ class ValkeyTestCaseBase:
             time.sleep(1)
             wait_seconds += 1
         return False
+
+    def get_bind_port(self):
+        return self.port_tracker.get_unused_port()
+
+    @pytest.fixture(autouse=True)
+    def server_id_fixture(self):
+        self.server_id = 0
+    
+    def get_bind_ip(self, multi_ip_mode=False):
+        if multi_ip_mode:
+            return self.ip_tracker.get_ip_address()
+        return self.DEFAULT_BIND_IP
 
 class ValkeyTestCase(ValkeyTestCaseBase):
     num_dbs = 5
@@ -461,11 +519,13 @@ class ValkeyTestCase(ValkeyTestCaseBase):
         self.maxmemory = "500MB"
         self.port = self.port_tracker.get_unused_port()
         self.ensureDirExists(self.testdir)
+        self.server_list = []
+
 
     def setup(self):
         self.common_setup()
         args = self._get_valkey_args()
-        self.server = ValkeyServerHandle(self.port, self.server_path, self.testdir)
+        self.server = self.create_server(testdir = self.testdir,  server_path=self.server_path)
         self.server.set_startup_args(args)
         print("startup args are: ", args)
 
@@ -473,6 +533,32 @@ class ValkeyTestCase(ValkeyTestCaseBase):
         self.clients = []
         for db in range(self.num_dbs):
             self.clients.append(ValkeyClient.create_from_server(self.server, db))
+
+    def get_valkey_handle(self):
+        """Return valkey node handle. Allow child class to override the handle type"""
+        return ValkeyServerHandle
+
+    # Expose bind_ip parameter to caller to have more flexible
+    def create_server(self, testdir, bind_ip=None, port=None, server_path=server_path):
+        if not bind_ip:
+            bind_ip = self.get_bind_ip()
+
+        if not port:
+            port = self.get_bind_port()
+            
+        self.server_id += 1
+        valkey_server_handle = self.get_valkey_handle()
+        valkey_server = valkey_server_handle( bind_ip = bind_ip, port = port,
+            port_tracker = self.port_tracker,
+            cwd = testdir, server_id = self.server_id, server_path=server_path)
+        self.server_list.append(valkey_server)
+        return valkey_server
+    
+    def wait_for_all_replicas_online(self, n):
+        self.server.wait_for_all_replicas_online(n)
+
+    def wait_for_replicas(self, n):
+        self.server.wait_for_replicas(n)
 
     def teardown(self):
         if self.server:
@@ -482,3 +568,122 @@ class ValkeyTestCase(ValkeyTestCaseBase):
     def set_small_amount_of_keys(self):
         for i in range(self.num_keys):
             self.clients[0].set('key_{}'.format(i), i)
+
+class ValkeyReplica(ValkeyServerHandle):
+    def __init__(self, masterhost, masterport, bind_ip, port, port_tracker,
+                 testdir, server_id, server_path):
+        super(ValkeyReplica, self).__init__(bind_ip, port, port_tracker,
+                                             server_path, testdir, server_id)
+        self.clients = []
+        self.masterhost = masterhost
+        self.masterport = masterport
+        self.args["slaveof"] = self.masterhost + " " + str(self.masterport)
+
+    def exit(self, remove_rdb=True, remove_nodes_conf=True):
+        super(ValkeyReplica, self).exit(remove_rdb, remove_nodes_conf)
+        del self.clients[:]
+    
+    def create_client_for_dbs(self, num_dbs):
+        for db in range(num_dbs):
+            self.clients.append(ValkeyClient.create_from_server(self, db))
+        return self.clients
+
+class ReplicationTestCase(ValkeyTestCase):
+    num_replicas = 1
+
+    def setup(self, num_replicas = num_replicas):
+        super(ReplicationTestCase, self).setup()
+        self.create_replicas(num_replicas)
+        self.start_replicas()
+        for i in range(len(self.replicas)):
+            self.replicas[i].set_startup_args(self.get_custom_args())
+        self.wait_for_all_replicas_online(self.num_replicas)
+        self.wait_for_replicas(self.num_replicas)
+        self.wait_for_master_link_up_all_replicas()
+        self.wait_for_all_replicas_online(self.num_replicas)
+        for i in range(len(self.replicas)):
+            self.waitForReplicaToSyncUp(self.replicas[i])
+
+    def teardown(self):
+        ValkeyTestCase.teardown(self)
+        self.destroy_replicas()
+
+    def _create_replica(self, masterhost, masterport, server_path):
+        self.server_id += 1
+        return ValkeyReplica(masterhost, masterport,
+                            self.get_bind_ip(), self.get_bind_port(),
+                            self.port_tracker, self.testdir, self.server_id, self.server_path)
+
+    def create_replicas(self, num_replicas, masterhost=None, masterport=None,
+                        connection_type='tcp', server_path=None):
+
+        self.destroy_replicas()
+
+        default_masterhost = None
+        default_port = None
+        if connection_type == 'tcp':
+            if hasattr(self.server, 'bind_ip'):
+                default_masterhost = self.server.bind_ip
+            if hasattr(self.server, 'port'):
+                default_port = self.server.port
+        elif connection_type == 'unix':
+            default_masterhost = self.server.args["unixsocket"]
+            default_port = 0    # Valkey treats the hostname as a unix socket path if the port is zero.
+        else:
+            raise ValueError("Invalid connection type %r, expected 'tcp' or 'unix'" % connection_type)
+
+        if not masterhost:
+            masterhost = default_masterhost
+
+        if not masterport:
+            masterport = default_port
+
+        self.num_replicas = num_replicas
+        self.replicas = []
+        for _ in range(self.num_replicas):
+            replica = self._create_replica(masterhost, masterport, server_path)
+            replica.set_startup_args(self._get_valkey_args())
+            self.replicas.append(replica)
+
+    def start_replicas(self, wait_for_ping=True):
+        for i in range(self.num_replicas):
+            self.replicas[i].start(wait_for_ping=wait_for_ping)
+            self.replicas[i].create_client_for_dbs(self.num_dbs)
+
+    def destroy_replicas(self):
+        try:
+            for i in range(self.num_replicas):
+                self.replicas[i].exit()
+        except AttributeError:
+            print("this test was skipped. Nothing to destroy")
+            return
+        self.num_replicas = 0
+        del self.replicas[:]
+
+    @wait()
+    def wait_for_master_link_up_all_replicas(self):
+        for i in range(self.num_replicas):
+            if self.replicas[i].client.info_obj().is_master_link_up() == False:
+                return False
+        return True
+
+    @wait()
+    def wait_for_value_propagate_to_replicas(self, key, value, db=0):
+        for i in range(self.num_replicas):
+            if str(value) != self.replicas[i].clients[db].get(key):
+                return False
+        return True
+
+    @wait()
+    def waitForReplicaOffsetToSyncUp(self, master, replica):
+        minfo = master.client.info_obj()
+        rinfo = replica.client.info_obj()
+        if minfo.get_master_repl_offset() == rinfo.get_replica_repl_offset():
+            return True
+
+        print("MASTER: master_repl_offset({0}), REPLICA: master_repl_offset({1}), slave_repl_offset({2}), slave_read_repl_offset({3})".format(
+                minfo.info['master_repl_offset'],
+                rinfo.info['master_repl_offset'],
+                rinfo.info['slave_repl_offset'],
+                rinfo.info['slave_read_repl_offset']))
+        return False
