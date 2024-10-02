@@ -591,7 +591,7 @@ class ValkeyReplica(ValkeyServerHandle):
 class ReplicationTestCase(ValkeyTestCase):
     num_replicas = 1
 
-    def setup(self, num_replicas = num_replicas):
+    def setup_replication(self, num_replicas = num_replicas):
         super(ReplicationTestCase, self).setup()
         self.create_replicas(num_replicas)
         self.start_replicas()

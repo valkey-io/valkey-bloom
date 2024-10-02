@@ -254,14 +254,17 @@ mod tests {
     ) -> (i64, i64) {
         let mut new_item_idx = starting_item_idx;
         let mut fp_count = 0;
-        while bf.cardinality() < capacity_needed {
+        let mut cardinality = bf.cardinality();
+        while cardinality < capacity_needed {
             let item = format!("{}{}", rand_prefix, new_item_idx);
             let result = bf.add_item(item.as_bytes());
             match result {
                 Ok(0) => {
                     fp_count += 1;
                 }
-                Ok(1) => {}
+                Ok(1) => {
+                    cardinality += 1;
+                }
                 Ok(i64::MIN..=-1_i64) | Ok(2_i64..=i64::MAX) => {
                     panic!("We do not expect add_item to return any Integer other than 0 or 1.")
                 }
@@ -271,22 +274,21 @@ mod tests {
             };
             new_item_idx += 1;
         }
-        (fp_count, new_item_idx)
+        (fp_count, new_item_idx - 1)
     }
 
     /// Loops from the start index till the end index and uses the exists operation on the provided bloom filter.
     /// The item name used in exists operations is rand_prefix + the index (based on the iteration).
     /// The results are matched against the `expected_result` and an error_count tracks the wrong results.
     /// Asserts that the error_count is within the expected false positive (+ margin) rate.
-    fn item_exists_test(
+    /// Returns the error count and number of operations performed.
+    fn check_items_exist(
         bf: &BloomFilterType,
         start_idx: i64,
         end_idx: i64,
-        expected_fp_rate: f32,
-        fp_margin: f32,
         expected_result: bool,
         rand_prefix: &String,
-    ) {
+    ) -> (i64, i64) {
         let mut error_count = 0;
         for i in start_idx..=end_idx {
             let item = format!("{}{}", rand_prefix, i);
@@ -296,8 +298,7 @@ mod tests {
             }
         }
         let num_operations = (end_idx - start_idx) + 1;
-        // Validate that the real fp_rate is not much more than the configured fp_rate.
-        fp_assert(error_count, num_operations, expected_fp_rate, fp_margin);
+        (error_count, num_operations)
     }
 
     fn fp_assert(error_count: i64, num_operations: i64, expected_fp_rate: f32, fp_margin: f32) {
@@ -364,24 +365,22 @@ mod tests {
                 .filters
                 .iter()
                 .any(|filter| filter.bloom.bitmap() == restore_filter.bloom.bitmap())));
-        item_exists_test(
+        let (error_count, _) = check_items_exist(
             restored_bloom_filter_type,
             1,
             add_operation_idx,
-            expected_fp_rate,
-            fp_margin,
             true,
             rand_prefix,
         );
-        item_exists_test(
+        assert!(error_count == 0);
+        let (error_count, num_operations) = check_items_exist(
             restored_bloom_filter_type,
             add_operation_idx + 1,
             add_operation_idx * 2,
-            expected_fp_rate,
-            fp_margin,
             false,
             rand_prefix,
         );
+        fp_assert(error_count, num_operations, expected_fp_rate, fp_margin);
     }
 
     #[test]
@@ -410,25 +409,18 @@ mod tests {
         fp_assert(error_count, add_operation_idx, expected_fp_rate, fp_margin);
         // Validate item "exists" operations on bloom filters are ensuring correctness.
         // This tests for items already added to the filter and expects them to exist.
-        item_exists_test(
-            &bf,
-            1,
-            add_operation_idx,
-            expected_fp_rate,
-            fp_margin,
-            true,
-            &rand_prefix,
-        );
+        let (error_count, _) = check_items_exist(&bf, 1, add_operation_idx, true, &rand_prefix);
+        assert!(error_count == 0);
         // This tests for items which are not added to the filter and expects them to not exist.
-        item_exists_test(
+        let (error_count, num_operations) = check_items_exist(
             &bf,
             add_operation_idx + 1,
             add_operation_idx * 2,
-            expected_fp_rate,
-            fp_margin,
             false,
             &rand_prefix,
         );
+        // Validate that the real fp_rate is not much more than the configured fp_rate.
+        fp_assert(error_count, num_operations, expected_fp_rate, fp_margin);
 
         // Verify restore
         let mut restore_bf = BloomFilterType::create_copy_from(&bf);
@@ -458,14 +450,14 @@ mod tests {
         assert_eq!(bf.capacity(), initial_capacity as i64);
         assert_eq!(bf.cardinality(), 0);
         let mut total_error_count = 0;
-        let mut add_operation_idx = 1;
+        let mut add_operation_idx = 0;
         // Validate the scaling behavior of the bloom filter.
         for filter_idx in 1..=num_filters_to_scale {
             let expected_total_capacity = initial_capacity * (expansion.pow(filter_idx) - 1);
             let (error_count, new_add_operation_idx) = add_items_till_capacity(
                 &mut bf,
                 expected_total_capacity as i64,
-                add_operation_idx,
+                add_operation_idx + 1,
                 &rand_prefix,
             );
             add_operation_idx = new_add_operation_idx;
@@ -486,25 +478,18 @@ mod tests {
         );
         // Validate item "exists" operations on bloom filters are ensuring correctness.
         // This tests for items already added to the filter and expects them to exist.
-        item_exists_test(
-            &bf,
-            1,
-            add_operation_idx,
-            expected_fp_rate,
-            fp_margin,
-            true,
-            &rand_prefix,
-        );
+        let (error_count, _) = check_items_exist(&bf, 1, add_operation_idx, true, &rand_prefix);
+        assert!(error_count == 0);
         // This tests for items which are not added to the filter and expects them to not exist.
-        item_exists_test(
+        let (error_count, num_operations) = check_items_exist(
             &bf,
             add_operation_idx + 1,
             add_operation_idx * 2,
-            expected_fp_rate,
-            fp_margin,
             false,
             &rand_prefix,
         );
+        // Validate that the real fp_rate is not much more than the configured fp_rate.
+        fp_assert(error_count, num_operations, expected_fp_rate, fp_margin);
 
         // Verify restore
         let restore_bloom_filter_type = BloomFilterType::create_copy_from(&bf);
