@@ -46,67 +46,70 @@ pub static BLOOM_FILTER_TYPE: ValkeyType = ValkeyType::new(
     },
 );
 
-/// Callback to load and parse RDB data of a bloom item and create it.
-pub fn bloom_rdb_load_data_object(
-    rdb: *mut raw::RedisModuleIO,
-    encver: i32,
-) -> Option<BloomFilterType> {
-    if encver > BLOOM_FILTER_TYPE_ENCODING_VERSION {
-        logging::log_warning(format!("{}: Cannot load bloomfltr data type of version {} because it is higher than the loaded module's bloomfltr supported version {}", MODULE_NAME, encver, BLOOM_FILTER_TYPE_ENCODING_VERSION).as_str());
-        return None;
+pub trait ValkeyDataType {
+    fn load_from_rdb(rdb: *mut raw::RedisModuleIO, encver: i32) -> Option<BloomFilterType>;
+}
+
+impl ValkeyDataType for BloomFilterType {
+    /// Callback to load and parse RDB data of a bloom item and create it.
+    fn load_from_rdb(rdb: *mut raw::RedisModuleIO, encver: i32) -> Option<BloomFilterType> {
+        let mut filters = Vec::new();
+        if encver > BLOOM_FILTER_TYPE_ENCODING_VERSION {
+            logging::log_warning(format!("{}: Cannot load bloomfltr data type of version {} because it is higher than the loaded module's bloomfltr supported version {}", MODULE_NAME, encver, BLOOM_FILTER_TYPE_ENCODING_VERSION).as_str());
+            return None;
+        }
+        let Ok(num_filters) = raw::load_unsigned(rdb) else {
+            return None;
+        };
+        let Ok(expansion) = raw::load_unsigned(rdb) else {
+            return None;
+        };
+        let Ok(fp_rate) = raw::load_float(rdb) else {
+            return None;
+        };
+        for i in 0..num_filters {
+            let Ok(bitmap) = raw::load_string_buffer(rdb) else {
+                return None;
+            };
+            let Ok(number_of_bits) = raw::load_unsigned(rdb) else {
+                return None;
+            };
+            let Ok(number_of_hash_functions) = raw::load_unsigned(rdb) else {
+                return None;
+            };
+            let Ok(capacity) = raw::load_unsigned(rdb) else {
+                return None;
+            };
+            // Only load num_items when it's the last filter
+            let num_items = if i == num_filters - 1 {
+                match raw::load_unsigned(rdb) {
+                    Ok(num_items) => num_items,
+                    Err(_) => return None,
+                }
+            } else {
+                capacity
+            };
+            let sip_keys = [
+                (FIXED_SIP_KEY_ONE_A, FIXED_SIP_KEY_ONE_B),
+                (FIXED_SIP_KEY_TWO_A, FIXED_SIP_KEY_TWO_B),
+            ];
+            let filter = BloomFilter::from_existing(
+                bitmap.as_ref(),
+                number_of_bits,
+                number_of_hash_functions as u32,
+                sip_keys,
+                num_items as u32,
+                capacity as u32,
+            );
+            filters.push(filter);
+        }
+        let item = BloomFilterType {
+            expansion: expansion as u32,
+            fp_rate,
+            filters,
+        };
+        Some(item)
     }
-    let Ok(num_filters) = raw::load_unsigned(rdb) else {
-        return None;
-    };
-    let Ok(expansion) = raw::load_unsigned(rdb) else {
-        return None;
-    };
-    let Ok(fp_rate) = raw::load_float(rdb) else {
-        return None;
-    };
-    let mut filters = Vec::new();
-    for i in 0..num_filters {
-        let Ok(bitmap) = raw::load_string_buffer(rdb) else {
-            return None;
-        };
-        let Ok(number_of_bits) = raw::load_unsigned(rdb) else {
-            return None;
-        };
-        let Ok(number_of_hash_functions) = raw::load_unsigned(rdb) else {
-            return None;
-        };
-        let Ok(capacity) = raw::load_unsigned(rdb) else {
-            return None;
-        };
-        // Only load num_items when it's the last filter
-        let num_items = if i == num_filters - 1 {
-            match raw::load_unsigned(rdb) {
-                Ok(num_items) => num_items,
-                Err(_) => return None,
-            }
-        } else {
-            capacity
-        };
-        let sip_keys = [
-            (FIXED_SIP_KEY_ONE_A, FIXED_SIP_KEY_ONE_B),
-            (FIXED_SIP_KEY_TWO_A, FIXED_SIP_KEY_TWO_B),
-        ];
-        let filter = BloomFilter::from_existing(
-            bitmap.as_ref(),
-            number_of_bits,
-            number_of_hash_functions as u32,
-            sip_keys,
-            num_items as u32,
-            capacity as u32,
-        );
-        filters.push(filter);
-    }
-    let item = BloomFilterType {
-        expansion: expansion as u32,
-        fp_rate,
-        filters,
-    };
-    Some(item)
 }
 
 /// Load the auxiliary data outside of the regular keyspace from the RDB file
