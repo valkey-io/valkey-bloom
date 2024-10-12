@@ -1,15 +1,9 @@
 import pytest, time
 import os
-from valkey_test_case import ValkeyTestCase
+from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 from valkeytests.conftest import resource_port_tracker
 
-class TestBloomSaveRestore(ValkeyTestCase):
-
-    def get_custom_args(self):
-        self.set_server_version(os.environ['SERVER_VERSION'])
-        return {
-            'loadmodule': os.getenv('MODULE_PATH'),
-        }
+class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
 
     def test_basic_save_and_restore(self):
         client = self.server.get_new_client()
