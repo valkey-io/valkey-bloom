@@ -56,6 +56,39 @@ def fp_assert(error_count, num_operations, expected_fp_rate, fp_margin):
     
     assert real_fp_rate < fp_rate_with_margin, f"The actual fp_rate, {real_fp_rate}, is greater than the configured fp_rate with margin. {fp_rate_with_margin}."
 
+def validate_copied_bloom_correctness(client, original_filter_name, item_prefix, add_operation_idx, expected_fp_rate, fp_margin, original_info_dict):
+        copy_filter_name = "filter_copy"
+        assert client.execute_command(f'COPY {original_filter_name} {copy_filter_name}') == 1
+        assert client.execute_command('DBSIZE') == 2
+        copy_info = client.execute_command(f'BF.INFO {copy_filter_name}')
+        copy_it = iter(copy_info)
+        copy_info_dict = dict(zip(copy_it, copy_it))
+        assert copy_info_dict[b'Capacity'] == original_info_dict[b'Capacity']
+        assert copy_info_dict[b'Number of items inserted'] == original_info_dict[b'Number of items inserted']
+        assert copy_info_dict[b'Number of filters'] == original_info_dict[b'Number of filters']
+        assert copy_info_dict[b'Size'] == original_info_dict[b'Size']
+        assert copy_info_dict[b'Expansion rate'] == original_info_dict[b'Expansion rate']
+        # Items added to the original filter should still exist on the copy. False Negatives are not possible.
+        error_count, num_operations = check_items_exist(
+            client,
+            copy_filter_name,
+            1,
+            add_operation_idx,
+            True,
+            item_prefix,
+        )
+        assert error_count == 0
+        # Items not added to the original filter should not exist on the copy. False Positives should be close to configured fp_rate.
+        error_count, num_operations = check_items_exist(
+            client,
+            copy_filter_name,
+            add_operation_idx + 1,
+            add_operation_idx * 2,
+            False,
+            item_prefix,
+        )
+        fp_assert(error_count, num_operations, expected_fp_rate, fp_margin)
+
 class TestBloomCorrectness(ValkeyTestCase):
 
     def get_custom_args(self):
@@ -85,7 +118,7 @@ class TestBloomCorrectness(ValkeyTestCase):
         assert info_dict[b'Number of items inserted'] == capacity
         assert info_dict[b'Number of filters'] == 1
         assert info_dict[b'Size'] > 0
-        assert info_dict[b'Expansion rate'] == -1
+        assert info_dict[b'Expansion rate'] == None
         # Use a margin on the expected_fp_rate when asserting for correctness.
         fp_margin = 0.002
         # Validate that item "add" operations on bloom filters are ensuring correctness.
@@ -114,38 +147,8 @@ class TestBloomCorrectness(ValkeyTestCase):
             item_prefix,
         )
         fp_assert(error_count, num_operations, expected_fp_rate, fp_margin)
-        # Create a copy of the bloom filter.
-        copy_filter_name = "filter_copy"
-        assert client.execute_command(f'COPY {filter_name} {copy_filter_name}') == 1
-        assert client.execute_command('DBSIZE') == 2
-        copy_info = client.execute_command(f'BF.INFO {copy_filter_name}')
-        copy_it = iter(copy_info)
-        copy_info_dict = dict(zip(copy_it, copy_it))
-        assert copy_info_dict[b'Capacity'] == info_dict[b'Capacity']
-        assert copy_info_dict[b'Number of items inserted'] == info_dict[b'Number of items inserted']
-        assert copy_info_dict[b'Number of filters'] == info_dict[b'Number of filters']
-        assert copy_info_dict[b'Size'] == info_dict[b'Size']
-        assert copy_info_dict[b'Expansion rate'] == info_dict[b'Expansion rate']
-        # Items added to the original filter should still exist on the copy. False Negatives are not possible.
-        error_count, num_operations = check_items_exist(
-            client,
-            copy_filter_name,
-            1,
-            add_operation_idx,
-            True,
-            item_prefix,
-        )
-        assert error_count == 0
-        # Items not added to the original filter should not exist on the copy. False Positives should be close to configured fp_rate.
-        error_count, num_operations = check_items_exist(
-            client,
-            copy_filter_name,
-            add_operation_idx + 1,
-            add_operation_idx * 2,
-            False,
-            item_prefix,
-        )
-        fp_assert(error_count, num_operations, expected_fp_rate, fp_margin)
+        # Create a copy of the non scaling bloom filter.
+        validate_copied_bloom_correctness(client, filter_name, item_prefix, add_operation_idx, expected_fp_rate, fp_margin, info_dict)
 
     def test_scaling_filter(self):
         client = self.server.get_new_client()
@@ -218,36 +221,4 @@ class TestBloomCorrectness(ValkeyTestCase):
         info = client.execute_command(f'BF.INFO {filter_name}')
         it = iter(info)
         info_dict = dict(zip(it, it))
-
-        # Create a copy of the scaled out bloom filter.
-        copy_filter_name = "filter_copy"
-        assert client.execute_command(f'COPY {filter_name} {copy_filter_name}') == 1
-        assert client.execute_command('DBSIZE') == 2
-        copy_info = client.execute_command(f'BF.INFO {copy_filter_name}')
-        copy_it = iter(copy_info)
-        copy_info_dict = dict(zip(copy_it, copy_it))
-        assert copy_info_dict[b'Capacity'] == info_dict[b'Capacity']
-        assert copy_info_dict[b'Number of items inserted'] == info_dict[b'Number of items inserted']
-        assert copy_info_dict[b'Number of filters'] == info_dict[b'Number of filters']
-        assert copy_info_dict[b'Size'] == info_dict[b'Size']
-        assert copy_info_dict[b'Expansion rate'] == info_dict[b'Expansion rate']
-        # Items added to the original filter should still exist on the copy. False Negatives are not possible.
-        error_count, num_operations = check_items_exist(
-            client,
-            copy_filter_name,
-            1,
-            add_operation_idx,
-            True,
-            item_prefix,
-        )
-        assert error_count == 0
-        # Items not added to the original filter should not exist on the copy. False Positives should be close to configured fp_rate.
-        error_count, num_operations = check_items_exist(
-            client,
-            copy_filter_name,
-            add_operation_idx + 1,
-            add_operation_idx * 2,
-            False,
-            item_prefix,
-        )
-        fp_assert(error_count, num_operations, expected_fp_rate, fp_margin)
+        validate_copied_bloom_correctness(client, filter_name, item_prefix, add_operation_idx, expected_fp_rate, fp_margin, info_dict)

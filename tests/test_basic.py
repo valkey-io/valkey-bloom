@@ -61,7 +61,7 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         encoding_result = client.execute_command('OBJECT ENCODING filter')
         assert encoding_result == b"raw"
 
-    def test_bloom_modification(self):
+    def test_bloom_obj_access(self):
         client = self.server.get_new_client()
         # check bloom filter with basic valkey command
         # cmd touch
@@ -70,6 +70,9 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         assert client.execute_command('TOUCH key1 key2') == 2
         assert client.execute_command('TOUCH key3') == 0
         self.verify_key_number(client, 2)
+        assert client.execute_command('DBSIZE') == 2
+        random_key = client.execute_command('RANDOMKEY')
+        assert random_key == b"key1" or random_key == b"key2"
 
     def test_bloom_transaction(self):
         client = self.server.get_new_client()
