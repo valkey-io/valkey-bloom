@@ -49,7 +49,7 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         assert client.execute_command('BF.ADD filter item1') == 1
         memory_usage = client.execute_command('MEMORY USAGE filter')
         info_size = client.execute_command('BF.INFO filter SIZE')
-        assert memory_usage > info_size and info_size > 0 # DIFF is 32 bytes
+        assert memory_usage > info_size and info_size > 0
 
     def test_module_data_type(self):
         # Validate the name of the Module data type.
