@@ -69,7 +69,7 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         assert client.execute_command('BF.ADD key2 val2') == 1
         assert client.execute_command('TOUCH key1 key2') == 2
         assert client.execute_command('TOUCH key3') == 0
-        self.verify_key_number(client, 2)
+        self.verify_server_key_count(client, 2)
         assert client.execute_command('DBSIZE') == 2
         random_key = client.execute_command('RANDOMKEY')
         assert random_key == b"key1" or random_key == b"key2"
@@ -84,9 +84,9 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         assert client.execute_command('DEL M1') == b'QUEUED'
         assert client.execute_command('BF.EXISTS M1 V1') == b'QUEUED'
         assert client.execute_command('EXEC') == [1, 1, 1, 1, 0]
-        self.verify_bloom_filter_existence(client, 'M2', 'V2')
-        self.verify_bloom_filter_existence(client, 'M1', 'V1', should_exist=False)
-        self.verify_key_number(client, 1)
+        self.verify_bloom_filter_item_existence(client, 'M2', 'V2')
+        self.verify_bloom_filter_item_existence(client, 'M1', 'V1', should_exist=False)
+        self.verify_server_key_count(client, 1)
 
     def test_bloom_lua(self):
         client = self.server.get_new_client()
@@ -98,62 +98,62 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         """
         client.eval(load_filter, 0)
         assert client.execute_command('BF.MEXISTS LUA2 ITEM1 ITEM3 ITEM4') == [0, 1, 1]
-        self.verify_key_number(client, 2)
+        self.verify_server_key_count(client, 2)
 
     def test_bloom_deletes(self):
         client = self.server.get_new_client()
         # delete
         assert client.execute_command('BF.ADD filter1 item1') == 1
-        self.verify_bloom_filter_existence(client, 'filter1', 'item1')
-        self.verify_key_number(client, 1)
+        self.verify_bloom_filter_item_existence(client, 'filter1', 'item1')
+        self.verify_server_key_count(client, 1)
         assert client.execute_command('DEL filter1') == 1
-        self.verify_bloom_filter_existence(client, 'filter1', 'item1', should_exist=False)
-        self.verify_key_number(client, 0)
+        self.verify_bloom_filter_item_existence(client, 'filter1', 'item1', should_exist=False)
+        self.verify_server_key_count(client, 0)
 
         # flush
-        self.insert_bloom_filter(client, number_of_bf=10)
-        self.verify_key_number(client, 10)
+        self.create_bloom_filters_and_add_items(client, number_of_bf=10)
+        self.verify_server_key_count(client, 10)
         assert client.execute_command('FLUSHALL')
-        self.verify_key_number(client, 0)
+        self.verify_server_key_count(client, 0)
 
         # unlink
         assert client.execute_command('BF.ADD A ITEMA') == 1
         assert client.execute_command('BF.ADD B ITEMB') == 1
-        self.verify_bloom_filter_existence(client, 'A', 'ITEMA')
-        self.verify_bloom_filter_existence(client, 'B', 'ITEMB')
-        self.verify_bloom_filter_existence(client, 'C', 'ITEMC', should_exist=False)
-        self.verify_key_number(client, 2)
+        self.verify_bloom_filter_item_existence(client, 'A', 'ITEMA')
+        self.verify_bloom_filter_item_existence(client, 'B', 'ITEMB')
+        self.verify_bloom_filter_item_existence(client, 'C', 'ITEMC', should_exist=False)
+        self.verify_server_key_count(client, 2)
         assert client.execute_command('UNLINK A B C') == 2
         assert client.execute_command('BF.MEXISTS A ITEMA ITEMB') == [0, 0]
-        self.verify_bloom_filter_existence(client, 'A', 'ITEMA', should_exist=False)
-        self.verify_bloom_filter_existence(client, 'B', 'ITEMB', should_exist=False)
-        self.verify_key_number(client, 0)
+        self.verify_bloom_filter_item_existence(client, 'A', 'ITEMA', should_exist=False)
+        self.verify_bloom_filter_item_existence(client, 'B', 'ITEMB', should_exist=False)
+        self.verify_server_key_count(client, 0)
 
     def test_bloom_expiration(self):
         client = self.server.get_new_client()
         # expiration
         # cmd object idletime
-        self.verify_key_number(client, 0)
+        self.verify_server_key_count(client, 0)
         assert client.execute_command('BF.ADD TEST_IDLE val3') == 1
-        self.verify_bloom_filter_existence(client, 'TEST_IDLE', 'val3')
-        self.verify_key_number(client, 1)
+        self.verify_bloom_filter_item_existence(client, 'TEST_IDLE', 'val3')
+        self.verify_server_key_count(client, 1)
         time.sleep(1)
         assert client.execute_command('OBJECT IDLETIME test_idle') == None
         assert client.execute_command('OBJECT IDLETIME TEST_IDLE') > 0
         # cmd ttl, expireat
         assert client.execute_command('BF.ADD TEST_EXP ITEM') == 1
         assert client.execute_command('TTL TEST_EXP') == -1
-        self.verify_bloom_filter_existence(client, 'TEST_EXP', 'ITEM')
-        self.verify_key_number(client, 2)
+        self.verify_bloom_filter_item_existence(client, 'TEST_EXP', 'ITEM')
+        self.verify_server_key_count(client, 2)
         curr_time = int(time.time())
         assert client.execute_command(f'EXPIREAT TEST_EXP {curr_time + 5}') == 1
         wait_for_equal(lambda: client.execute_command('BF.EXISTS TEST_EXP ITEM'), 0)
-        self.verify_key_number(client, 1)
+        self.verify_server_key_count(client, 1)
         # cmd persist
         assert client.execute_command('BF.ADD TEST_PERSIST ITEM') == 1
         assert client.execute_command('TTL TEST_PERSIST') == -1
-        self.verify_bloom_filter_existence(client, 'TEST_PERSIST', 'ITEM')
-        self.verify_key_number(client, 2)
+        self.verify_bloom_filter_item_existence(client, 'TEST_PERSIST', 'ITEM')
+        self.verify_server_key_count(client, 2)
         assert client.execute_command(f'EXPIREAT TEST_PERSIST {curr_time + 100000}') == 1
         assert client.execute_command('TTL TEST_PERSIST') > 0
         assert client.execute_command('PERSIST TEST_PERSIST') == 1
