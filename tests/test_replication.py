@@ -12,6 +12,7 @@ class TestBloomReplication(ReplicationTestCase):
         }
 
     def test_replication_success(self):
+        self.setup_replication(num_replicas=1)
         bf_add_result = self.client.execute_command('BF.ADD key item1')
         assert bf_add_result == 1
         bf_exists_result = self.client.execute_command('BF.EXISTS key item1')
