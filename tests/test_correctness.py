@@ -1,4 +1,5 @@
 import pytest
+from valkeytests.conftest import resource_port_tracker
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 
 class TestBloomCorrectness(ValkeyBloomTestCaseBase):
