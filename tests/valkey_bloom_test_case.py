@@ -22,29 +22,20 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
             assert str(e) == expected_err_reply, assert_error_msg
 
     def verify_command_success_reply(self, client, cmd, expected_result):
-        try:
-            cmd_actual_result = client.execute_command(cmd)
-            assert_error_msg = f"Actual command response '{cmd_actual_result}' is different from expected response '{expected_result}'"
-            assert cmd_actual_result == expected_result, assert_error_msg
-        except:
-            print("Something went wrong in command behavior verification")
+        cmd_actual_result = client.execute_command(cmd)
+        assert_error_msg = f"Actual command response '{cmd_actual_result}' is different from expected response '{expected_result}'"
+        assert cmd_actual_result == expected_result, assert_error_msg
 
     def verify_bloom_filter_item_existence(self, client, key, value, should_exist=True):
-        try:
-            if should_exist:
-                assert client.execute_command(f'BF.EXISTS {key} {value}') == 1, f"Item {key} {value} doesn't exist"
-            else:
-                assert client.execute_command(f'BF.EXISTS {key} {value}') == 0, f"Item {key} {value} exists"
-        except:
-            print("Something went wrong in bloom filter item existence verification")
+        if should_exist:
+            assert client.execute_command(f'BF.EXISTS {key} {value}') == 1, f"Item {key} {value} doesn't exist"
+        else:
+            assert client.execute_command(f'BF.EXISTS {key} {value}') == 0, f"Item {key} {value} exists"
 
     def verify_server_key_count(self, client, expected_num_keys):
-        try:
-            actual_num_keys = client.num_keys()
-            assert_num_key_error_msg = f"Actual key number {actual_num_keys} is different from expected key number {expected_num_key}"
-            assert actual_num_keys == expected_num_keys, assert_num_key_error_msg
-        except:
-            print("Something went wrong in key number verification")
+        actual_num_keys = client.info_obj().num_keys()
+        assert_num_key_error_msg = f"Actual key number {actual_num_keys} is different from expected key number {expected_num_keys}"
+        assert actual_num_keys == expected_num_keys, assert_num_key_error_msg
 
     def create_bloom_filters_and_add_items(self, client, number_of_bf=5):
         """ Creates the specified number of bloom filter objects (`number_of_bf`) and adds an item to it named FOO.

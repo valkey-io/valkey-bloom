@@ -107,6 +107,12 @@ class ValkeyInfo:
     def used_memory(self):
         return self.info['used_memory']
 
+    def maxmemory(self):
+        return self.info['maxmemory']
+
+    def maxmemory_policy(self):
+        return self.info['maxmemory_policy']
+
     def uptime_in_secs(self):
         return self.info['uptime_in_seconds']
 
