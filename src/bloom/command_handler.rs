@@ -117,7 +117,7 @@ pub fn bloom_filter_add_value(
                 &mut add_succeeded,
             );
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bf) {
-                Ok(_) => {
+                Ok(()) => {
                     replicate_and_notify_events(ctx, filter_name, add_succeeded, true);
                     response
                 }
@@ -262,7 +262,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
         None => {
             let bloom = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bloom) {
-                Ok(_v) => {
+                Ok(()) => {
                     replicate_and_notify_events(ctx, filter_name, false, true);
                     VALKEY_OK
                 }
@@ -373,7 +373,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
             let response =
                 handle_bloom_add(input_args, argc, idx, &mut bf, true, &mut add_succeeded);
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bf) {
-                Ok(_) => {
+                Ok(()) => {
                     replicate_and_notify_events(ctx, filter_name, add_succeeded, true);
                     response
                 }

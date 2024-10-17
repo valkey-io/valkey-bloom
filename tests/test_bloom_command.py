@@ -113,7 +113,7 @@ class TestBloomCommand(ValkeyBloomTestCaseBase):
             ('BF.INSERT TEST_EXPANSION EXPANSION 9 ITEMS ITEM', [1]),
             ('BF.INSERT TEST_CAPACITY CAPACITY 2000 ITEMS ITEM', [1]),
             ('BF.INSERT TEST_ITEMS ITEMS 1 2 3 EXPANSION 2', [1, 1, 1, 1, 0]),
-            ('BF.INFO TEST Capacity', 100),
+            ('BF.INFO TEST Capacity', 100000),
             ('BF.INFO TEST ITEMS', 5),
             ('BF.INFO TEST filters', 1),
             ('bf.info TEST expansion', 2),

@@ -64,6 +64,12 @@ fi
 export MODULE_PATH="$SCRIPT_DIR/target/release/libvalkey_bloom.so"
 
 echo "Running the integration tests..."
-python3 -m pytest --cache-clear -v "$SCRIPT_DIR/tests/"
+# TEST_PATTERN can be used to run specific tests or test patterns.
+if [[ -n "$TEST_PATTERN" ]]; then
+    python3 -m pytest --cache-clear -v "$SCRIPT_DIR/tests/" -k $TEST_PATTERN
+else
+    echo "TEST_PATTERN is not set. Running all integration tests."
+    python3 -m pytest --cache-clear -v "$SCRIPT_DIR/tests/"
+fi
 
-echo "Build and Integration Tests succeeded"
+echo "Build, Format Checks, Unit tests, and Integration Tests succeeded"
