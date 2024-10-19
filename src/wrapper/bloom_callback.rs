@@ -2,6 +2,7 @@ use crate::bloom;
 use crate::bloom::data_type::ValkeyDataType;
 use crate::bloom::utils::BloomFilterType;
 use crate::configs;
+use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
 use std::sync::atomic::Ordering;
@@ -48,6 +49,29 @@ pub unsafe extern "C" fn bloom_rdb_load(
     } else {
         null_mut()
     }
+}
+
+/// # Safety
+pub unsafe extern "C" fn bloom_aof_rewrite(
+    aof: *mut raw::RedisModuleIO,
+    key: *mut raw::RedisModuleString,
+    value: *mut c_void,
+) {
+    let filter = &*value.cast::<BloomFilterType>();
+    let hex = match filter.encoder_bloom_filter() {
+        Ok(val) => val,
+        Err(err) => panic!("encode bloom filter failed. {err}"),
+    };
+    let cmd = CString::new("BF.LOAD").unwrap();
+    let fmt = CString::new("sb").unwrap();
+    raw::RedisModule_EmitAOF.unwrap()(
+        aof,
+        cmd.as_ptr(),
+        fmt.as_ptr(),
+        key,
+        hex.as_ptr().cast::<c_char>(),
+        hex.len(),
+    );
 }
 
 /// # Safety
