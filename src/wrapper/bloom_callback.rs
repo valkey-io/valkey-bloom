@@ -1,8 +1,10 @@
 use crate::bloom;
 use crate::bloom::data_type::ValkeyDataType;
 use crate::bloom::utils::BloomFilterType;
+use crate::configs;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
+use std::sync::atomic::Ordering;
 use valkey_module::raw;
 use valkey_module::{RedisModuleDefragCtx, RedisModuleString};
 
@@ -15,7 +17,7 @@ pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mu
     let v = &*value.cast::<BloomFilterType>();
     raw::save_unsigned(rdb, v.filters.len() as u64);
     raw::save_unsigned(rdb, v.expansion as u64);
-    raw::save_float(rdb, v.fp_rate);
+    raw::save_double(rdb, v.fp_rate);
     let filter_list = &v.filters;
     let mut filter_list_iter = filter_list.iter().peekable();
     while let Some(filter) = filter_list_iter.next() {
@@ -102,6 +104,9 @@ pub unsafe extern "C" fn bloom_defrag(
     value: *mut *mut c_void,
 ) -> i32 {
     let curr_item = &*(*value).cast::<BloomFilterType>();
+    if curr_item.memory_usage() > configs::BLOOM_MAX_MEMORY_USAGE.load(Ordering::Relaxed) as usize {
+        return 0;
+    }
     let new_item = BloomFilterType::create_copy_from(curr_item);
     let bb = Box::new(new_item);
     drop(Box::from_raw((*value).cast::<BloomFilterType>()));

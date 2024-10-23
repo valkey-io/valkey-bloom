@@ -348,7 +348,7 @@ class ValkeyServerHandle(object):
 
     def restart(self, remove_rdb=True, remove_nodes_conf=True, connect_client=True):
         self.exit(remove_rdb, remove_nodes_conf)
-        self.start(connect_client)
+        self.start(connect_client=connect_client)
 
     def is_alive(self):
         try:
@@ -459,11 +459,8 @@ class ValkeyTestCaseBase:
         return self.findLogfileLine(filename, regex) != None
 
     @wait()
-    def _wait_for_logfile(self, filename, regex):
-        return self.doesLogfileContain(filename, regex)
-
     def wait_for_logfile(self, filename, regex):
-        assert(self._wait_for_logfile(filename, regex))
+        return self.doesLogfileContain(filename, regex)
 
     def check_all_keys_in_valkey(self, node, dictionary):
         """ Check that all the keys in Valkey matches that in the dictionary """

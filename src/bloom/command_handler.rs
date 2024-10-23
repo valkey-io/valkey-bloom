@@ -7,6 +7,7 @@ use crate::configs::{
     BLOOM_FP_RATE_MAX, BLOOM_FP_RATE_MIN,
 };
 use std::sync::atomic::Ordering;
+use valkey_module::ContextFlags;
 use valkey_module::NotifyEvent;
 use valkey_module::{Context, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue, VALKEY_OK};
 
@@ -17,12 +18,13 @@ fn handle_bloom_add(
     bf: &mut BloomFilterType,
     multi: bool,
     add_succeeded: &mut bool,
+    validate_size_limit: bool,
 ) -> Result<ValkeyValue, ValkeyError> {
     match multi {
         true => {
             let mut result = Vec::new();
             for item in args.iter().take(argc).skip(item_idx) {
-                match bf.add_item(item.as_slice()) {
+                match bf.add_item(item.as_slice(), validate_size_limit) {
                     Ok(add_result) => {
                         if add_result == 1 {
                             *add_succeeded = true;
@@ -39,7 +41,7 @@ fn handle_bloom_add(
         }
         false => {
             let item = args[item_idx].as_slice();
-            match bf.add_item(item) {
+            match bf.add_item(item, validate_size_limit) {
                 Ok(add_result) => {
                     *add_succeeded = add_result == 1;
                     Ok(ValkeyValue::Integer(add_result))
@@ -88,16 +90,19 @@ pub fn bloom_filter_add_value(
             return Err(ValkeyError::Str(utils::ERROR));
         }
     };
+    // Skip bloom filter size validation on replicated cmds.
+    let validate_size_limit = !ctx.get_flags().contains(ContextFlags::REPLICATED);
     let mut add_succeeded = false;
     match value {
-        Some(bf) => {
+        Some(bloom) => {
             let response = handle_bloom_add(
                 input_args,
                 argc,
                 curr_cmd_idx,
-                bf,
+                bloom,
                 multi,
                 &mut add_succeeded,
+                validate_size_limit,
             );
             replicate_and_notify_events(ctx, filter_name, add_succeeded, false);
             response
@@ -107,16 +112,25 @@ pub fn bloom_filter_add_value(
             let fp_rate = configs::BLOOM_FP_RATE_DEFAULT;
             let capacity = configs::BLOOM_CAPACITY.load(Ordering::Relaxed) as u32;
             let expansion = configs::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
-            let mut bf = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
+            let mut bloom = match BloomFilterType::new_reserved(
+                fp_rate,
+                capacity,
+                expansion,
+                validate_size_limit,
+            ) {
+                Ok(bf) => bf,
+                Err(err) => return Err(ValkeyError::Str(err.as_str())),
+            };
             let response = handle_bloom_add(
                 input_args,
                 argc,
                 curr_cmd_idx,
-                &mut bf,
+                &mut bloom,
                 multi,
                 &mut add_succeeded,
+                validate_size_limit,
             );
-            match filter_key.set_value(&BLOOM_FILTER_TYPE, bf) {
+            match filter_key.set_value(&BLOOM_FILTER_TYPE, bloom) {
                 Ok(()) => {
                     replicate_and_notify_events(ctx, filter_name, add_succeeded, true);
                     response
@@ -204,7 +218,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
     let filter_name = &input_args[curr_cmd_idx];
     curr_cmd_idx += 1;
     // Parse the error rate
-    let fp_rate = match input_args[curr_cmd_idx].to_string_lossy().parse::<f32>() {
+    let fp_rate = match input_args[curr_cmd_idx].to_string_lossy().parse::<f64>() {
         Ok(num) if num > BLOOM_FP_RATE_MIN && num < BLOOM_FP_RATE_MAX => num,
         Ok(num) if !(num > BLOOM_FP_RATE_MIN && num < BLOOM_FP_RATE_MAX) => {
             return Err(ValkeyError::Str(utils::ERROR_RATE_RANGE));
@@ -260,7 +274,17 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
     match value {
         Some(_) => Err(ValkeyError::Str(utils::ITEM_EXISTS)),
         None => {
-            let bloom = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
+            // Skip bloom filter size validation on replicated cmds.
+            let validate_size_limit = !ctx.get_flags().contains(ContextFlags::REPLICATED);
+            let bloom = match BloomFilterType::new_reserved(
+                fp_rate,
+                capacity,
+                expansion,
+                validate_size_limit,
+            ) {
+                Ok(bf) => bf,
+                Err(err) => return Err(ValkeyError::Str(err.as_str())),
+            };
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bloom) {
                 Ok(()) => {
                     replicate_and_notify_events(ctx, filter_name, false, true);
@@ -293,7 +317,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                     return Err(ValkeyError::WrongArity);
                 }
                 idx += 1;
-                fp_rate = match input_args[idx].to_string_lossy().parse::<f32>() {
+                fp_rate = match input_args[idx].to_string_lossy().parse::<f64>() {
                     Ok(num) if num > BLOOM_FP_RATE_MIN && num < BLOOM_FP_RATE_MAX => num,
                     Ok(num) if !(num > BLOOM_FP_RATE_MIN && num < BLOOM_FP_RATE_MAX) => {
                         return Err(ValkeyError::Str(utils::ERROR_RATE_RANGE));
@@ -358,10 +382,20 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
             return Err(ValkeyError::Str(utils::ERROR));
         }
     };
+    // Skip bloom filter size validation on replicated cmds.
+    let validate_size_limit = !ctx.get_flags().contains(ContextFlags::REPLICATED);
     let mut add_succeeded = false;
     match value {
-        Some(bf) => {
-            let response = handle_bloom_add(input_args, argc, idx, bf, true, &mut add_succeeded);
+        Some(bloom) => {
+            let response = handle_bloom_add(
+                input_args,
+                argc,
+                idx,
+                bloom,
+                true,
+                &mut add_succeeded,
+                validate_size_limit,
+            );
             replicate_and_notify_events(ctx, filter_name, add_succeeded, false);
             response
         }
@@ -369,10 +403,25 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
             if nocreate {
                 return Err(ValkeyError::Str(utils::NOT_FOUND));
             }
-            let mut bf = BloomFilterType::new_reserved(fp_rate, capacity, expansion);
-            let response =
-                handle_bloom_add(input_args, argc, idx, &mut bf, true, &mut add_succeeded);
-            match filter_key.set_value(&BLOOM_FILTER_TYPE, bf) {
+            let mut bloom = match BloomFilterType::new_reserved(
+                fp_rate,
+                capacity,
+                expansion,
+                validate_size_limit,
+            ) {
+                Ok(bf) => bf,
+                Err(err) => return Err(ValkeyError::Str(err.as_str())),
+            };
+            let response = handle_bloom_add(
+                input_args,
+                argc,
+                idx,
+                &mut bloom,
+                true,
+                &mut add_succeeded,
+                validate_size_limit,
+            );
+            match filter_key.set_value(&BLOOM_FILTER_TYPE, bloom) {
                 Ok(()) => {
                     replicate_and_notify_events(ctx, filter_name, add_succeeded, true);
                     response

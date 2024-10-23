@@ -42,7 +42,7 @@ else
     git clone "$REPO_URL"
     cd valkey
     git checkout "$SERVER_VERSION"
-    make
+    make -j
     cp src/valkey-server ../binaries/$SERVER_VERSION/
 fi
 

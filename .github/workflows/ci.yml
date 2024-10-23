@@ -34,7 +34,7 @@ jobs:
         git clone "${{ env.VALKEY_REPO_URL }}"
         cd valkey
         git checkout ${{ matrix.server_version }}
-        make
+        make -j
         cp src/valkey-server ../binaries/${{ matrix.server_version }}/
     - name: Set up Python
       uses: actions/setup-python@v3
@@ -87,7 +87,7 @@ jobs:
         git clone "${{ env.VALKEY_REPO_URL }}"
         cd valkey
         git checkout ${{ matrix.server_version }}
-        make SANITIZER=address SERVER_CFLAGS='-Werror' BUILD_TLS=module
+        make -j SANITIZER=address SERVER_CFLAGS='-Werror' BUILD_TLS=module
         cp src/valkey-server ../binaries/${{ matrix.server_version }}/
     - name: Set up Python
       uses: actions/setup-python@v3

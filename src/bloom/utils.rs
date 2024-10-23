@@ -1,5 +1,6 @@
-use crate::configs::{FIXED_SEED, MAX_FILTERS_PER_OBJ, TIGHTENING_RATIO};
+use crate::configs;
 use bloomfilter;
+use std::sync::atomic::Ordering;
 
 /// KeySpace Notification Events
 pub const ADD_EVENT: &str = "bloom.add";
@@ -16,13 +17,16 @@ pub const BAD_CAPACITY: &str = "ERR bad capacity";
 pub const BAD_ERROR_RATE: &str = "ERR bad error rate";
 pub const ERROR_RATE_RANGE: &str = "ERR (0 < error rate range < 1)";
 pub const CAPACITY_LARGER_THAN_0: &str = "ERR (capacity should be larger than 0)";
-pub const MAX_NUM_SCALING_FILTERS: &str = "ERR max number of scaling filters reached";
+pub const MAX_NUM_SCALING_FILTERS: &str = "ERR bloom object reached max number of filters";
 pub const UNKNOWN_ARGUMENT: &str = "ERR unknown argument received";
+pub const EXCEEDS_MAX_BLOOM_SIZE: &str =
+    "ERR operation results in filter allocation exceeding limit";
 
 #[derive(Debug, PartialEq)]
 pub enum BloomError {
     NonScalingFilterFull,
     MaxNumScalingFilters,
+    ExceedsMaxBloomSize,
 }
 
 impl BloomError {
@@ -30,6 +34,7 @@ impl BloomError {
         match self {
             BloomError::NonScalingFilterFull => NON_SCALING_FILTER_FULL,
             BloomError::MaxNumScalingFilters => MAX_NUM_SCALING_FILTERS,
+            BloomError::ExceedsMaxBloomSize => EXCEEDS_MAX_BLOOM_SIZE,
         }
     }
 }
@@ -39,20 +44,32 @@ impl BloomError {
 /// This is a generic top level structure which is not coupled to any bloom crate.
 pub struct BloomFilterType {
     pub expansion: u32,
-    pub fp_rate: f32,
+    pub fp_rate: f64,
     pub filters: Vec<BloomFilter>,
 }
 
 impl BloomFilterType {
     /// Create a new BloomFilterType object.
-    pub fn new_reserved(fp_rate: f32, capacity: u32, expansion: u32) -> BloomFilterType {
+    pub fn new_reserved(
+        fp_rate: f64,
+        capacity: u32,
+        expansion: u32,
+        validate_size_limit: bool,
+    ) -> Result<BloomFilterType, BloomError> {
+        // Reject the request, if the operation will result in creation of a bloom object containing a filter
+        // of size greater than what is allowed.
+        if validate_size_limit && !BloomFilter::validate_size(capacity, fp_rate) {
+            return Err(BloomError::ExceedsMaxBloomSize);
+        }
+        // Create the bloom filter and add to the main BloomFilter object.
         let bloom = BloomFilter::new(fp_rate, capacity);
         let filters = vec![bloom];
-        BloomFilterType {
+        let bloom = BloomFilterType {
             expansion,
             fp_rate,
             filters,
-        }
+        };
+        Ok(bloom)
     }
 
     /// Create a new BloomFilterType object from an existing one.
@@ -83,9 +100,6 @@ impl BloomFilterType {
     /// Else, we return the number of filters as the free_effort.
     /// This is similar to how the core handles aggregated objects.
     pub fn free_effort(&self) -> usize {
-        if self.filters.is_empty() {
-            return 1;
-        }
         self.filters.len()
     }
 
@@ -115,7 +129,7 @@ impl BloomFilterType {
 
     /// Add an item to the BloomFilterType object.
     /// If scaling is enabled, this can result in a new sub filter creation.
-    pub fn add_item(&mut self, item: &[u8]) -> Result<i64, BloomError> {
+    pub fn add_item(&mut self, item: &[u8], validate_size_limit: bool) -> Result<i64, BloomError> {
         // Check if item exists already.
         if self.item_exists(item) {
             return Ok(0);
@@ -132,15 +146,26 @@ impl BloomFilterType {
             if self.expansion == 0 {
                 return Err(BloomError::NonScalingFilterFull);
             }
-            if num_filters == MAX_FILTERS_PER_OBJ {
+            if num_filters == configs::MAX_FILTERS_PER_OBJ {
                 return Err(BloomError::MaxNumScalingFilters);
             }
-            // Scale out by adding a new filter with capacity bounded within the u32 range.
-            let new_fp_rate = self.fp_rate * TIGHTENING_RATIO.powi(num_filters);
+            // Scale out by adding a new filter with capacity bounded within the u32 range. false positive rate is also
+            // bound within the range f64::MIN_POSITIVE <= x < 1.0.
+            let new_fp_rate = match self.fp_rate * configs::TIGHTENING_RATIO.powi(num_filters) {
+                x if x > f64::MIN_POSITIVE => x,
+                _ => {
+                    return Err(BloomError::MaxNumScalingFilters);
+                }
+            };
             let new_capacity = match filter.capacity.checked_mul(self.expansion) {
                 Some(new_capacity) => new_capacity,
+                // We could return MaxNumScalingFilters here. u32:max cannot be reached with 64MB limit.
                 None => u32::MAX,
             };
+            // Reject the request, if the operation will result in creation of a filter of size greater than what is allowed.
+            if validate_size_limit && !BloomFilter::validate_size(new_capacity, new_fp_rate) {
+                return Err(BloomError::ExceedsMaxBloomSize);
+            }
             let mut new_filter = BloomFilter::new(new_fp_rate, new_capacity);
             // Add item.
             new_filter.set(item);
@@ -152,12 +177,12 @@ impl BloomFilterType {
     }
 }
 
-// Structure representing a single bloom filter. 200 Bytes.
-// Using Crate: "bloomfilter"
-// The reason for using u32 for num_items and capacity is because
-// we have a limit on the memory usage of a `BloomFilter` to be 64MB.
-// Based on this, we expect the number of items on the `BloomFilter` to be
-// well within the u32::MAX limit.
+/// Structure representing a single bloom filter. 200 Bytes.
+/// Using Crate: "bloomfilter"
+/// The reason for using u32 for num_items and capacity is because
+/// we have a limit on the memory usage of a `BloomFilter` to be 64MB.
+/// Based on this, we expect the number of items on the `BloomFilter` to be
+/// well within the u32::MAX limit.
 pub struct BloomFilter {
     pub bloom: bloomfilter::Bloom<[u8]>,
     pub num_items: u32,
@@ -166,11 +191,11 @@ pub struct BloomFilter {
 
 impl BloomFilter {
     /// Instantiate empty BloomFilter object.
-    pub fn new(fp_rate: f32, capacity: u32) -> BloomFilter {
+    pub fn new(fp_rate: f64, capacity: u32) -> BloomFilter {
         let bloom = bloomfilter::Bloom::new_for_fp_rate_with_seed(
             capacity as usize,
-            fp_rate as f64,
-            &FIXED_SEED,
+            fp_rate,
+            &configs::FIXED_SEED,
         );
         BloomFilter {
             bloom,
@@ -203,6 +228,29 @@ impl BloomFilter {
 
     pub fn number_of_bytes(&self) -> usize {
         std::mem::size_of::<BloomFilter>() + (self.bloom.number_of_bits() / 8) as usize
+    }
+
+    /// Caculates the number of bytes that the bloom filter will require to be allocated.
+    /// This is used before actually creating the bloom filter when checking if the filter is within the allowed size.
+    /// Returns whether the bloom filter is of a valid size or not.
+    pub fn validate_size(capacity: u32, fp_rate: f64) -> bool {
+        let bytes = bloomfilter::Bloom::<[u8]>::compute_bitmap_size(capacity as usize, fp_rate)
+            + std::mem::size_of::<BloomFilter>();
+        if bytes > configs::BLOOM_MAX_MEMORY_USAGE.load(Ordering::Relaxed) as usize {
+            return false;
+        }
+        true
+    }
+
+    /// Caculates the number of bytes that the bloom filter will require to be allocated using provided `number_of_bits`.
+    /// This is used before actually creating the bloom filter when checking if the filter is within the allowed size.
+    /// Returns whether the bloom filter is of a valid size or not.
+    pub fn validate_size_with_bits(number_of_bits: u64) -> bool {
+        let bytes = std::mem::size_of::<BloomFilter>() as u64 + number_of_bits;
+        if bytes > configs::BLOOM_MAX_MEMORY_USAGE.load(Ordering::Relaxed) as u64 {
+            return false;
+        }
+        true
     }
 
     pub fn check(&self, item: &[u8]) -> bool {
@@ -258,7 +306,7 @@ mod tests {
         let mut cardinality = bf.cardinality();
         while cardinality < capacity_needed {
             let item = format!("{}{}", rand_prefix, new_item_idx);
-            let result = bf.add_item(item.as_bytes());
+            let result = bf.add_item(item.as_bytes(), true);
             match result {
                 Ok(0) => {
                     fp_count += 1;
@@ -302,8 +350,8 @@ mod tests {
         (error_count, num_operations)
     }
 
-    fn fp_assert(error_count: i64, num_operations: i64, expected_fp_rate: f32, fp_margin: f32) {
-        let real_fp_rate = error_count as f32 / num_operations as f32;
+    fn fp_assert(error_count: i64, num_operations: i64, expected_fp_rate: f64, fp_margin: f64) {
+        let real_fp_rate = error_count as f64 / num_operations as f64;
         let fp_rate_with_margin = expected_fp_rate + fp_margin;
         assert!(
             real_fp_rate < fp_rate_with_margin,
@@ -317,8 +365,8 @@ mod tests {
         original_bloom_filter_type: &BloomFilterType,
         restored_bloom_filter_type: &BloomFilterType,
         add_operation_idx: i64,
-        expected_fp_rate: f32,
-        fp_margin: f32,
+        expected_fp_rate: f64,
+        fp_margin: f64,
         rand_prefix: &String,
     ) {
         let expected_sip_keys = [
@@ -388,21 +436,24 @@ mod tests {
     fn test_non_scaling_filter() {
         let rand_prefix = random_prefix(7);
         // 1 in every 1000 operations is expected to be a false positive.
-        let expected_fp_rate: f32 = 0.001;
+        let expected_fp_rate: f64 = 0.001;
         let initial_capacity = 10000;
         // Expansion of 0 indicates non scaling.
         let expansion = 0;
         // Validate the non scaling behavior of the bloom filter.
-        let mut bf = BloomFilterType::new_reserved(expected_fp_rate, initial_capacity, expansion);
+        let mut bf =
+            BloomFilterType::new_reserved(expected_fp_rate, initial_capacity, expansion, true)
+                .expect("Expect bloom creation to succeed");
         let (error_count, add_operation_idx) =
             add_items_till_capacity(&mut bf, initial_capacity as i64, 1, &rand_prefix);
         assert_eq!(
-            bf.add_item(b"new_item"),
+            bf.add_item(b"new_item", true),
             Err(BloomError::NonScalingFilterFull)
         );
         assert_eq!(bf.capacity(), initial_capacity as i64);
         assert_eq!(bf.cardinality(), initial_capacity as i64);
-        assert_eq!(bf.free_effort(), 1);
+        let expected_free_effort = 1;
+        assert_eq!(bf.free_effort(), expected_free_effort);
         assert!(bf.memory_usage() > 0);
         // Use a margin on the expected_fp_rate when asserting for correctness.
         let fp_margin = 0.002;
@@ -426,7 +477,7 @@ mod tests {
         // Verify restore
         let mut restore_bf = BloomFilterType::create_copy_from(&bf);
         assert_eq!(
-            restore_bf.add_item(b"new_item"),
+            restore_bf.add_item(b"new_item", true),
             Err(BloomError::NonScalingFilterFull)
         );
         verify_restored_items(
@@ -443,11 +494,13 @@ mod tests {
     fn test_scaling_filter() {
         let rand_prefix = random_prefix(7);
         // 1 in every 1000 operations is expected to be a false positive.
-        let expected_fp_rate: f32 = 0.001;
+        let expected_fp_rate: f64 = 0.001;
         let initial_capacity = 10000;
         let expansion = 2;
         let num_filters_to_scale = 5;
-        let mut bf = BloomFilterType::new_reserved(expected_fp_rate, initial_capacity, expansion);
+        let mut bf =
+            BloomFilterType::new_reserved(expected_fp_rate, initial_capacity, expansion, true)
+                .expect("Expect bloom creation to succeed");
         assert_eq!(bf.capacity(), initial_capacity as i64);
         assert_eq!(bf.cardinality(), 0);
         let mut total_error_count = 0;
@@ -465,7 +518,8 @@ mod tests {
             total_error_count += error_count;
             assert_eq!(bf.capacity(), expected_total_capacity as i64);
             assert_eq!(bf.cardinality(), expected_total_capacity as i64);
-            assert_eq!(bf.free_effort(), filter_idx as usize);
+            let expected_free_effort = filter_idx as usize;
+            assert_eq!(bf.free_effort(), expected_free_effort);
             assert!(bf.memory_usage() > 0);
         }
         // Use a margin on the expected_fp_rate when asserting for correctness.
@@ -507,7 +561,7 @@ mod tests {
     #[test]
     fn test_sip_keys() {
         // The value of sip keys generated by the sip_keys with fixed seed should be equal to the constant in configs.rs
-        let test_bloom_filter = BloomFilter::new(0.5_f32, 1000_u32);
+        let test_bloom_filter = BloomFilter::new(0.5_f64, 1000_u32);
         let test_sip_keys = test_bloom_filter.bloom.sip_keys();
         assert_eq!(test_sip_keys[0].0, FIXED_SIP_KEY_ONE_A);
         assert_eq!(test_sip_keys[0].1, FIXED_SIP_KEY_ONE_B);

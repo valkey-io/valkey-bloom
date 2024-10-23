@@ -10,17 +10,29 @@ pub const BLOOM_EXPANSION_DEFAULT: i64 = 2;
 pub const BLOOM_EXPANSION_MIN: u32 = 1;
 pub const BLOOM_EXPANSION_MAX: u32 = 10;
 
-pub const BLOOM_FP_RATE_DEFAULT: f32 = 0.001;
-pub const BLOOM_FP_RATE_MIN: f32 = 0.0;
-pub const BLOOM_FP_RATE_MAX: f32 = 1.0;
+pub const BLOOM_FP_RATE_DEFAULT: f64 = 0.001;
+pub const BLOOM_FP_RATE_MIN: f64 = 0.0;
+pub const BLOOM_FP_RATE_MAX: f64 = 1.0;
+
+// Max Memory usage allowed per bloom filter within a bloom object (64MB).
+// Beyond this threshold, a bloom object is classified as large and is exempt from defrag operations.
+// Also, write operations that result in bloom object allocation larger than this size will be rejected.
+pub const BLOOM_MAX_MEMORY_USAGE_DEFAULT: i64 = 64 * 1024 * 1024;
+pub const BLOOM_MAX_MEMORY_USAGE_MIN: i64 = 0;
+pub const BLOOM_MAX_MEMORY_USAGE_MAX: i64 = i64::MAX;
 
 lazy_static! {
     pub static ref BLOOM_CAPACITY: AtomicI64 = AtomicI64::new(BLOOM_CAPACITY_DEFAULT);
     pub static ref BLOOM_EXPANSION: AtomicI64 = AtomicI64::new(BLOOM_EXPANSION_DEFAULT);
+    pub static ref BLOOM_MAX_MEMORY_USAGE: AtomicI64 =
+        AtomicI64::new(BLOOM_MAX_MEMORY_USAGE_DEFAULT);
 }
 
 /// Constants
-pub const TIGHTENING_RATIO: f32 = 0.5;
+// Tightening ratio used during scale out for the calculation of fp_rate of every new filter within a bloom object to
+// maintain the bloom object's overall fp_rate to the configured value.
+pub const TIGHTENING_RATIO: f64 = 0.5;
+// Max number of filters allowed within a bloom object.
 pub const MAX_FILTERS_PER_OBJ: i32 = i32::MAX;
 /// Below constants are fixed seed and sip keys to help create bloom objects using the same seed and to restore the bloom objects with the same hasher which
 /// generated using rust crate bloomfilter https://crates.io/crates/bloomfilter

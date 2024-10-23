@@ -51,6 +51,46 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         info_size = client.execute_command('BF.INFO filter SIZE')
         assert memory_usage > info_size and info_size > 0
 
+    def test_too_large_bloom_obj(self):
+        client = self.server.get_new_client()
+        # Set the max allowed size per bloom filter per bloom object to be 1000 bytes.
+        assert client.execute_command('CONFIG SET bf.bloom-max-memory-usage 1000') == b'OK'
+        obj_exceeds_size_err = "operation results in filter allocation exceeding limit"
+        # Non Scaling
+        # Validate that when a cmd would have resulted in a bloom object creation with the starting filter with size
+        # greater than allowed limit, the cmd is rejected.
+        cmds = [
+            'BF.RESERVE filter 0.001 100000',
+            'BF.INSERT filter error 0.00001 capacity 10000 items item1',
+            'BF.ADD filter item1',
+            'BF.MADD filter item1 item2',
+        ]
+        for cmd in cmds:
+            self.verify_error_response(self.client, cmd, obj_exceeds_size_err)
+        # Scaling
+        # Validate that when scaling would have resulted in a filter with size greater than allowed limit, the cmd
+        # is rejected.
+        cmds = [
+            'BF.INSERT filter items new_item1',
+            'BF.ADD filter new_item1',
+            'BF.MADD filter new_item1 new_item2',
+        ]
+        # Fill a filter to capacity.
+        assert client.execute_command('BF.RESERVE filter 0.001 100 EXPANSION 10') == b'OK'
+        error_count, add_operation_idx = self.add_items_till_capacity(client, "filter", 100, 1, "item_prefix")
+        assert client.execute_command('BF.INFO filter CAPACITY') == 100
+        assert client.execute_command('BF.INFO filter ITEMS') == 100
+        assert client.execute_command('BF.INFO filter SIZE') > 400
+        assert client.execute_command('BF.INFO filter FILTERS') == 1
+        assert client.execute_command('BF.INFO filter EXPANSION') == 10
+        # Validate that scale out is rejected with appropriate error.
+        for cmd in cmds:
+            if "BF.ADD" in cmd:
+                self.verify_error_response(self.client, cmd, obj_exceeds_size_err)
+            else:
+                response = client.execute_command(cmd)
+                assert obj_exceeds_size_err in str(response[0])
+
     def test_large_allocation_when_below_maxmemory(self):
         two_megabytes = 2 * 1024 * 1024
         # The command below will result in an allocation greater than 2 MB.

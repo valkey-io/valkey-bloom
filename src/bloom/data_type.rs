@@ -9,7 +9,7 @@ use std::os::raw::c_int;
 use valkey_module::native_types::ValkeyType;
 use valkey_module::{logging, raw};
 
-const BLOOM_FILTER_TYPE_ENCODING_VERSION: i32 = 0;
+const BLOOM_FILTER_TYPE_ENCODING_VERSION: i32 = 1;
 
 pub static BLOOM_FILTER_TYPE: ValkeyType = ValkeyType::new(
     "bloomfltr",
@@ -64,7 +64,7 @@ impl ValkeyDataType for BloomFilterType {
         let Ok(expansion) = raw::load_unsigned(rdb) else {
             return None;
         };
-        let Ok(fp_rate) = raw::load_float(rdb) else {
+        let Ok(fp_rate) = raw::load_double(rdb) else {
             return None;
         };
         for i in 0..num_filters {
@@ -74,6 +74,11 @@ impl ValkeyDataType for BloomFilterType {
             let Ok(number_of_bits) = raw::load_unsigned(rdb) else {
                 return None;
             };
+            // Reject RDB Load if any bloom filter within a bloom object of a size greater than what is allowed.
+            if !BloomFilter::validate_size_with_bits(number_of_bits) {
+                logging::log_warning("Failed to restore bloom object because it contains a filter larger than the max allowed size limit.");
+                return None;
+            }
             let Ok(number_of_hash_functions) = raw::load_unsigned(rdb) else {
                 return None;
             };
