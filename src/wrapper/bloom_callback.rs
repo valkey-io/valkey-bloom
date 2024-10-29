@@ -104,7 +104,9 @@ pub unsafe extern "C" fn bloom_defrag(
     value: *mut *mut c_void,
 ) -> i32 {
     let curr_item = &*(*value).cast::<BloomFilterType>();
-    if curr_item.memory_usage() > configs::BLOOM_MAX_MEMORY_USAGE.load(Ordering::Relaxed) as usize {
+    if curr_item.memory_usage()
+        > configs::BLOOM_MEMORY_LIMIT_PER_FILTER.load(Ordering::Relaxed) as usize
+    {
         return 0;
     }
     let new_item = BloomFilterType::create_copy_from(curr_item);

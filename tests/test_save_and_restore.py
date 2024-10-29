@@ -42,7 +42,7 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         # When we try to restore this on a server with the default max allowed filter size of 64MB, start up should fail.
         updated_max_size = 180 * 1024 * 1024
         original_max_size = 64 * 1024 * 1024
-        bf_add_result_1 = client.execute_command('CONFIG SET bf.bloom-max-memory-usage ' + str(updated_max_size))
+        bf_add_result_1 = client.execute_command('CONFIG SET bf.bloom-memory-limit-per-filter ' + str(updated_max_size))
         client.execute_command('BF.RESERVE testSave 0.001 100000000')
         assert int(client.execute_command('BF.INFO testSave size')) > original_max_size
         bf_add_result_1 = client.execute_command('BF.ADD testSave item')

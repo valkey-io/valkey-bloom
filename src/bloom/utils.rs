@@ -238,7 +238,7 @@ impl BloomFilter {
     pub fn validate_size(capacity: u32, fp_rate: f64) -> bool {
         let bytes = bloomfilter::Bloom::<[u8]>::compute_bitmap_size(capacity as usize, fp_rate)
             + std::mem::size_of::<BloomFilter>();
-        if bytes > configs::BLOOM_MAX_MEMORY_USAGE.load(Ordering::Relaxed) as usize {
+        if bytes > configs::BLOOM_MEMORY_LIMIT_PER_FILTER.load(Ordering::Relaxed) as usize {
             return false;
         }
         true
@@ -249,7 +249,7 @@ impl BloomFilter {
     /// Returns whether the bloom filter is of a valid size or not.
     pub fn validate_size_with_bits(number_of_bits: u64) -> bool {
         let bytes = std::mem::size_of::<BloomFilter>() as u64 + number_of_bits;
-        if bytes > configs::BLOOM_MAX_MEMORY_USAGE.load(Ordering::Relaxed) as u64 {
+        if bytes > configs::BLOOM_MEMORY_LIMIT_PER_FILTER.load(Ordering::Relaxed) as u64 {
             return false;
         }
         true
