@@ -55,7 +55,7 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         client = self.server.get_new_client()
         # Set the max allowed size per bloom filter per bloom object to be 1000 bytes.
         assert client.execute_command('CONFIG SET bf.bloom-max-memory-usage 1000') == b'OK'
-        obj_exceeds_size_err = "operation results in filter allocation exceeding limit"
+        obj_exceeds_size_err = "operation results in filter allocation exceeding size limit"
         # Non Scaling
         # Validate that when a cmd would have resulted in a bloom object creation with the starting filter with size
         # greater than allowed limit, the cmd is rejected.

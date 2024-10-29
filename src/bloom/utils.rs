@@ -20,7 +20,7 @@ pub const CAPACITY_LARGER_THAN_0: &str = "ERR (capacity should be larger than 0)
 pub const MAX_NUM_SCALING_FILTERS: &str = "ERR bloom object reached max number of filters";
 pub const UNKNOWN_ARGUMENT: &str = "ERR unknown argument received";
 pub const EXCEEDS_MAX_BLOOM_SIZE: &str =
-    "ERR operation results in filter allocation exceeding limit";
+    "ERR operation results in filter allocation exceeding size limit";
 
 #[derive(Debug, PartialEq)]
 pub enum BloomError {
@@ -159,8 +159,10 @@ impl BloomFilterType {
             };
             let new_capacity = match filter.capacity.checked_mul(self.expansion) {
                 Some(new_capacity) => new_capacity,
-                // We could return MaxNumScalingFilters here. u32:max cannot be reached with 64MB limit.
-                None => u32::MAX,
+                None => {
+                    // u32:max cannot be reached with 64MB memory usage limit per filter even with a high fp rate (e.g. 0.9).
+                    return Err(BloomError::MaxNumScalingFilters);
+                }
             };
             // Reject the request, if the operation will result in creation of a filter of size greater than what is allowed.
             if validate_size_limit && !BloomFilter::validate_size(new_capacity, new_fp_rate) {
@@ -567,5 +569,17 @@ mod tests {
         assert_eq!(test_sip_keys[0].1, FIXED_SIP_KEY_ONE_B);
         assert_eq!(test_sip_keys[1].0, FIXED_SIP_KEY_TWO_A);
         assert_eq!(test_sip_keys[1].1, FIXED_SIP_KEY_TWO_B);
+    }
+
+    #[test]
+    fn test_exceeded_size_limit() {
+        // Validate that bloom filter allocations within bloom objects are rejected if their memory usage would be beyond
+        // the configured limit.
+        let result = BloomFilterType::new_reserved(0.5_f64, u32::MAX, 1, true);
+        assert_eq!(result.err(), Some(BloomError::ExceedsMaxBloomSize));
+        let capacity = 50000000;
+        assert!(!BloomFilter::validate_size(capacity, 0.001_f64));
+        let result2 = BloomFilterType::new_reserved(0.001_f64, capacity, 1, true);
+        assert_eq!(result2.err(), Some(BloomError::ExceedsMaxBloomSize));
     }
 }
