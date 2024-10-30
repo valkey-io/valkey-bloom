@@ -12,9 +12,9 @@ use std::os::raw::c_int;
 use valkey_module::native_types::ValkeyType;
 use valkey_module::{logging, raw};
 
-use super::utils::BLOOM_TYPE_VERSION;
-
-use super::utils::BLOOM_TYPE_VERSION;
+/// Use for decode an encode `BloomFilterType`.
+/// This value must increased when `BloomFilterType` struct change.
+pub const BLOOM_TYPE_VERSION: u8 = 1;
 
 const BLOOM_FILTER_TYPE_ENCODING_VERSION: i32 = 1;
 

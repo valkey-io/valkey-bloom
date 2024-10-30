@@ -3,6 +3,8 @@ use bloomfilter;
 use serde::{Deserialize, Serialize};
 use std::{mem, sync::atomic::Ordering};
 
+use super::data_type::BLOOM_TYPE_VERSION;
+
 /// KeySpace Notification Events
 pub const ADD_EVENT: &str = "bloom.add";
 pub const RESERVE_EVENT: &str = "bloom.reserve";
@@ -24,14 +26,18 @@ pub const EXCEEDS_MAX_BLOOM_SIZE: &str =
     "ERR operation results in filter allocation exceeding size limit";
 pub const INVALID_ARGUMENT: &str = "ERR invalid argument received";
 pub const KEY_EXISTS: &str = "-BUSYKEY Target key name already exists.";
-
-pub const BLOOM_TYPE_VERSION: u8 = 1;
+pub const ENCODE_BLOOM_FILTER_FAILED: &str = "ERR encode bloom filter failed.";
+pub const DECODE_BLOOM_FILTER_FAILED: &str = "ERR decode bloom filter failed.";
+pub const DECODE_NOT_SUPPORT_VERSION: &str = "ERR decode bloom filter failed. not support version.";
 
 #[derive(Debug, PartialEq)]
 pub enum BloomError {
     NonScalingFilterFull,
     MaxNumScalingFilters,
     ExceedsMaxBloomSize,
+    EncodeBloomFilterFailed,
+    DecodeBloomFilterFailed,
+    DecodeNotSupportVersion,
 }
 
 impl BloomError {
@@ -40,6 +46,9 @@ impl BloomError {
             BloomError::NonScalingFilterFull => NON_SCALING_FILTER_FULL,
             BloomError::MaxNumScalingFilters => MAX_NUM_SCALING_FILTERS,
             BloomError::ExceedsMaxBloomSize => EXCEEDS_MAX_BLOOM_SIZE,
+            BloomError::EncodeBloomFilterFailed => ENCODE_BLOOM_FILTER_FAILED,
+            BloomError::DecodeBloomFilterFailed => DECODE_BLOOM_FILTER_FAILED,
+            BloomError::DecodeNotSupportVersion => DECODE_NOT_SUPPORT_VERSION,
         }
     }
 }
@@ -198,26 +207,30 @@ impl BloomFilterType {
         Ok(0)
     }
 
-    pub fn encoder_bloom_filter(&self) -> Result<Vec<u8>, Box<bincode::ErrorKind>> {
-        let vec = bincode::serialize(self)?;
-        Ok(vec)
+    /// Serializes bloomFilter to a byte array.
+    pub fn encode_bloom_filter(&self) -> Result<Vec<u8>, BloomError> {
+        match bincode::serialize(self) {
+            Ok(vec) => Ok(vec),
+            Err(_) => Err(BloomError::EncodeBloomFilterFailed),
+        }
     }
 
-    pub fn decoder_bloom_filter(
-        decoded_bytes: &[u8],
-    ) -> Result<BloomFilterType, Box<dyn std::error::Error>> {
+    /// Deserialize a byte array to bloom filter.
+    /// We will need to handle any current or previous version and deserializing the bytes into a bloom object of the running Module's current version `BLOOM_TYPE_VERSION`.
+    pub fn decode_bloom_filter(decoded_bytes: &[u8]) -> Result<BloomFilterType, BloomError> {
         if decoded_bytes.is_empty() {
-            return Err(bincode::Error::new(bincode::ErrorKind::Custom(
-                String::from("invalid data length"),
-            )));
+            return Err(BloomError::DecodeBloomFilterFailed);
         }
         let version = decoded_bytes[0];
         match version {
             1 => {
                 // always use new version to init bloomFilterType.
                 // This is to ensure that the new fields can be recognized when the object is serialized and deserialized in the future.
-                let (_, expansion, fp_rate, filters): (u8, u32, f32, Vec<BloomFilter>) =
-                    bincode::deserialize(decoded_bytes)?;
+                let (_, expansion, fp_rate, filters): (u8, u32, f64, Vec<BloomFilter>) =
+                    match bincode::deserialize(decoded_bytes) {
+                        Ok(_v) => _v,
+                        Err(_) => return Err(BloomError::DecodeBloomFilterFailed),
+                    };
                 let filter = BloomFilterType {
                     version: BLOOM_TYPE_VERSION,
                     expansion,
@@ -227,9 +240,7 @@ impl BloomFilterType {
                 Ok(filter)
             }
 
-            _ => Err(bincode::Error::new(bincode::ErrorKind::Custom(
-                String::from("not support version"),
-            ))),
+            _ => Err(BloomError::DecodeNotSupportVersion),
         }
     }
 }
@@ -668,14 +679,14 @@ mod tests {
     }
 
     #[test]
-    fn test_bf_encoder_and_decoder() {
+    fn test_bf_encode_and_decode() {
         // arrange: prepare bloom filter
-        let mut bf = BloomFilterType::new_reserved(0.5_f32, 1000_u32, 2);
+        let mut bf = BloomFilterType::new_reserved(0.5_f64, 1000_u32, 2, true).unwrap();
         let key = "key";
-        let _ = bf.add_item(key.as_bytes());
+        let _ = bf.add_item(key.as_bytes(), true);
 
         // action
-        let encoder_result = bf.encoder_bloom_filter();
+        let encoder_result = bf.encode_bloom_filter();
 
         // assert
         // encoder sucess
@@ -683,7 +694,7 @@ mod tests {
         let vec = encoder_result.unwrap();
 
         // assert decode:
-        let new_bf_result = BloomFilterType::decoder_bloom_filter(&vec);
+        let new_bf_result = BloomFilterType::decode_bloom_filter(&vec);
 
         assert!(new_bf_result.is_ok());
 
@@ -696,5 +707,47 @@ mod tests {
 
         // contains key
         assert!(new_bf.item_exists(key.as_bytes()));
+    }
+
+    #[test]
+    fn test_bf_decode_when_unsupported_version_should_failed() {
+        // arrange: prepare bloom filter
+        let mut bf = BloomFilterType::new_reserved(0.5_f64, 1000_u32, 2, true).unwrap();
+        let key = "key";
+        let _ = bf.add_item(key.as_bytes(), true).unwrap();
+
+        let encoder_result = bf.encode_bloom_filter();
+        assert!(encoder_result.is_ok());
+
+        // 1. unsupport version should return error
+        let mut vec = encoder_result.unwrap();
+        vec[0] = 10;
+
+        // assert decode:
+        // should return error
+        assert_eq!(
+            BloomFilterType::decode_bloom_filter(&vec).err(),
+            Some(BloomError::DecodeNotSupportVersion)
+        );
+    }
+
+    #[test]
+    fn test_bf_decode_when_bytes_is_empty_should_failed() {
+        // arrange: prepare bloom filter
+        let mut bf = BloomFilterType::new_reserved(0.5_f64, 1000_u32, 2, true).unwrap();
+        let key = "key";
+        let _ = bf.add_item(key.as_bytes(), true);
+
+        let encoder_result = bf.encode_bloom_filter();
+        assert!(encoder_result.is_ok());
+
+        // 1. unsupport version should return error
+        let vec: Vec<u8> = Vec::new();
+        // assert decode:
+        // should return error
+        assert_eq!(
+            BloomFilterType::decode_bloom_filter(&vec).err(),
+            Some(BloomError::DecodeBloomFilterFailed)
+        );
     }
 }

@@ -518,7 +518,7 @@ pub fn bloom_filter_load(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
         None => {
             // if filter not exists, create it.
             let hex = value.to_vec();
-            let bf = match BloomFilterType::decoder_bloom_filter(&hex) {
+            let bf = match BloomFilterType::decode_bloom_filter(&hex) {
                 Ok(v) => v,
                 Err(_) => {
                     return Err(ValkeyError::Str(utils::ERROR));
@@ -532,37 +532,5 @@ pub fn bloom_filter_load(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
                 Err(_) => Err(ValkeyError::Str(utils::ERROR)),
             }
         }
-    }
-}
-
-pub fn bloom_filter_dump(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
-    let argc = input_args.len();
-    if argc != 2 {
-        return Err(ValkeyError::WrongArity);
-    }
-    let idx = 1;
-    let filter_name = &input_args[idx];
-    // find filter
-    let filter_key = ctx.open_key_writable(filter_name);
-
-    let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
-        Ok(v) => v,
-        Err(_) => {
-            // not found return error
-            return Err(ValkeyError::Str(utils::INVALID_ARGUMENT));
-        }
-    };
-    match value {
-        Some(bf) => {
-            let hex = match bf.encoder_bloom_filter() {
-                Ok(val) => val,
-                Err(err) => {
-                    println!("encode bloom filter failed. {err}");
-                    return Err(ValkeyError::Str(utils::ERROR));
-                }
-            };
-            Ok(ValkeyValue::StringBuffer(hex))
-        }
-        None => Ok(ValkeyValue::Null),
     }
 }

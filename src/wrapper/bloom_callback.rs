@@ -6,6 +6,7 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
 use std::sync::atomic::Ordering;
+use valkey_module::logging::{log_io_error, ValkeyLogLevel};
 use valkey_module::raw;
 use valkey_module::{RedisModuleDefragCtx, RedisModuleString};
 
@@ -58,13 +59,20 @@ pub unsafe extern "C" fn bloom_aof_rewrite(
     value: *mut c_void,
 ) {
     let filter = &*value.cast::<BloomFilterType>();
-    let hex = match filter.encoder_bloom_filter() {
+    let hex = match filter.encode_bloom_filter() {
         Ok(val) => val,
-        Err(err) => panic!("encode bloom filter failed. {err}"),
+        Err(err) => {
+            log_io_error(
+                aof,
+                ValkeyLogLevel::Warning,
+                &format!("encode bloom filter failed. {}", err.as_str()),
+            );
+            return;
+        }
     };
     let cmd = CString::new("BF.LOAD").unwrap();
     let fmt = CString::new("sb").unwrap();
-    raw::RedisModule_EmitAOF.unwrap()(
+    valkey_module::raw::RedisModule_EmitAOF.unwrap()(
         aof,
         cmd.as_ptr(),
         fmt.as_ptr(),

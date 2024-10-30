@@ -74,12 +74,6 @@ fn bloom_load_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     command_handler::bloom_filter_load(ctx, &args)
 }
 
-/// Command handler for:
-/// BF.DUMP <key>
-fn bloom_dump_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
-    command_handler::bloom_filter_dump(ctx, &args)
-}
-
 //////////////////////////////////////////////////////
 
 valkey_module! {
@@ -100,8 +94,7 @@ valkey_module! {
         ["BF.RESERVE", bloom_reserve_command, "write fast deny-oom", 1, 1, 1],
         ["BF.INFO", bloom_info_command, "readonly fast", 1, 1, 1],
         ["BF.INSERT", bloom_insert_command, "write fast deny-oom", 1, 1, 1],
-        ["BF.LOAD", bloom_load_command, "write fast deny-oom", 1, 1, 1],
-        ["BF.DUMP", bloom_dump_command, "readonly fast", 1, 1, 1]
+        ["BF.LOAD", bloom_load_command, "write fast deny-oom", 1, 1, 1]
     ],
     configurations: [
         i64: [

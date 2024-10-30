@@ -17,7 +17,6 @@ BF.RESERVE
 BF.INFO
 BF.INSERT
 BF.LOAD
-BF.DUMP
 ```
 
 Build instructions for Linux.
