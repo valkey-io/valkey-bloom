@@ -139,3 +139,27 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
             item_prefix,
         )
         self.fp_assert(error_count, num_operations, expected_fp_rate, fp_margin)
+
+    def verify_bloom_metrics(self, info_response, expected_memory, expected_num_objects, expected_num_filters):
+        """
+            Verify the metric values are recorded properly, the expected values are as below
+            expected_memory: the size of the memory used by the objects
+            expected_num_objects: the number of module objects stored
+            expected_num_filters: the number of filters currently created
+        """
+        response_str = info_response.decode('utf-8')
+        lines = response_str.split('\r\n')
+        total_memory_bites = -1
+        num_objects = -1
+        num_filters = -1
+        for line in lines:
+            if line.startswith('bf_bloom_total_memory_bytes:'):
+                total_memory_bites = int(line.split(':')[1])
+            elif line.startswith('bf_bloom_num_objects:'):
+                num_objects = int(line.split(':')[1])
+            elif line.startswith('bf_bloom_num_filters_across_objects'):
+                num_filters = int(line.split(':')[1])
+
+        assert total_memory_bites == expected_memory 
+        assert num_objects == expected_num_objects
+        assert num_filters == expected_num_filters

@@ -13,6 +13,8 @@ homepage = "https://github.com/valkey-io/valkey-bloom"
 
 [dependencies]
 valkey-module = "0.1.2"
+valkey-module-macros = "0"
+linkme = "0"
 bloomfilter = "1.0.13"
 lazy_static = "1.4.0"
 libc = "0.2"

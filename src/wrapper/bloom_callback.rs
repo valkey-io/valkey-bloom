@@ -61,7 +61,7 @@ pub unsafe extern "C" fn bloom_aux_load(
 }
 
 /// # Safety
-/// Free a bloom item
+/// Free a bloom object
 pub unsafe extern "C" fn bloom_free(value: *mut c_void) {
     drop(Box::from_raw(value.cast::<BloomFilterType>()));
 }

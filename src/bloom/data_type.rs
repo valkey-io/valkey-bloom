@@ -3,8 +3,11 @@ use crate::bloom::utils::BloomFilterType;
 use crate::configs::{
     FIXED_SIP_KEY_ONE_A, FIXED_SIP_KEY_ONE_B, FIXED_SIP_KEY_TWO_A, FIXED_SIP_KEY_TWO_B,
 };
+use crate::metrics::BLOOM_NUM_OBJECTS;
+use crate::metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES;
 use crate::wrapper::bloom_callback;
 use crate::MODULE_NAME;
+use std::mem;
 use std::os::raw::c_int;
 use valkey_module::native_types::ValkeyType;
 use valkey_module::{logging, raw};
@@ -108,6 +111,11 @@ impl ValkeyDataType for BloomFilterType {
             );
             filters.push(filter);
         }
+        BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
+            mem::size_of::<BloomFilterType>(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        BLOOM_NUM_OBJECTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let item = BloomFilterType {
             expansion: expansion as u32,
             fp_rate,

@@ -1,6 +1,6 @@
-use crate::configs;
+use crate::{configs, metrics};
 use bloomfilter;
-use std::sync::atomic::Ordering;
+use std::{mem, sync::atomic::Ordering};
 
 /// KeySpace Notification Events
 pub const ADD_EVENT: &str = "bloom.add";
@@ -39,7 +39,7 @@ impl BloomError {
     }
 }
 
-/// The BloomFilterType structure. 32 bytes.
+/// The BloomFilterType structure. 40 bytes.
 /// Can contain one or more filters.
 /// This is a generic top level structure which is not coupled to any bloom crate.
 pub struct BloomFilterType {
@@ -61,6 +61,12 @@ impl BloomFilterType {
         if validate_size_limit && !BloomFilter::validate_size(capacity, fp_rate) {
             return Err(BloomError::ExceedsMaxBloomSize);
         }
+        metrics::BLOOM_NUM_OBJECTS.fetch_add(1, Ordering::Relaxed);
+        metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
+            mem::size_of::<BloomFilterType>(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+
         // Create the bloom filter and add to the main BloomFilter object.
         let bloom = BloomFilter::new(fp_rate, capacity);
         let filters = vec![bloom];
@@ -75,6 +81,11 @@ impl BloomFilterType {
     /// Create a new BloomFilterType object from an existing one.
     pub fn create_copy_from(from_bf: &BloomFilterType) -> BloomFilterType {
         let mut filters = Vec::new();
+        metrics::BLOOM_NUM_OBJECTS.fetch_add(1, Ordering::Relaxed);
+        metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
+            mem::size_of::<BloomFilterType>(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
         for filter in &from_bf.filters {
             let new_filter = BloomFilter::create_copy_from(filter);
             filters.push(new_filter);
@@ -199,11 +210,16 @@ impl BloomFilter {
             fp_rate,
             &configs::FIXED_SEED,
         );
-        BloomFilter {
+        let fltr = BloomFilter {
             bloom,
             num_items: 0,
             capacity,
-        }
+        };
+        metrics::BLOOM_NUM_FILTERS_ACROSS_OBJECTS
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES
+            .fetch_add(fltr.number_of_bytes(), std::sync::atomic::Ordering::Relaxed);
+        fltr
     }
 
     /// Create a new BloomFilter from dumped information (RDB load).
@@ -221,11 +237,16 @@ impl BloomFilter {
             number_of_hash_functions,
             sip_keys,
         );
-        BloomFilter {
+        let fltr = BloomFilter {
             bloom,
             num_items,
             capacity,
-        }
+        };
+        metrics::BLOOM_NUM_FILTERS_ACROSS_OBJECTS
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES
+            .fetch_add(fltr.number_of_bytes(), std::sync::atomic::Ordering::Relaxed);
+        fltr
     }
 
     pub fn number_of_bytes(&self) -> usize {
@@ -273,6 +294,24 @@ impl BloomFilter {
             bf.num_items,
             bf.capacity,
         )
+    }
+}
+
+impl Drop for BloomFilterType {
+    fn drop(&mut self) {
+        metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_sub(
+            std::mem::size_of::<BloomFilterType>(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        metrics::BLOOM_NUM_OBJECTS.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+impl Drop for BloomFilter {
+    fn drop(&mut self) {
+        metrics::BLOOM_NUM_FILTERS_ACROSS_OBJECTS
+            .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES
+            .fetch_sub(self.number_of_bytes(), std::sync::atomic::Ordering::Relaxed);
     }
 }
 

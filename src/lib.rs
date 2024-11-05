@@ -1,10 +1,13 @@
+use metrics::bloom_info_handler;
 use valkey_module::configuration::ConfigurationFlags;
-use valkey_module::{valkey_module, Context, Status, ValkeyResult, ValkeyString};
+use valkey_module::{valkey_module, Context, InfoContext, Status, ValkeyResult, ValkeyString};
 pub mod bloom;
 pub mod configs;
+pub mod metrics;
 pub mod wrapper;
 use crate::bloom::command_handler;
 use crate::bloom::data_type::BLOOM_FILTER_TYPE;
+use valkey_module_macros::info_command_handler;
 
 pub const MODULE_NAME: &str = "bf";
 
@@ -55,6 +58,14 @@ fn bloom_info_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 /// BF.INSERT <key> [ERROR <fp_error>] [CAPACITY <capacity>] [EXPANSION <expansion>] [NOCREATE] [NONSCALING] ITEMS <item> [<item> ...]
 fn bloom_insert_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     command_handler::bloom_filter_insert(ctx, &args)
+}
+
+///
+/// Module Info
+///
+#[info_command_handler]
+fn info_handler(ctx: &InfoContext, _for_crash_report: bool) -> ValkeyResult<()> {
+    bloom_info_handler(ctx)
 }
 
 //////////////////////////////////////////////////////
