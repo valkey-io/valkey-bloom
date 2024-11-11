@@ -6,6 +6,8 @@ lazy_static! {
     pub static ref BLOOM_NUM_OBJECTS: AtomicU64 = AtomicU64::new(0);
     pub static ref BLOOM_OBJECT_TOTAL_MEMORY_BYTES: AtomicUsize = AtomicUsize::new(0);
     pub static ref BLOOM_NUM_FILTERS_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
+    pub static ref BLOOM_NUM_ITEMS_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
+    pub static ref BLOOM_CAPACITY_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
 }
 
 pub fn bloom_info_handler(ctx: &InfoContext) -> ValkeyResult<()> {
@@ -24,6 +26,18 @@ pub fn bloom_info_handler(ctx: &InfoContext) -> ValkeyResult<()> {
         .field(
             "bloom_num_filters_across_objects",
             BLOOM_NUM_FILTERS_ACROSS_OBJECTS
+                .load(Ordering::Relaxed)
+                .to_string(),
+        )?
+        .field(
+            "bloom_num_items_across_objects",
+            BLOOM_NUM_ITEMS_ACROSS_OBJECTS
+                .load(Ordering::Relaxed)
+                .to_string(),
+        )?
+        .field(
+            "bloom_capacity_across_objects",
+            BLOOM_CAPACITY_ACROSS_OBJECTS
                 .load(Ordering::Relaxed)
                 .to_string(),
         )?

@@ -58,11 +58,11 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         
         # Check info for scaled bloomfilter matches metrics data for bloomfilter
         new_info_obj = self.client.execute_command(f'BF.INFO key1')
-        self.verify_bloom_metrics(self.client.execute_command("INFO bf"),  new_info_obj[3], 1, 2)
+        self.verify_bloom_metrics(self.client.execute_command("INFO bf"),  new_info_obj[3], 1, 2, 7500, 21000)
 
         # Check bloomfilter size has increased
         assert new_info_obj[3] > info_obj[3]
 
         # Delete the scaled bloomfilter to check both filters are deleted and metrics stats are set accordingly
         self.client.execute_command('DEL key1')
-        self.verify_bloom_metrics(self.client.execute_command("INFO bf"), 0, 0, 0)
+        self.verify_bloom_metrics(self.client.execute_command("INFO bf"), 0, 0, 0, 0, 0)

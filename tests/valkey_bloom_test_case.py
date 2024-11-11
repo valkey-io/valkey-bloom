@@ -140,7 +140,7 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
         )
         self.fp_assert(error_count, num_operations, expected_fp_rate, fp_margin)
 
-    def verify_bloom_metrics(self, info_response, expected_memory, expected_num_objects, expected_num_filters):
+    def verify_bloom_metrics(self, info_response, expected_memory, expected_num_objects, expected_num_filters, expected_num_items, expected_sum_capacity):
         """
             Verify the metric values are recorded properly, the expected values are as below
             expected_memory: the size of the memory used by the objects
@@ -152,6 +152,8 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
         total_memory_bites = -1
         num_objects = -1
         num_filters = -1
+        num_items = -1
+        sum_capacity = -1
         for line in lines:
             if line.startswith('bf_bloom_total_memory_bytes:'):
                 total_memory_bites = int(line.split(':')[1])
@@ -159,7 +161,13 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
                 num_objects = int(line.split(':')[1])
             elif line.startswith('bf_bloom_num_filters_across_objects'):
                 num_filters = int(line.split(':')[1])
+            elif line.startswith('bf_bloom_num_items_across_objects'):
+                num_items = int(line.split(':')[1])
+            elif line.startswith('bf_bloom_capacity_across_objects'):
+                sum_capacity = int(line.split(':')[1])
 
         assert total_memory_bites == expected_memory 
         assert num_objects == expected_num_objects
         assert num_filters == expected_num_filters
+        assert num_items == expected_num_items
+        assert sum_capacity == expected_sum_capacity

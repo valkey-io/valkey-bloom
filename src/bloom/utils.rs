@@ -175,6 +175,8 @@ impl BloomFilterType {
                 // Add item.
                 filter.set(item);
                 filter.num_items += 1;
+                metrics::BLOOM_NUM_ITEMS_ACROSS_OBJECTS
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 return Ok(1);
             }
             // Non Scaling Filters that are filled to capacity cannot handle more inserts.
@@ -208,6 +210,9 @@ impl BloomFilterType {
             new_filter.set(item);
             new_filter.num_items += 1;
             self.filters.push(new_filter);
+
+            metrics::BLOOM_NUM_ITEMS_ACROSS_OBJECTS
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return Ok(1);
         }
         Ok(0)
@@ -289,6 +294,12 @@ impl BloomFilterType {
                         filter.number_of_bytes(),
                         std::sync::atomic::Ordering::Relaxed,
                     );
+                    metrics::BLOOM_NUM_ITEMS_ACROSS_OBJECTS.fetch_add(
+                        filter.num_items.into(),
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                    metrics::BLOOM_CAPACITY_ACROSS_OBJECTS
+                        .fetch_add(filter.capacity.into(), std::sync::atomic::Ordering::Relaxed);
                 }
 
                 Ok(item)
@@ -329,6 +340,8 @@ impl BloomFilter {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES
             .fetch_add(fltr.number_of_bytes(), std::sync::atomic::Ordering::Relaxed);
+        metrics::BLOOM_CAPACITY_ACROSS_OBJECTS
+            .fetch_add(capacity.into(), std::sync::atomic::Ordering::Relaxed);
         fltr
     }
 
@@ -356,6 +369,10 @@ impl BloomFilter {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES
             .fetch_add(fltr.number_of_bytes(), std::sync::atomic::Ordering::Relaxed);
+        metrics::BLOOM_NUM_ITEMS_ACROSS_OBJECTS
+            .fetch_add(num_items.into(), std::sync::atomic::Ordering::Relaxed);
+        metrics::BLOOM_CAPACITY_ACROSS_OBJECTS
+            .fetch_add(capacity.into(), std::sync::atomic::Ordering::Relaxed);
         fltr
     }
 
@@ -422,6 +439,10 @@ impl Drop for BloomFilter {
             .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
         metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES
             .fetch_sub(self.number_of_bytes(), std::sync::atomic::Ordering::Relaxed);
+        metrics::BLOOM_NUM_ITEMS_ACROSS_OBJECTS
+            .fetch_sub(self.num_items.into(), std::sync::atomic::Ordering::Relaxed);
+        metrics::BLOOM_CAPACITY_ACROSS_OBJECTS
+            .fetch_sub(self.capacity.into(), std::sync::atomic::Ordering::Relaxed);
     }
 }
 
