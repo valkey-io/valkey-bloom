@@ -1,4 +1,7 @@
-use crate::{configs, metrics};
+use crate::{
+    configs::{self, BLOOM_FP_RATE_MAX, BLOOM_FP_RATE_MIN},
+    metrics,
+};
 use bloomfilter;
 use serde::{Deserialize, Serialize};
 use std::{mem, sync::atomic::Ordering};
@@ -24,11 +27,11 @@ pub const MAX_NUM_SCALING_FILTERS: &str = "ERR bloom object reached max number o
 pub const UNKNOWN_ARGUMENT: &str = "ERR unknown argument received";
 pub const EXCEEDS_MAX_BLOOM_SIZE: &str =
     "ERR operation results in filter allocation exceeding size limit";
-pub const INVALID_ARGUMENT: &str = "ERR invalid argument received";
 pub const KEY_EXISTS: &str = "-BUSYKEY Target key name already exists.";
 pub const ENCODE_BLOOM_FILTER_FAILED: &str = "ERR encode bloom filter failed.";
 pub const DECODE_BLOOM_FILTER_FAILED: &str = "ERR decode bloom filter failed.";
-pub const DECODE_NOT_SUPPORT_VERSION: &str = "ERR decode bloom filter failed. not support version.";
+pub const DECODE_UNSUPPORTED_VERSION: &str =
+    "ERR decode bloom filter failed.  Unsupported version.";
 
 #[derive(Debug, PartialEq)]
 pub enum BloomError {
@@ -38,6 +41,7 @@ pub enum BloomError {
     EncodeBloomFilterFailed,
     DecodeBloomFilterFailed,
     DecodeNotSupportVersion,
+    ErrorRateRange,
 }
 
 impl BloomError {
@@ -48,7 +52,8 @@ impl BloomError {
             BloomError::ExceedsMaxBloomSize => EXCEEDS_MAX_BLOOM_SIZE,
             BloomError::EncodeBloomFilterFailed => ENCODE_BLOOM_FILTER_FAILED,
             BloomError::DecodeBloomFilterFailed => DECODE_BLOOM_FILTER_FAILED,
-            BloomError::DecodeNotSupportVersion => DECODE_NOT_SUPPORT_VERSION,
+            BloomError::DecodeNotSupportVersion => DECODE_UNSUPPORTED_VERSION,
+            BloomError::ErrorRateRange => ERROR_RATE_RANGE,
         }
     }
 }
@@ -58,7 +63,6 @@ impl BloomError {
 /// This is a generic top level structure which is not coupled to any bloom crate.
 #[derive(Serialize, Deserialize)]
 pub struct BloomFilterType {
-    pub version: u8,
     pub expansion: u32,
     pub fp_rate: f64,
     pub filters: Vec<BloomFilter>,
@@ -87,7 +91,6 @@ impl BloomFilterType {
         let bloom = BloomFilter::new(fp_rate, capacity);
         let filters = vec![bloom];
         let bloom = BloomFilterType {
-            version: BLOOM_TYPE_VERSION,
             expansion,
             fp_rate,
             filters,
@@ -108,7 +111,6 @@ impl BloomFilterType {
             filters.push(new_filter);
         }
         BloomFilterType {
-            version: BLOOM_TYPE_VERSION,
             expansion: from_bf.expansion,
             fp_rate: from_bf.fp_rate,
             filters,
@@ -210,7 +212,12 @@ impl BloomFilterType {
     /// Serializes bloomFilter to a byte array.
     pub fn encode_bloom_filter(&self) -> Result<Vec<u8>, BloomError> {
         match bincode::serialize(self) {
-            Ok(vec) => Ok(vec),
+            Ok(vec) => {
+                let mut final_vec = Vec::with_capacity(1 + vec.len());
+                final_vec.push(BLOOM_TYPE_VERSION);
+                final_vec.extend(vec);
+                Ok(final_vec)
+            }
             Err(_) => Err(BloomError::EncodeBloomFilterFailed),
         }
     }
@@ -226,18 +233,47 @@ impl BloomFilterType {
             1 => {
                 // always use new version to init bloomFilterType.
                 // This is to ensure that the new fields can be recognized when the object is serialized and deserialized in the future.
-                let (_, expansion, fp_rate, filters): (u8, u32, f64, Vec<BloomFilter>) =
-                    match bincode::deserialize(decoded_bytes) {
-                        Ok(_v) => _v,
-                        Err(_) => return Err(BloomError::DecodeBloomFilterFailed),
+                let (expansion, fp_rate, filters): (u32, f64, Vec<BloomFilter>) =
+                    match bincode::deserialize::<(u32, f64, Vec<BloomFilter>)>(&decoded_bytes[1..])
+                    {
+                        Ok(values) => {
+                            if values.0 == 0 {
+                                return Err(BloomError::NonScalingFilterFull);
+                            }
+                            if values.1 < BLOOM_FP_RATE_MIN || values.1 > BLOOM_FP_RATE_MAX {
+                                return Err(BloomError::ErrorRateRange);
+                            }
+                            if values.2.len() >= configs::MAX_FILTERS_PER_OBJ as usize {
+                                return Err(BloomError::MaxNumScalingFilters);
+                            }
+                            values
+                        }
+                        Err(_) => {
+                            return Err(BloomError::DecodeBloomFilterFailed);
+                        }
                     };
-                let filter = BloomFilterType {
-                    version: BLOOM_TYPE_VERSION,
+                let item = BloomFilterType {
                     expansion,
                     fp_rate,
                     filters,
                 };
-                Ok(filter)
+                // add bloom filter type metrics.
+                metrics::BLOOM_NUM_OBJECTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
+                    mem::size_of::<BloomFilterType>(),
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+                // add bloom filter metrics.
+                for filter in &item.filters {
+                    metrics::BLOOM_NUM_FILTERS_ACROSS_OBJECTS
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
+                        filter.number_of_bytes(),
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                }
+
+                Ok(item)
             }
 
             _ => Err(BloomError::DecodeNotSupportVersion),
@@ -695,7 +731,6 @@ mod tests {
 
         // assert decode:
         let new_bf_result = BloomFilterType::decode_bloom_filter(&vec);
-
         assert!(new_bf_result.is_ok());
 
         let new_bf = new_bf_result.unwrap();

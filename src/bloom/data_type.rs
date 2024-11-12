@@ -121,7 +121,6 @@ impl ValkeyDataType for BloomFilterType {
         );
         BLOOM_NUM_OBJECTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let item = BloomFilterType {
-            version: BLOOM_TYPE_VERSION,
             expansion: expansion as u32,
             fp_rate,
             filters,

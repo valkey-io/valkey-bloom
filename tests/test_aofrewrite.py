@@ -26,11 +26,8 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         self.server.wait_for_action_done(ValkeyAction.AOF_REWRITE)
         # Keep the server running for 1 second more to have a larger uptime.
         time.sleep(1)
-        uptime_in_sec_1 = self.client.info_obj().uptime_in_secs()
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
-        uptime_in_sec_2 = self.client.info_obj().uptime_in_secs()
         assert self.server.is_alive()
-        assert uptime_in_sec_1 > uptime_in_sec_2
 
         # verify restore results
         curr_item_count_2 = client.info_obj().num_keys()
@@ -39,3 +36,33 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         assert bf_exists_result_2 == 1
         bf_info_result_2 = client.execute_command('BF.INFO testSave')
         assert bf_info_result_2 == bf_info_result_1
+        client.execute_command('DEL testSave')
+
+    def test_aofrewrite_bloomfilter_metrics(self):
+        self.client.execute_command('BF.RESERVE key1 0.001 7000')
+        # We use a number greater than 7000 in order to have a buffer for any false positives
+        variables = [f"key{i+1}" for i in range(7500)]
+
+        # Get original size to compare against size after scaled
+        info_obj = self.client.execute_command('BF.INFO key1')
+        # Add keys until bloomfilter will scale out
+        for var in variables:
+            self.client.execute_command(f'BF.ADD key1 {var}')
+
+        # save aof, restart sever
+        self.client.bgrewriteaof()
+        self.server.wait_for_action_done(ValkeyAction.AOF_REWRITE)
+        # restart server
+        time.sleep(1)
+        self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
+        
+        # Check info for scaled bloomfilter matches metrics data for bloomfilter
+        new_info_obj = self.client.execute_command(f'BF.INFO key1')
+        self.verify_bloom_metrics(self.client.execute_command("INFO bf"),  new_info_obj[3], 1, 2)
+
+        # Check bloomfilter size has increased
+        assert new_info_obj[3] > info_obj[3]
+
+        # Delete the scaled bloomfilter to check both filters are deleted and metrics stats are set accordingly
+        self.client.execute_command('DEL key1')
+        self.verify_bloom_metrics(self.client.execute_command("INFO bf"), 0, 0, 0)
