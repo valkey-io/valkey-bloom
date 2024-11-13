@@ -60,18 +60,18 @@ fn bloom_insert_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult 
     command_handler::bloom_filter_insert(ctx, &args)
 }
 
+/// Command handler for:
+/// BF.LOAD <key> data
+fn bloom_load_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    command_handler::bloom_filter_load(ctx, &args)
+}
+
 ///
 /// Module Info
 ///
 #[info_command_handler]
 fn info_handler(ctx: &InfoContext, _for_crash_report: bool) -> ValkeyResult<()> {
     bloom_info_handler(ctx)
-}
-
-/// Command handler for:
-/// BF.LOAD <key> data
-fn bloom_load_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
-    command_handler::bloom_filter_load(ctx, &args)
 }
 
 //////////////////////////////////////////////////////

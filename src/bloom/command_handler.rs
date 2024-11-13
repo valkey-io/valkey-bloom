@@ -518,10 +518,11 @@ pub fn bloom_filter_load(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
         None => {
             // if filter not exists, create it.
             let hex = value.to_vec();
-            let bf = match BloomFilterType::decode_bloom_filter(&hex) {
+            let validate_size_limit = !ctx.get_flags().contains(ContextFlags::REPLICATED);
+            let bf = match BloomFilterType::decode_bloom_filter(&hex, validate_size_limit) {
                 Ok(v) => v,
-                Err(_) => {
-                    return Err(ValkeyError::Str(utils::ERROR));
+                Err(err) => {
+                    return Err(ValkeyError::Str(err.as_str()));
                 }
             };
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bf) {

@@ -12,7 +12,7 @@ use std::os::raw::c_int;
 use valkey_module::native_types::ValkeyType;
 use valkey_module::{logging, raw};
 
-/// Use for decode an encode `BloomFilterType`.
+/// Used for decoding and encoding `BloomFilterType`. Currently used in AOF Rewrite.
 /// This value must increased when `BloomFilterType` struct change.
 pub const BLOOM_TYPE_VERSION: u8 = 1;
 
@@ -25,7 +25,6 @@ pub static BLOOM_FILTER_TYPE: ValkeyType = ValkeyType::new(
         version: raw::REDISMODULE_TYPE_METHOD_VERSION as u64,
         rdb_load: Some(bloom_callback::bloom_rdb_load),
         rdb_save: Some(bloom_callback::bloom_rdb_save),
-        // TODO
         aof_rewrite: Some(bloom_callback::bloom_aof_rewrite),
 
         mem_usage: Some(bloom_callback::bloom_mem_usage),
