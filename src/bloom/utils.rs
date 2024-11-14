@@ -809,7 +809,6 @@ mod tests {
         let _ = bf.add_item(key.as_bytes(), true);
         let origin_expansion = bf.expansion;
         let origin_fp_rate = bf.fp_rate;
-        let origin_size = configs::BLOOM_MEMORY_LIMIT_PER_FILTER.load(Ordering::SeqCst);
         // unsupoort expansion
         bf.expansion = 0;
 
@@ -837,14 +836,14 @@ mod tests {
         );
         bf.fp_rate = origin_fp_rate;
 
-        // 3. unsupport filter size:
-        configs::BLOOM_MEMORY_LIMIT_PER_FILTER.store(1, Ordering::SeqCst);
-        let vec = bf.encode_bloom_filter().unwrap();
+        // 3. build a larger than 64mb filter
+        let extra_large_filter =
+            BloomFilterType::new_reserved(0.01_f64, 57000000, 2, false).unwrap();
+        let vec = extra_large_filter.encode_bloom_filter().unwrap();
         // should return error
         assert_eq!(
             BloomFilterType::decode_bloom_filter(&vec, true).err(),
             Some(BloomError::ExceedsMaxBloomSize)
         );
-        configs::BLOOM_MEMORY_LIMIT_PER_FILTER.store(origin_size, Ordering::SeqCst);
     }
 }
