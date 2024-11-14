@@ -1,5 +1,7 @@
 use crate::{
-    configs::{self, BLOOM_FP_RATE_MAX, BLOOM_FP_RATE_MIN},
+    configs::{
+        self, BLOOM_EXPANSION_MAX, BLOOM_EXPANSION_MIN, BLOOM_FP_RATE_MAX, BLOOM_FP_RATE_MIN,
+    },
     metrics,
 };
 use bloomfilter;
@@ -242,7 +244,7 @@ impl BloomFilterType {
                     match bincode::deserialize::<(u32, f64, Vec<BloomFilter>)>(&decoded_bytes[1..])
                     {
                         Ok(values) => {
-                            if values.0 == 0 {
+                            if !(BLOOM_EXPANSION_MIN..=BLOOM_EXPANSION_MAX).contains(&values.0) {
                                 return Err(BloomError::BadExpansion);
                             }
                             if !(values.1 > BLOOM_FP_RATE_MIN && values.1 < BLOOM_FP_RATE_MAX) {
@@ -813,12 +815,20 @@ mod tests {
         bf.expansion = 0;
 
         let encoder_result = bf.encode_bloom_filter();
-        assert!(encoder_result.is_ok());
 
         // 1. unsupport expansion
         let vec = encoder_result.unwrap();
         // assert decode:
         // should return error
+        assert_eq!(
+            BloomFilterType::decode_bloom_filter(&vec, true).err(),
+            Some(BloomError::BadExpansion)
+        );
+
+        // 1.2 Exceeded the maximum expansion
+        bf.expansion = BLOOM_EXPANSION_MAX + 1;
+
+        let vec = bf.encode_bloom_filter().unwrap();
         assert_eq!(
             BloomFilterType::decode_bloom_filter(&vec, true).err(),
             Some(BloomError::BadExpansion)
