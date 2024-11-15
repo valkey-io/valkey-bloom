@@ -62,6 +62,10 @@ def expect(lhs, op, rhs):
 def wait_for_true(expr):
     return expr
 
+class ValkeyAction(Enum):
+    AOF_REWRITE = 1
+
+
 class ValkeyInfo:
     """Contains information about a point in time of Valkey"""
     def __init__(self, info):
@@ -70,6 +74,10 @@ class ValkeyInfo:
     def is_save_in_progress(self):
         """Return True if there is a save in progress."""
         return self.info['rdb_bgsave_in_progress'] == 1
+    
+    def is_aof_rewrite_in_progress(self):
+        """Return True if there is a aof rwrite in progress."""
+        return self.info['aof_rewrite_in_progress'] == 1
 
     def num_keys(self, db=0):
         if 'db{}'.format(db) in self.info:
@@ -103,6 +111,9 @@ class ValkeyInfo:
 
     def was_save_successful(self):
         return self.info['rdb_last_bgsave_status'] == 'ok'
+
+    def was_aofrewrite_successful(self):
+        return self.info['aof_last_bgrewrite_status'] == 'ok'
 
     def used_memory(self):
         return self.info['used_memory']
@@ -412,6 +423,36 @@ class ValkeyServerHandle(object):
     def is_rdb_done_loading(self):
         rdb_load_log = "Done loading RDB"
         return self.verify_string_in_logfile(rdb_load_log) == True
+
+
+    @wait()
+    def _wait_for_action(self, action, client=None):
+        """Wait the default number of seconds for the action to finish"""
+        if client is None:
+            client = self.client
+        
+        if action == ValkeyAction.AOF_REWRITE:
+            if client.info_obj().is_aof_rewrite_in_progress():
+                return False
+        else:
+            raise RuntimeError("{} not support".format(action))
+        return True
+    
+    def _action_success_flag(self, action, client):
+        if action == ValkeyAction.AOF_REWRITE:
+            return client.info_obj().was_aofrewrite_successful()
+        else:
+            raise RuntimeError("{} not support".format(action))
+
+    def wait_for_action_done(self, action, client=None):
+        """Wait for the some action to complete, failing if it does not complete successfully in the timeout"""
+        if client is None:
+            client = self.client
+        try:
+            self._wait_for_action(action, client)
+        except WaitTimeout:
+            raise RuntimeError("{} failed to complete in time".format(action))
+        assert(self._action_success_flag(action, client))
 
 class ValkeyTestCaseBase:
     testdir = "test-data"

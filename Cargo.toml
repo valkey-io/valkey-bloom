@@ -15,9 +15,11 @@ homepage = "https://github.com/valkey-io/valkey-bloom"
 valkey-module = "0.1.2"
 valkey-module-macros = "0"
 linkme = "0"
-bloomfilter = "1.0.13"
+bloomfilter = { version = "1.0.13", features = ["serde"] }
 lazy_static = "1.4.0"
 libc = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+bincode = "1.3"
 
 [dev-dependencies]
 rand = "0.8"

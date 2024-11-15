@@ -16,6 +16,7 @@ BF.CARD
 BF.RESERVE
 BF.INFO
 BF.INSERT
+BF.LOAD
 ```
 
 Build instructions for Linux.

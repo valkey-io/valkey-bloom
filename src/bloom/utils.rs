@@ -1,6 +1,14 @@
-use crate::{configs, metrics};
+use crate::{
+    configs::{
+        self, BLOOM_EXPANSION_MAX, BLOOM_EXPANSION_MIN, BLOOM_FP_RATE_MAX, BLOOM_FP_RATE_MIN,
+    },
+    metrics,
+};
 use bloomfilter;
+use serde::{Deserialize, Serialize};
 use std::{mem, sync::atomic::Ordering};
+
+use super::data_type::BLOOM_TYPE_VERSION;
 
 /// KeySpace Notification Events
 pub const ADD_EVENT: &str = "bloom.add";
@@ -21,12 +29,22 @@ pub const MAX_NUM_SCALING_FILTERS: &str = "ERR bloom object reached max number o
 pub const UNKNOWN_ARGUMENT: &str = "ERR unknown argument received";
 pub const EXCEEDS_MAX_BLOOM_SIZE: &str =
     "ERR operation results in filter allocation exceeding size limit";
+pub const KEY_EXISTS: &str = "BUSYKEY Target key name already exists.";
+pub const ENCODE_BLOOM_FILTER_FAILED: &str = "ERR encode bloom filter failed.";
+pub const DECODE_BLOOM_FILTER_FAILED: &str = "ERR decode bloom filter failed.";
+pub const DECODE_UNSUPPORTED_VERSION: &str =
+    "ERR decode bloom filter failed.  Unsupported version.";
 
 #[derive(Debug, PartialEq)]
 pub enum BloomError {
     NonScalingFilterFull,
     MaxNumScalingFilters,
     ExceedsMaxBloomSize,
+    EncodeBloomFilterFailed,
+    DecodeBloomFilterFailed,
+    DecodeUnsupportedVersion,
+    ErrorRateRange,
+    BadExpansion,
 }
 
 impl BloomError {
@@ -35,6 +53,11 @@ impl BloomError {
             BloomError::NonScalingFilterFull => NON_SCALING_FILTER_FULL,
             BloomError::MaxNumScalingFilters => MAX_NUM_SCALING_FILTERS,
             BloomError::ExceedsMaxBloomSize => EXCEEDS_MAX_BLOOM_SIZE,
+            BloomError::EncodeBloomFilterFailed => ENCODE_BLOOM_FILTER_FAILED,
+            BloomError::DecodeBloomFilterFailed => DECODE_BLOOM_FILTER_FAILED,
+            BloomError::DecodeUnsupportedVersion => DECODE_UNSUPPORTED_VERSION,
+            BloomError::ErrorRateRange => ERROR_RATE_RANGE,
+            BloomError::BadExpansion => BAD_EXPANSION,
         }
     }
 }
@@ -42,6 +65,7 @@ impl BloomError {
 /// The BloomFilterType structure. 40 bytes.
 /// Can contain one or more filters.
 /// This is a generic top level structure which is not coupled to any bloom crate.
+#[derive(Serialize, Deserialize)]
 pub struct BloomFilterType {
     pub expansion: u32,
     pub fp_rate: f64,
@@ -188,6 +212,91 @@ impl BloomFilterType {
         }
         Ok(0)
     }
+
+    /// Serializes bloomFilter to a byte array.
+    pub fn encode_bloom_filter(&self) -> Result<Vec<u8>, BloomError> {
+        match bincode::serialize(self) {
+            Ok(vec) => {
+                let mut final_vec = Vec::with_capacity(1 + vec.len());
+                final_vec.push(BLOOM_TYPE_VERSION);
+                final_vec.extend(vec);
+                Ok(final_vec)
+            }
+            Err(_) => Err(BloomError::EncodeBloomFilterFailed),
+        }
+    }
+
+    /// Deserialize a byte array to bloom filter.
+    /// We will need to handle any current or previous version and deserializing the bytes into a bloom object of the running Module's current version `BLOOM_TYPE_VERSION`.
+    pub fn decode_bloom_filter(
+        decoded_bytes: &[u8],
+        validate_size_limit: bool,
+    ) -> Result<BloomFilterType, BloomError> {
+        if decoded_bytes.is_empty() {
+            return Err(BloomError::DecodeBloomFilterFailed);
+        }
+        let version = decoded_bytes[0];
+        match version {
+            1 => {
+                // always use new version to init bloomFilterType.
+                // This is to ensure that the new fields can be recognized when the object is serialized and deserialized in the future.
+                let (expansion, fp_rate, filters): (u32, f64, Vec<BloomFilter>) =
+                    match bincode::deserialize::<(u32, f64, Vec<BloomFilter>)>(&decoded_bytes[1..])
+                    {
+                        Ok(values) => {
+                            if !(BLOOM_EXPANSION_MIN..=BLOOM_EXPANSION_MAX).contains(&values.0) {
+                                return Err(BloomError::BadExpansion);
+                            }
+                            if !(values.1 > BLOOM_FP_RATE_MIN && values.1 < BLOOM_FP_RATE_MAX) {
+                                return Err(BloomError::ErrorRateRange);
+                            }
+                            if values.2.len() >= configs::MAX_FILTERS_PER_OBJ as usize {
+                                return Err(BloomError::MaxNumScalingFilters);
+                            }
+                            for _filter in values.2.iter() {
+                                // Reject the request, if the operation will result in creation of a filter of size greater than what is allowed.
+                                if validate_size_limit
+                                    && _filter.number_of_bytes()
+                                        > configs::BLOOM_MEMORY_LIMIT_PER_FILTER
+                                            .load(Ordering::Relaxed)
+                                            as usize
+                                {
+                                    return Err(BloomError::ExceedsMaxBloomSize);
+                                }
+                            }
+                            values
+                        }
+                        Err(_) => {
+                            return Err(BloomError::DecodeBloomFilterFailed);
+                        }
+                    };
+                let item = BloomFilterType {
+                    expansion,
+                    fp_rate,
+                    filters,
+                };
+                // add bloom filter type metrics.
+                metrics::BLOOM_NUM_OBJECTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
+                    mem::size_of::<BloomFilterType>(),
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+                // add bloom filter metrics.
+                for filter in &item.filters {
+                    metrics::BLOOM_NUM_FILTERS_ACROSS_OBJECTS
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
+                        filter.number_of_bytes(),
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                }
+
+                Ok(item)
+            }
+
+            _ => Err(BloomError::DecodeUnsupportedVersion),
+        }
+    }
 }
 
 /// Structure representing a single bloom filter. 200 Bytes.
@@ -196,6 +305,7 @@ impl BloomFilterType {
 /// we have a limit on the memory usage of a `BloomFilter` to be 64MB.
 /// Based on this, we expect the number of items on the `BloomFilter` to be
 /// well within the u32::MAX limit.
+#[derive(Serialize, Deserialize)]
 pub struct BloomFilter {
     pub bloom: bloomfilter::Bloom<[u8]>,
     pub num_items: u32,
@@ -620,5 +730,130 @@ mod tests {
         assert!(!BloomFilter::validate_size(capacity, 0.001_f64));
         let result2 = BloomFilterType::new_reserved(0.001_f64, capacity, 1, true);
         assert_eq!(result2.err(), Some(BloomError::ExceedsMaxBloomSize));
+    }
+
+    #[test]
+    fn test_bf_encode_and_decode() {
+        // arrange: prepare bloom filter
+        let mut bf = BloomFilterType::new_reserved(0.5_f64, 1000_u32, 2, true).unwrap();
+        let key = "key";
+        let _ = bf.add_item(key.as_bytes(), true);
+
+        // action
+        let encoder_result = bf.encode_bloom_filter();
+
+        // assert
+        // encoder sucess
+        assert!(encoder_result.is_ok());
+        let vec = encoder_result.unwrap();
+
+        // assert decode:
+        let new_bf_result = BloomFilterType::decode_bloom_filter(&vec, true);
+
+        let new_bf = new_bf_result.unwrap();
+
+        // verify new_bf and bf
+        assert_eq!(bf.fp_rate, new_bf.fp_rate);
+        assert_eq!(bf.expansion, new_bf.expansion);
+        assert_eq!(bf.capacity(), new_bf.capacity());
+
+        // contains key
+        assert!(new_bf.item_exists(key.as_bytes()));
+    }
+
+    #[test]
+    fn test_bf_decode_when_unsupported_version_should_failed() {
+        // arrange: prepare bloom filter
+        let mut bf = BloomFilterType::new_reserved(0.5_f64, 1000_u32, 2, true).unwrap();
+        let key = "key";
+        let _ = bf.add_item(key.as_bytes(), true).unwrap();
+
+        let encoder_result = bf.encode_bloom_filter();
+        assert!(encoder_result.is_ok());
+
+        // 1. unsupport version should return error
+        let mut vec = encoder_result.unwrap();
+        vec[0] = 10;
+
+        // assert decode:
+        // should return error
+        assert_eq!(
+            BloomFilterType::decode_bloom_filter(&vec, true).err(),
+            Some(BloomError::DecodeUnsupportedVersion)
+        );
+    }
+
+    #[test]
+    fn test_bf_decode_when_bytes_is_empty_should_failed() {
+        // arrange: prepare bloom filter
+        let mut bf = BloomFilterType::new_reserved(0.5_f64, 1000_u32, 2, true).unwrap();
+        let key = "key";
+        let _ = bf.add_item(key.as_bytes(), true);
+
+        let encoder_result = bf.encode_bloom_filter();
+        assert!(encoder_result.is_ok());
+
+        // 1. empty vec should return error
+        let vec: Vec<u8> = Vec::new();
+        // assert decode:
+        // should return error
+        assert_eq!(
+            BloomFilterType::decode_bloom_filter(&vec, true).err(),
+            Some(BloomError::DecodeBloomFilterFailed)
+        );
+    }
+
+    #[test]
+    fn test_bf_decode_when_bytes_is_exceed_limit_should_failed() {
+        // arrange: prepare bloom filter
+        let mut bf = BloomFilterType::new_reserved(0.5_f64, 1000_u32, 2, true).unwrap();
+        let key = "key";
+        let _ = bf.add_item(key.as_bytes(), true);
+        let origin_expansion = bf.expansion;
+        let origin_fp_rate = bf.fp_rate;
+        // unsupoort expansion
+        bf.expansion = 0;
+
+        let encoder_result = bf.encode_bloom_filter();
+
+        // 1. unsupport expansion
+        let vec = encoder_result.unwrap();
+        // assert decode:
+        // should return error
+        assert_eq!(
+            BloomFilterType::decode_bloom_filter(&vec, true).err(),
+            Some(BloomError::BadExpansion)
+        );
+
+        // 1.2 Exceeded the maximum expansion
+        bf.expansion = BLOOM_EXPANSION_MAX + 1;
+
+        let vec = bf.encode_bloom_filter().unwrap();
+        assert_eq!(
+            BloomFilterType::decode_bloom_filter(&vec, true).err(),
+            Some(BloomError::BadExpansion)
+        );
+        // recover
+        bf.expansion = origin_expansion;
+
+        // 2. unsupport fp_rate
+        bf.fp_rate = -0.5;
+        let vec = bf.encode_bloom_filter().unwrap();
+        // should return error
+        assert_eq!(
+            BloomFilterType::decode_bloom_filter(&vec, true).err(),
+            Some(BloomError::ErrorRateRange)
+        );
+        bf.fp_rate = origin_fp_rate;
+
+        // 3. build a larger than 64mb filter
+        let extra_large_filter =
+            BloomFilterType::new_reserved(0.01_f64, 57000000, 2, false).unwrap();
+        let vec = extra_large_filter.encode_bloom_filter().unwrap();
+        // should return error
+        assert_eq!(
+            BloomFilterType::decode_bloom_filter(&vec, true).err(),
+            Some(BloomError::ExceedsMaxBloomSize)
+        );
     }
 }
