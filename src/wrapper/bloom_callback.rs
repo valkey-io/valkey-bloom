@@ -119,6 +119,21 @@ pub unsafe extern "C" fn bloom_copy(
 }
 
 /// # Safety
+/// Raw handler for the Bloom digest callback.
+pub unsafe extern "C" fn bloom_digest(md: *mut raw::RedisModuleDigest, value: *mut c_void) {
+    let mut dig = Digest::new(md);
+    let val = &*(value.cast::<BloomFilterType>());
+    dig.add_long_long(val.expansion.into());
+    dig.add_string_buffer(&val.fp_rate.to_le_bytes());
+    for filter in &val.filters {
+        dig.add_string_buffer(&filter.bloom.bitmap());
+        dig.add_long_long(filter.num_items.into());
+        dig.add_long_long(filter.capacity.into());
+    }
+    dig.end_sequence();
+}
+
+/// # Safety
 /// Raw handler for the Bloom object's free_effort callback.
 pub unsafe extern "C" fn bloom_free_effort(
     _from_key: *mut RedisModuleString,

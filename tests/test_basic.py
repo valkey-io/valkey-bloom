@@ -39,6 +39,9 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         assert client.execute_command('EXISTS filter') == 1
         mexists_result = client.execute_command('BF.MEXISTS filter item1 item2 item3 item4')
         assert len(madd_result) == 4 and len(mexists_result) == 4
+        # cmd debug digest
+        client.debug_digest()
+        debug_filter = client.execute_command('DEBUG DIGEST-VALUE filter')
         assert client.execute_command('COPY filter new_filter') == 1
         assert client.execute_command('EXISTS new_filter') == 1
         copy_mexists_result = client.execute_command('BF.MEXISTS new_filter item1 item2 item3 item4')

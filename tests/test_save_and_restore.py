@@ -14,7 +14,9 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         bf_info_result_1 = client.execute_command('BF.INFO testSave')
         assert(len(bf_info_result_1)) != 0
         curr_item_count_1 = client.info_obj().num_keys()
-        
+        client.debug_digest()
+        debug_save_1 = client.execute_command('DEBUG DIGEST-VALUE testSave')
+
         # save rdb, restart sever
         client.bgsave()
         self.server.wait_for_save_done()

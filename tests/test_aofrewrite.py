@@ -20,7 +20,10 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         bf_info_result_1 = client.execute_command('BF.INFO testSave')
         assert(len(bf_info_result_1)) != 0
         curr_item_count_1 = client.info_obj().num_keys()
-        
+        # cmd debug digest
+        client.debug_digest()
+        debug_original = client.execute_command('DEBUG DIGEST-VALUE testSave')
+
         # save aof, restart sever
         client.bgrewriteaof()
         self.server.wait_for_action_done(ValkeyAction.AOF_REWRITE)
