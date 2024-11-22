@@ -3,6 +3,7 @@ use crate::bloom::utils::BloomFilterType;
 use crate::configs::{
     FIXED_SIP_KEY_ONE_A, FIXED_SIP_KEY_ONE_B, FIXED_SIP_KEY_TWO_A, FIXED_SIP_KEY_TWO_B,
 };
+use crate::digest::Digest;
 use crate::metrics::BLOOM_NUM_OBJECTS;
 use crate::metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES;
 use crate::wrapper::bloom_callback;
@@ -26,10 +27,10 @@ pub static BLOOM_FILTER_TYPE: ValkeyType = ValkeyType::new(
         rdb_load: Some(bloom_callback::bloom_rdb_load),
         rdb_save: Some(bloom_callback::bloom_rdb_save),
         aof_rewrite: Some(bloom_callback::bloom_aof_rewrite),
+        digest: Some(bloom_callback::bloom_digest),
 
         mem_usage: Some(bloom_callback::bloom_mem_usage),
         // TODO
-        digest: None,
         free: Some(bloom_callback::bloom_free),
 
         aux_load: Some(bloom_callback::bloom_aux_load),

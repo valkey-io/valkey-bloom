@@ -35,7 +35,9 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         bf_exists_result_2 = client.execute_command('BF.EXISTS testSave item')
         assert bf_exists_result_2 == 1
         bf_info_result_2 = client.execute_command('BF.INFO testSave')
+        debug_save_2 = client.execute_command('DEBUG DIGEST-VALUE testSave')
         assert bf_info_result_2 == bf_info_result_1
+        assert debug_save_2 == debug_save_1
 
     def test_restore_failed_large_bloom_filter(self):
         client = self.server.get_new_client()

@@ -38,7 +38,9 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         bf_exists_result_2 = client.execute_command('BF.EXISTS testSave item')
         assert bf_exists_result_2 == 1
         bf_info_result_2 = client.execute_command('BF.INFO testSave')
+        debug_restore = client.execute_command('DEBUG DIGEST-VALUE testSave')
         assert bf_info_result_2 == bf_info_result_1
+        assert debug_restore == debug_original
         client.execute_command('DEL testSave')
 
     def test_aofrewrite_bloomfilter_metrics(self):

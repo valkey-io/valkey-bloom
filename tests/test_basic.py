@@ -43,9 +43,11 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         client.debug_digest()
         debug_filter = client.execute_command('DEBUG DIGEST-VALUE filter')
         assert client.execute_command('COPY filter new_filter') == 1
+        debug_new_filter = client.execute_command('DEBUG DIGEST-VALUE filter')
         assert client.execute_command('EXISTS new_filter') == 1
         copy_mexists_result = client.execute_command('BF.MEXISTS new_filter item1 item2 item3 item4')
         assert mexists_result == copy_mexists_result
+        assert debug_new_filter == debug_filter
     
     def test_memory_usage_cmd(self):
         client = self.server.get_new_client()
