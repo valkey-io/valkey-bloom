@@ -3,10 +3,10 @@ use crate::bloom::utils::BloomFilterType;
 use crate::configs::{
     FIXED_SIP_KEY_ONE_A, FIXED_SIP_KEY_ONE_B, FIXED_SIP_KEY_TWO_A, FIXED_SIP_KEY_TWO_B,
 };
-use crate::digest::Digest;
 use crate::metrics::BLOOM_NUM_OBJECTS;
 use crate::metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES;
 use crate::wrapper::bloom_callback;
+use crate::wrapper::digest;
 use crate::MODULE_NAME;
 use std::mem;
 use std::os::raw::c_int;
