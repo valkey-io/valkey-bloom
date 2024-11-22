@@ -104,7 +104,7 @@ impl BloomFilterType {
 
     /// Create a new BloomFilterType object from an existing one.
     pub fn create_copy_from(from_bf: &BloomFilterType) -> BloomFilterType {
-        let mut filters = Vec::new();
+        let mut filters: Vec<BloomFilter> = Vec::with_capacity(from_bf.filters.len());
         metrics::BLOOM_NUM_OBJECTS.fetch_add(1, Ordering::Relaxed);
         metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
             mem::size_of::<BloomFilterType>(),

@@ -59,7 +59,6 @@ pub trait ValkeyDataType {
 impl ValkeyDataType for BloomFilterType {
     /// Callback to load and parse RDB data of a bloom item and create it.
     fn load_from_rdb(rdb: *mut raw::RedisModuleIO, encver: i32) -> Option<BloomFilterType> {
-        let mut filters = Vec::new();
         if encver > BLOOM_FILTER_TYPE_ENCODING_VERSION {
             logging::log_warning(format!("{}: Cannot load bloomfltr data type of version {} because it is higher than the loaded module's bloomfltr supported version {}", MODULE_NAME, encver, BLOOM_FILTER_TYPE_ENCODING_VERSION).as_str());
             return None;
@@ -73,6 +72,8 @@ impl ValkeyDataType for BloomFilterType {
         let Ok(fp_rate) = raw::load_double(rdb) else {
             return None;
         };
+        let mut filters: Vec<BloomFilter> = Vec::with_capacity(num_filters as usize);
+
         for i in 0..num_filters {
             let Ok(bitmap) = raw::load_string_buffer(rdb) else {
                 return None;
