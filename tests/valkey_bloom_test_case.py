@@ -110,6 +110,9 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
         """
         copy_filter_name = "filter_copy"
         assert client.execute_command(f'COPY {original_filter_name} {copy_filter_name}') == 1
+        debug_filter = client.execute_command(f'DEBUG DIGEST-VALUE {original_filter_name}')
+        debug_copy = client.execute_command(f'DEBUG DIGEST-VALUE {copy_filter_name}')
+        assert debug_copy == debug_filter
         assert client.execute_command('DBSIZE') == 2
         copy_info = client.execute_command(f'BF.INFO {copy_filter_name}')
         copy_it = iter(copy_info)

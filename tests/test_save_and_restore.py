@@ -14,8 +14,10 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         bf_info_result_1 = client.execute_command('BF.INFO testSave')
         assert(len(bf_info_result_1)) != 0
         curr_item_count_1 = client.info_obj().num_keys()
-        client.debug_digest()
-        debug_save_1 = client.execute_command('DEBUG DIGEST-VALUE testSave')
+        # cmd debug digest
+        cmd_debug = client.debug_digest()
+        assert cmd_debug != None or 0000000000000000000000000000000000000000
+        debug_save = client.execute_command('DEBUG DIGEST-VALUE testSave')
 
         # save rdb, restart sever
         client.bgsave()
@@ -28,6 +30,11 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         assert self.server.is_alive()
         assert uptime_in_sec_1 > uptime_in_sec_2
         assert self.server.is_rdb_done_loading()
+        debug_restart = client.debug_digest()
+        assert debug_restart != None or 0000000000000000000000000000000000000000
+        debug_restore = client.execute_command('DEBUG DIGEST-VALUE testSave')
+        assert debug_restart == cmd_debug
+        assert debug_restore == debug_save
 
         # verify restore results
         curr_item_count_2 = client.info_obj().num_keys()
@@ -35,9 +42,7 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         bf_exists_result_2 = client.execute_command('BF.EXISTS testSave item')
         assert bf_exists_result_2 == 1
         bf_info_result_2 = client.execute_command('BF.INFO testSave')
-        debug_save_2 = client.execute_command('DEBUG DIGEST-VALUE testSave')
         assert bf_info_result_2 == bf_info_result_1
-        assert debug_save_2 == debug_save_1
 
     def test_restore_failed_large_bloom_filter(self):
         client = self.server.get_new_client()

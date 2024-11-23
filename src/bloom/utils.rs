@@ -411,6 +411,10 @@ impl BloomFilter {
         self.bloom.set(item)
     }
 
+    pub fn sip_keys(&self) -> [(u64, u64); 2] {
+        self.bloom.sip_keys()
+    }
+
     /// Create a new BloomFilter from an existing BloomFilter object (COPY command).
     pub fn create_copy_from(bf: &BloomFilter) -> BloomFilter {
         BloomFilter::from_existing(

@@ -40,13 +40,17 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         mexists_result = client.execute_command('BF.MEXISTS filter item1 item2 item3 item4')
         assert len(madd_result) == 4 and len(mexists_result) == 4
         # cmd debug digest
-        client.debug_digest()
+        cmd_debug = client.debug_digest()
+        assert cmd_debug != None or 0000000000000000000000000000000000000000
         debug_filter = client.execute_command('DEBUG DIGEST-VALUE filter')
         assert client.execute_command('COPY filter new_filter') == 1
+        debug_copy = client.debug_digest()
+        assert debug_copy != None or 0000000000000000000000000000000000000000
         debug_new_filter = client.execute_command('DEBUG DIGEST-VALUE filter')
         assert client.execute_command('EXISTS new_filter') == 1
         copy_mexists_result = client.execute_command('BF.MEXISTS new_filter item1 item2 item3 item4')
         assert mexists_result == copy_mexists_result
+        assert cmd_debug != debug_copy
         assert debug_new_filter == debug_filter
     
     def test_memory_usage_cmd(self):

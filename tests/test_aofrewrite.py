@@ -21,8 +21,9 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         assert(len(bf_info_result_1)) != 0
         curr_item_count_1 = client.info_obj().num_keys()
         # cmd debug digest
-        client.debug_digest()
-        debug_original = client.execute_command('DEBUG DIGEST-VALUE testSave')
+        cmd_debug = client.debug_digest()
+        assert cmd_debug != None or 0000000000000000000000000000000000000000
+        debug_save = client.execute_command('DEBUG DIGEST-VALUE testSave')
 
         # save aof, restart sever
         client.bgrewriteaof()
@@ -31,6 +32,11 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         time.sleep(1)
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
+        debug_restart = client.debug_digest()
+        assert debug_restart != None or 0000000000000000000000000000000000000000
+        debug_restore = client.execute_command('DEBUG DIGEST-VALUE testSave')
+        assert debug_restart == cmd_debug
+        assert debug_restore == debug_save
 
         # verify restore results
         curr_item_count_2 = client.info_obj().num_keys()
@@ -38,9 +44,7 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         bf_exists_result_2 = client.execute_command('BF.EXISTS testSave item')
         assert bf_exists_result_2 == 1
         bf_info_result_2 = client.execute_command('BF.INFO testSave')
-        debug_restore = client.execute_command('DEBUG DIGEST-VALUE testSave')
         assert bf_info_result_2 == bf_info_result_1
-        assert debug_restore == debug_original
         client.execute_command('DEL testSave')
 
     def test_aofrewrite_bloomfilter_metrics(self):
@@ -54,12 +58,23 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         for var in variables:
             self.client.execute_command(f'BF.ADD key1 {var}')
 
+        # cmd debug digest
+        cmd_debug = self.client.debug_digest()
+        assert cmd_debug != None or 0000000000000000000000000000000000000000
+        debug_save = self.client.execute_command('DEBUG DIGEST-VALUE key1')
+
         # save aof, restart sever
         self.client.bgrewriteaof()
         self.server.wait_for_action_done(ValkeyAction.AOF_REWRITE)
         # restart server
         time.sleep(1)
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
+        assert self.server.is_alive()
+        debug_restart = self.client.debug_digest()
+        assert debug_restart != None or 0000000000000000000000000000000000000000
+        debug_restore = self.client.execute_command('DEBUG DIGEST-VALUE key1')
+        assert debug_restart == cmd_debug
+        assert debug_restore == debug_save
         
         # Check info for scaled bloomfilter matches metrics data for bloomfilter
         new_info_obj = self.client.execute_command(f'BF.INFO key1')

@@ -6,7 +6,7 @@ use crate::configs::{
 use crate::metrics::BLOOM_NUM_OBJECTS;
 use crate::metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES;
 use crate::wrapper::bloom_callback;
-use crate::wrapper::digest;
+use crate::wrapper::digest::Digest;
 use crate::MODULE_NAME;
 use std::mem;
 use std::os::raw::c_int;
@@ -55,6 +55,7 @@ pub static BLOOM_FILTER_TYPE: ValkeyType = ValkeyType::new(
 
 pub trait ValkeyDataType {
     fn load_from_rdb(rdb: *mut raw::RedisModuleIO, encver: i32) -> Option<BloomFilterType>;
+    fn debug_digest(&self, dig: Digest);
 }
 
 impl ValkeyDataType for BloomFilterType {
@@ -126,6 +127,22 @@ impl ValkeyDataType for BloomFilterType {
             filters,
         };
         Some(item)
+    }
+
+    /// A callback function that is used for DEBUG DIGEST.
+    fn debug_digest(&self, mut dig: Digest) {
+        dig.add_long_long(self.expansion.into());
+        dig.add_string_buffer(&self.fp_rate.to_le_bytes());
+        for filter in &self.filters {
+            dig.add_string_buffer(&filter.bloom.bitmap());
+            for &(key1, key2) in &filter.sip_keys() {
+                dig.add_long_long(key1 as i64);
+                dig.add_long_long(key2 as i64);
+            }
+            dig.add_long_long(filter.num_items.into());
+            dig.add_long_long(filter.capacity.into());
+        }
+        dig.end_sequence();
     }
 }
 
