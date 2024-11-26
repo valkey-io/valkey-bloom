@@ -80,7 +80,7 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
         total_error_count = 0
         add_operation_idx = 0
         for filter_idx in range(1, num_filters_to_scale + 1):
-            expected_total_capacity = initial_capacity * ((expansion ** filter_idx) - 1)
+            expected_total_capacity = self.calculate_expected_capacity(initial_capacity, expansion, filter_idx)
             error_count, new_add_operation_idx = self.add_items_till_capacity(client, filter_name, expected_total_capacity, add_operation_idx + 1, item_prefix)
             add_operation_idx = new_add_operation_idx
             total_error_count += error_count

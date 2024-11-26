@@ -7,11 +7,22 @@ import string
 
 class ValkeyBloomTestCaseBase(ValkeyTestCase):
 
+    # Global Parameterized Configs
+    use_random_seed = 'no'
+
     def get_custom_args(self):
         self.set_server_version(os.environ['SERVER_VERSION'])
         return {
             'loadmodule': os.getenv('MODULE_PATH'),
+            'bf.bloom-use-random-seed': self.use_random_seed,
         }
+
+    @pytest.fixture(autouse=True)
+    def use_random_seed_fixture(self, bloom_config_parameterization):
+        if bloom_config_parameterization == "random-seed":
+            self.use_random_seed = "yes"
+        elif bloom_config_parameterization == "fixed-seed":
+            self.use_random_seed = "no"
 
     def verify_error_response(self, client, cmd, expected_err_reply):
         try:
@@ -142,6 +153,19 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
             item_prefix,
         )
         self.fp_assert(error_count, num_operations, expected_fp_rate, fp_margin)
+
+    def calculate_expected_capacity(self, initial_capacity, expansion, num_filters):
+        """
+            This function accepts the starting capacity (of the first filter), expansion and number of filters in
+            the object to calculate the expected total capacity (across all the filters) within the bloom object.
+        """
+        curr_filt_capacity = initial_capacity
+        total_capacity = curr_filt_capacity
+        for i in range(2, num_filters + 1):
+            new_filt_capacity = curr_filt_capacity * expansion
+            curr_filt_capacity = new_filt_capacity
+            total_capacity += curr_filt_capacity
+        return total_capacity
 
     def verify_bloom_metrics(self, info_response, expected_memory, expected_num_objects, expected_num_filters, expected_num_items, expected_sum_capacity):
         """

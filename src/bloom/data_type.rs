@@ -1,5 +1,6 @@
 use crate::bloom::utils::BloomFilter;
 use crate::bloom::utils::BloomFilterType;
+use crate::configs;
 use crate::metrics::BLOOM_NUM_OBJECTS;
 use crate::metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES;
 use crate::wrapper::bloom_callback;
@@ -27,7 +28,6 @@ pub static BLOOM_FILTER_TYPE: ValkeyType = ValkeyType::new(
         digest: Some(bloom_callback::bloom_digest),
 
         mem_usage: Some(bloom_callback::bloom_mem_usage),
-        // TODO
         free: Some(bloom_callback::bloom_free),
 
         aux_load: Some(bloom_callback::bloom_aux_load),
@@ -72,7 +72,10 @@ impl ValkeyDataType for BloomFilterType {
             return None;
         };
         let mut filters: Vec<BloomFilter> = Vec::with_capacity(num_filters as usize);
-
+        let Ok(is_seed_random_u64) = raw::load_unsigned(rdb) else {
+            return None;
+        };
+        let is_seed_random = is_seed_random_u64 == 1;
         for i in 0..num_filters {
             let Ok(bitmap) = raw::load_string_buffer(rdb) else {
                 return None;
@@ -90,7 +93,7 @@ impl ValkeyDataType for BloomFilterType {
                 }
             };
             if !BloomFilter::validate_size(capacity as u32, new_fp_rate) {
-                logging::log_warning("Failed to restore bloom object because it contains a filter larger than the max allowed size limit.");
+                logging::log_warning("Failed to restore bloom object: Contains a filter larger than the max allowed size limit.");
                 return None;
             }
             // Only load num_items when it's the last filter
@@ -104,6 +107,10 @@ impl ValkeyDataType for BloomFilterType {
             };
             let filter =
                 BloomFilter::from_existing(bitmap.as_ref(), num_items as u32, capacity as u32);
+            if !is_seed_random && filter.seed() != configs::FIXED_SEED {
+                logging::log_warning("Failed to restore bloom object: Object in fixed seed mode, but seed does not match FIXED_SEED.");
+                return None;
+            }
             filters.push(filter);
         }
         BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
@@ -114,6 +121,7 @@ impl ValkeyDataType for BloomFilterType {
         let item = BloomFilterType {
             expansion: expansion as u32,
             fp_rate,
+            is_seed_random,
             filters,
         };
         Some(item)

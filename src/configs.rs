@@ -1,4 +1,5 @@
 use lazy_static::lazy_static;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI64;
 
 /// Configurations
@@ -14,6 +15,8 @@ pub const BLOOM_FP_RATE_DEFAULT: f64 = 0.001;
 pub const BLOOM_FP_RATE_MIN: f64 = 0.0;
 pub const BLOOM_FP_RATE_MAX: f64 = 1.0;
 
+pub const BLOOM_USE_RANDOM_SEED_DEFAULT: bool = true;
+
 // Max Memory usage allowed per bloom filter within a bloom object (64MB).
 // Beyond this threshold, a bloom object is classified as large and is exempt from defrag operations.
 // Also, write operations that result in bloom object allocation larger than this size will be rejected.
@@ -26,6 +29,7 @@ lazy_static! {
     pub static ref BLOOM_EXPANSION: AtomicI64 = AtomicI64::new(BLOOM_EXPANSION_DEFAULT);
     pub static ref BLOOM_MEMORY_LIMIT_PER_FILTER: AtomicI64 =
         AtomicI64::new(BLOOM_MEMORY_LIMIT_PER_FILTER_DEFAULT);
+    pub static ref BLOOM_USE_RANDOM_SEED: AtomicBool = AtomicBool::default();
 }
 
 /// Constants
@@ -40,7 +44,3 @@ pub const FIXED_SEED: [u8; 32] = [
     89, 15, 245, 34, 234, 120, 17, 218, 167, 20, 216, 9, 59, 62, 123, 217, 29, 137, 138, 115, 62,
     152, 136, 135, 48, 127, 151, 205, 40, 7, 51, 131,
 ];
-pub const FIXED_SIP_KEY_ONE_A: u64 = 15713473521876537177;
-pub const FIXED_SIP_KEY_ONE_B: u64 = 15671187751654921383;
-pub const FIXED_SIP_KEY_TWO_A: u64 = 9766223185946773789;
-pub const FIXED_SIP_KEY_TWO_B: u64 = 9453907914610147120;

@@ -7,6 +7,7 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
 use std::sync::atomic::Ordering;
+use valkey_module::logging;
 use valkey_module::logging::{log_io_error, ValkeyLogLevel};
 use valkey_module::raw;
 use valkey_module::{RedisModuleDefragCtx, RedisModuleString};
@@ -21,6 +22,11 @@ pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mu
     raw::save_unsigned(rdb, v.filters.len() as u64);
     raw::save_unsigned(rdb, v.expansion as u64);
     raw::save_double(rdb, v.fp_rate);
+    let mut is_seed_random = 0;
+    if v.is_seed_random {
+        is_seed_random = 1;
+    }
+    raw::save_unsigned(rdb, is_seed_random);
     let filter_list = &v.filters;
     let mut filter_list_iter = filter_list.iter().peekable();
     while let Some(filter) = filter_list_iter.next() {
@@ -47,6 +53,7 @@ pub unsafe extern "C" fn bloom_rdb_load(
         let bb = Box::new(item);
         Box::into_raw(bb).cast::<libc::c_void>()
     } else {
+        logging::log_warning("Failed to restore bloom object.");
         null_mut()
     }
 }
@@ -120,7 +127,7 @@ pub unsafe extern "C" fn bloom_copy(
 /// # Safety
 /// Raw handler for the Bloom digest callback.
 pub unsafe extern "C" fn bloom_digest(md: *mut raw::RedisModuleDigest, value: *mut c_void) {
-    let mut dig = Digest::new(md);
+    let dig = Digest::new(md);
     let val = &*(value.cast::<BloomFilterType>());
     val.debug_digest(dig);
 }

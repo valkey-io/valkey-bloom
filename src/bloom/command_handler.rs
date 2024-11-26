@@ -112,10 +112,12 @@ pub fn bloom_filter_add_value(
             let fp_rate = configs::BLOOM_FP_RATE_DEFAULT;
             let capacity = configs::BLOOM_CAPACITY.load(Ordering::Relaxed) as u32;
             let expansion = configs::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
+            let use_random_seed = configs::BLOOM_USE_RANDOM_SEED.load(Ordering::Relaxed);
             let mut bloom = match BloomFilterType::new_reserved(
                 fp_rate,
                 capacity,
                 expansion,
+                use_random_seed,
                 validate_size_limit,
             ) {
                 Ok(bf) => bf,
@@ -274,12 +276,14 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
     match value {
         Some(_) => Err(ValkeyError::Str(utils::ITEM_EXISTS)),
         None => {
+            let use_random_seed = configs::BLOOM_USE_RANDOM_SEED.load(Ordering::Relaxed);
             // Skip bloom filter size validation on replicated cmds.
             let validate_size_limit = !ctx.get_flags().contains(ContextFlags::REPLICATED);
             let bloom = match BloomFilterType::new_reserved(
                 fp_rate,
                 capacity,
                 expansion,
+                use_random_seed,
                 validate_size_limit,
             ) {
                 Ok(bf) => bf,
@@ -403,10 +407,12 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
             if nocreate {
                 return Err(ValkeyError::Str(utils::NOT_FOUND));
             }
+            let use_random_seed = configs::BLOOM_USE_RANDOM_SEED.load(Ordering::Relaxed);
             let mut bloom = match BloomFilterType::new_reserved(
                 fp_rate,
                 capacity,
                 expansion,
+                use_random_seed,
                 validate_size_limit,
             ) {
                 Ok(bf) => bf,

@@ -105,6 +105,7 @@ valkey_module! {
         string: [
         ],
         bool: [
+            ["bloom-use-random-seed", &*configs::BLOOM_USE_RANDOM_SEED, configs::BLOOM_USE_RANDOM_SEED_DEFAULT, ConfigurationFlags::DEFAULT, None],
         ],
         enum: [
         ],

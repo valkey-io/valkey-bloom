@@ -66,7 +66,7 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         self.server.wait_for_save_done()
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=False)
         logfile = os.path.join(self.testdir, self.server.args["logfile"])
-        large_obj_restore_err = "Failed to restore bloom object because it contains a filter larger than the max allowed size limit"
+        large_obj_restore_err = "Failed to restore bloom object: Contains a filter larger than the max allowed size limit."
         internal_rdb_err = "Internal error in RDB"
         self.wait_for_logfile(logfile, large_obj_restore_err)
         self.wait_for_logfile(logfile, internal_rdb_err)

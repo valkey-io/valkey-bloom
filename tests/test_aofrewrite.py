@@ -8,7 +8,7 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
     def get_custom_args(self):
         # test aof rewrite should avoid bloom filter override as rdb. use aof
         args = super().get_custom_args()
-        args.update({'aof-use-rdb-preamble': 'no', 'appendonly': 'yes', 'appenddirname': 'aof-{}'.format(self.port)})
+        args.update({'aof-use-rdb-preamble': 'no', 'appendonly': 'yes'})
         return args
 
     def test_basic_aofrewrite_and_restore(self):
@@ -47,22 +47,17 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         client.execute_command('DEL testSave')
 
     def test_aofrewrite_bloomfilter_metrics(self):
+        # Create scaled bloom filter and add 7500 items to trigger a scale out.
         self.client.execute_command('BF.RESERVE key1 0.001 7000')
-        # We use a number greater than 7000 in order to have a buffer for any false positives
-        variables = [f"key{i+1}" for i in range(7500)]
-
-        # Get original size to compare against size after scaled
         info_obj = self.client.execute_command('BF.INFO key1')
-        # Add keys until bloomfilter will scale out
-        for var in variables:
-            self.client.execute_command(f'BF.ADD key1 {var}')
+        self.add_items_till_capacity(self.client, "key1", 7500, 1, "item_prefix")
 
         # cmd debug digest
         server_digest = self.client.debug_digest()
         assert server_digest != None or 0000000000000000000000000000000000000000
         object_digest = self.client.execute_command('DEBUG DIGEST-VALUE key1')
 
-        # save aof, restart sever
+        # save aof, restart server
         self.client.bgrewriteaof()
         self.server.wait_for_action_done(ValkeyAction.AOF_REWRITE)
         # restart server

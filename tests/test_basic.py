@@ -280,14 +280,20 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         assert scenario4_obj != default_obj
         assert scenario4_object_digest != default_object_digest
 
-        # scenario5 validates that digest is equal on bloom objects with same properties and same items.
+        # scenario5 validates that digest is equal on bloom objects with same properties and same items only when we are
+        # using a fixed seed. Not when we are using a random seed.
+        is_random_seed = client.execute_command('CONFIG GET bf.bloom-use-random-seed')
         scenario5_obj = client.execute_command('BF.INSERT scenario5 error 0.001 capacity 1000 items 1')
         scenario5_object_digest = client.execute_command('DEBUG DIGEST-VALUE scenario5')
         assert scenario5_obj != default_obj
         assert scenario5_object_digest != default_object_digest
 
+        # Add the same items to both the original and the new bloom object.
         client.execute_command('BF.MADD default_obj 1 2 3')
         client.execute_command('BF.MADD scenario5 2 3')
         madd_default_object_digest = client.execute_command('DEBUG DIGEST-VALUE default_obj')
         madd_scenario_object_digest = client.execute_command('DEBUG DIGEST-VALUE scenario5')
-        assert madd_scenario_object_digest == madd_default_object_digest
+        if is_random_seed[1] == b'yes':
+            assert madd_scenario_object_digest != madd_default_object_digest
+        else:
+            madd_scenario_object_digest == madd_default_object_digest

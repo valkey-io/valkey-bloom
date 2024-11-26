@@ -34,7 +34,6 @@ class TestBloomCommand(ValkeyBloomTestCaseBase):
             # not found
             ('BF.INFO TEST404', 'not found'),
             # incorrect syntax and argument usage
-            ('BF.ADD bf_non 2', 'non scaling filter is full'),
             ('bf.info key item', 'invalid information value'),
             ('bf.insert key CAPACITY 10000 ERROR 0.01 EXPANSION 0.99 NOCREATE NONSCALING ITEMS test1 test2 test3', 'bad expansion'),
             ('BF.INSERT KEY HELLO WORLD', 'unknown argument received'),

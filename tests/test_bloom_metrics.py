@@ -13,13 +13,13 @@ class TestBloomMetrics(ValkeyBloomTestCaseBase):
         self.verify_bloom_metrics(self.client.execute_command("INFO bf"), 0, 0, 0, 0, 0)
         self.verify_bloom_metrics(self.client.execute_command("INFO Modules"), 0, 0, 0, 0, 0)
 
-        # Create a default bloom filter and check its metrics values are correct
-        assert(self.client.execute_command('BF.ADD key item') == 1)
+        # Create a default bloom filter, add an item and check its metrics values are correct
+        self.add_items_till_capacity(self.client, "key", 1, 1, "item")
         self.verify_bloom_metrics(self.client.execute_command("INFO bf"), DEFAULT_BLOOM_FILTER_SIZE, 1, 1, 1, DEFAULT_BLOOM_FILTER_CAPACITY)
         self.verify_bloom_metrics(self.client.execute_command("INFO Modules"), DEFAULT_BLOOM_FILTER_SIZE, 1, 1, 1, DEFAULT_BLOOM_FILTER_CAPACITY)
 
         # Check that other commands don't influence metrics
-        assert(self.client.execute_command('BF.EXISTS key item') == 1)
+        assert(self.client.execute_command('BF.EXISTS key item1') == 1)
         assert(self.client.execute_command('BF.ADD key item2') == 1)
         assert(self.client.execute_command('BF.MADD key item3 item4')== [1, 1])
         assert(self.client.execute_command('BF.MEXISTS key item3 item5')== [1, 0])
@@ -85,8 +85,7 @@ class TestBloomMetrics(ValkeyBloomTestCaseBase):
         # Get original size to compare against size after scaled
         info_obj = self.client.execute_command('BF.INFO key1')
         # Add keys until bloomfilter will scale out
-        for var in variables:
-            self.client.execute_command(f'BF.ADD key1 {var}')
+        self.add_items_till_capacity(self.client, "key1", 7500, 1, "item_prefix")
 
         # Check info for scaled bloomfilter matches metrics data for bloomfilter
         new_info_obj = self.client.execute_command(f'BF.INFO key1')
@@ -101,28 +100,26 @@ class TestBloomMetrics(ValkeyBloomTestCaseBase):
 
 
     def test_copy_metrics(self):
-        # Create a bloomfilter and copy it
-        assert(self.client.execute_command('BF.ADD key{123} item') == 1)
-        assert(self.client.execute_command('COPY key{123} copiedkey{123}') == 1)
+        # Create a bloomfilter, add one item and copy it
+        self.add_items_till_capacity(self.client, "originalKey", 1, 1, "item_prefix")
+        assert(self.client.execute_command('COPY originalKey copiedkey') == 1)
     
         # Verify that the metrics were updated correctly after copying
         self.verify_bloom_metrics(self.client.execute_command("INFO bf"), DEFAULT_BLOOM_FILTER_SIZE * 2, 2, 2, 2, DEFAULT_BLOOM_FILTER_CAPACITY * 2)
 
         # Perform a FLUSHALL which should set all metrics data to 0
         self.client.execute_command('FLUSHALL')
-        wait_for_equal(lambda: self.client.execute_command('BF.EXISTS key{123} item'), 0)
+        wait_for_equal(lambda: self.client.execute_command('DBSIZE'), 0)
         self.verify_bloom_metrics(self.client.execute_command("INFO bf"), 0, 0, 0, 0, 0)
 
 
     def test_save_and_restore_metrics(self):
-        # Create default bloom filter
-        assert(self.client.execute_command('BF.ADD testSave item') == 1)
+        # Create default bloom filter and add one item
+        self.add_items_till_capacity(self.client, "nonscaledfilter", 1, 1, "item_prefix")
 
-        # Create scaled bloom filter
+        # Create scaled bloom filter and add 7500 items to trigger a scale out.
         self.client.execute_command('BF.RESERVE key1 0.001 7000')
-        variables = [f"key{i+1}" for i in range(7500)]
-        for var in variables:
-            self.client.execute_command(f'BF.ADD key1 {var}')
+        self.add_items_till_capacity(self.client, "key1", 7500, 1, "item_prefix")
         
         # Get info and metrics stats of bloomfilter before rdb load
         original_info_obj = self.client.execute_command('BF.INFO key1')

@@ -6,29 +6,26 @@ import os
 
 class TestBloomReplication(ReplicationTestCase):
 
+    # Global Parameterized Configs
+    use_random_seed = 'no'
+
     def get_custom_args(self):
         self.set_server_version(os.environ['SERVER_VERSION'])
         return {
             'loadmodule': os.getenv('MODULE_PATH'),
+            'bf.bloom-use-random-seed': self.use_random_seed,
         }
 
-    def test_replication_success(self):
-        self.setup_replication(num_replicas=1)
-        assert self.client.execute_command('BF.ADD key item1') == 1
-        bf_exists_result = self.client.execute_command('BF.EXISTS key item1')
-        bf_non_added_exists_result = self.client.execute_command('BF.EXISTS key item2')
-        bf_info_result = self.client.execute_command('BF.INFO key')
-
-        self.waitForReplicaToSyncUp(self.replicas[0])
-        bf_replica_exists_result = self.replicas[0].client.execute_command('BF.EXISTS key item1')
-        assert bf_exists_result == bf_replica_exists_result
-        bf_replica_non_added_exists_result = self.replicas[0].client.execute_command('BF.EXISTS key item2')
-        assert bf_non_added_exists_result == bf_replica_non_added_exists_result
-        bf_replica_info_result = self.replicas[0].client.execute_command('BF.INFO key')
-        assert bf_info_result == bf_replica_info_result
+    @pytest.fixture(autouse=True)
+    def use_random_seed_fixture(self, bloom_config_parameterization):
+        if bloom_config_parameterization == "random-seed":
+            self.use_random_seed = "yes"
+        elif bloom_config_parameterization == "fixed-seed":
+            self.use_random_seed = "no"
 
     def test_replication_behavior(self):
         self.setup_replication(num_replicas=1)
+        is_random_seed = self.client.execute_command('CONFIG GET bf.bloom-use-random-seed')
         # Test replication for write commands.
         bloom_write_cmds = [
             ('BF.ADD', 'BF.ADD key item', 'BF.ADD key item1', 2),
@@ -72,11 +69,16 @@ class TestBloomReplication(ReplicationTestCase):
             # cmd debug digest
             server_digest_primary = self.client.debug_digest()
             assert server_digest_primary != None or 0000000000000000000000000000000000000000
-            object_digest_primary = self.client.execute_command('DEBUG DIGEST-VALUE key')
             server_digest_replica = self.client.debug_digest()
             assert server_digest_primary == server_digest_replica
+            object_digest_primary = self.client.execute_command('DEBUG DIGEST-VALUE key')
             debug_digest_replica = self.replicas[0].client.execute_command('DEBUG DIGEST-VALUE key')
-            assert object_digest_primary == debug_digest_replica
+            # TODO: Update the test here to validate that digest always matches during replication. Once we implement
+            # deterministic replication (including replicating seeds), this assert will be updated.
+            if is_random_seed[1] == b'yes':
+                assert object_digest_primary != debug_digest_replica
+            else:
+                assert object_digest_primary == debug_digest_replica
 
             self.client.execute_command('FLUSHALL')
             self.waitForReplicaToSyncUp(self.replicas[0])
