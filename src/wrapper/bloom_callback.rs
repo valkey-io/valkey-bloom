@@ -1,9 +1,11 @@
 use crate::bloom;
 use crate::bloom::data_type::ValkeyDataType;
+use crate::bloom::utils::BloomFilter;
 use crate::bloom::utils::BloomFilterType;
 use crate::configs;
 use crate::wrapper::digest::Digest;
 use std::ffi::CString;
+use std::mem;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
 use std::sync::atomic::Ordering;
@@ -149,15 +151,35 @@ pub unsafe extern "C" fn bloom_defrag(
     _from_key: *mut RedisModuleString,
     value: *mut *mut c_void,
 ) -> i32 {
-    let curr_item = &*(*value).cast::<BloomFilterType>();
-    if curr_item.memory_usage()
-        > configs::BLOOM_MEMORY_LIMIT_PER_FILTER.load(Ordering::Relaxed) as usize
-    {
-        return 0;
+    let bloom_filter_type: &mut BloomFilterType = &mut *(*value).cast::<BloomFilterType>();
+
+    let num_filts = bloom_filter_type.filters.len();
+
+    for _ in 0..num_filts {
+        let bloom_filter_box = bloom_filter_type.filters.remove(0);
+        let bloom_filter = Box::into_raw(bloom_filter_box);
+        let defrag_result = unsafe {
+            raw::RedisModule_DefragAlloc.unwrap()(
+                core::ptr::null_mut(),
+                (bloom_filter as *const BloomFilter as *mut BloomFilter) as *mut c_void,
+            )
+        };
+        let mut defragged_filter = Box::from_raw(defrag_result as *mut BloomFilter);
+
+        let inner_bloom = mem::replace(
+            &mut defragged_filter.bloom,
+            Box::new(bloomfilter::Bloom::new(1, 1)),
+        );
+        let inner_bloom_ptr = Box::into_raw(inner_bloom);
+        let defragged_inner_bloom = raw::RedisModule_DefragAlloc.unwrap()(
+            core::ptr::null_mut(),
+            inner_bloom_ptr as *mut c_void,
+        );
+        defragged_filter.bloom =
+            Box::from_raw(defragged_inner_bloom as *mut bloomfilter::Bloom<[u8]>);
+        bloom_filter_type.filters.push(defragged_filter);
     }
-    let new_item = BloomFilterType::create_copy_from(curr_item);
-    let bb = Box::new(new_item);
-    drop(Box::from_raw((*value).cast::<BloomFilterType>()));
-    *value = Box::into_raw(bb).cast::<libc::c_void>();
+    let val = unsafe { raw::RedisModule_DefragAlloc.unwrap()(core::ptr::null_mut(), *value) };
+    *value = val;
     0
 }
