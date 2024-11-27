@@ -31,7 +31,6 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         assert uptime_in_sec_1 > uptime_in_sec_2
         assert self.server.is_rdb_done_loading()
         restored_server_digest = client.debug_digest()
-        assert restored_server_digest != None or 0000000000000000000000000000000000000000
         restored_object_digest = client.execute_command('DEBUG DIGEST-VALUE testSave')
         assert restored_server_digest == server_digest
         assert restored_object_digest == object_digest

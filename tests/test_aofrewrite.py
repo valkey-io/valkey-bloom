@@ -33,7 +33,6 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
         restored_server_digest = client.debug_digest()
-        assert restored_server_digest != None or 0000000000000000000000000000000000000000
         restored_object_digest = client.execute_command('DEBUG DIGEST-VALUE testSave')
         assert restored_server_digest == server_digest
         assert restored_object_digest == object_digest
@@ -71,7 +70,6 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
         restored_server_digest = self.client.debug_digest()
-        assert restored_server_digest != None or 0000000000000000000000000000000000000000
         restored_object_digest = self.client.execute_command('DEBUG DIGEST-VALUE key1')
         assert restored_server_digest == server_digest
         assert restored_object_digest == object_digest

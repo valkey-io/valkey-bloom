@@ -255,28 +255,39 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         default_obj = client.execute_command('BF.RESERVE default_obj 0.001 1000')
         default_object_digest = client.execute_command('DEBUG DIGEST-VALUE default_obj')
 
+        # scenario1 validates that digest differs on bloom objects (with same properties) when different items are added.
         scenario1_obj = client.execute_command('BF.INSERT scenario1 error 0.001 capacity 1000 items 1')
         scenario1_object_digest = client.execute_command('DEBUG DIGEST-VALUE scenario1')
         assert scenario1_obj != default_obj
         assert scenario1_object_digest != default_object_digest
         
+        # scenario2 validates that digest differs on bloom objects with different false positive rate.
         scenario2_obj = client.execute_command('BF.INSERT scenario2 error 0.002 capacity 1000 items 1')
         scenario2_object_digest = client.execute_command('DEBUG DIGEST-VALUE scenario2')
         assert scenario2_obj != default_obj
         assert scenario2_object_digest != default_object_digest
 
+        # scenario3 validates that digest differs on bloom objects with different expansion.
         scenario3_obj = client.execute_command('BF.INSERT scenario3 error 0.002 capacity 1000 expansion 3 items 1')
         scenario3_object_digest = client.execute_command('DEBUG DIGEST-VALUE scenario3')
         assert scenario3_obj != default_obj
         assert scenario3_object_digest != default_object_digest
 
-        scenario4_obj = client.execute_command('BF.INSERT scenario4 error 0.001 capacity 1000 items 1')
+
+        # scenario4 validates that digest differs on bloom objects with different capacity.
+        scenario4_obj = client.execute_command('BF.INSERT scenario4 error 0.001 capacity 2000 items 1')
         scenario4_object_digest = client.execute_command('DEBUG DIGEST-VALUE scenario4')
         assert scenario4_obj != default_obj
         assert scenario4_object_digest != default_object_digest
 
+        # scenario5 validates that digest is equal on bloom objects with same properties and same items.
+        scenario5_obj = client.execute_command('BF.INSERT scenario5 error 0.001 capacity 1000 items 1')
+        scenario5_object_digest = client.execute_command('DEBUG DIGEST-VALUE scenario5')
+        assert scenario5_obj != default_obj
+        assert scenario5_object_digest != default_object_digest
+
         client.execute_command('BF.MADD default_obj 1 2 3')
-        client.execute_command('BF.MADD scenario4 2 3')
+        client.execute_command('BF.MADD scenario5 2 3')
         madd_default_object_digest = client.execute_command('DEBUG DIGEST-VALUE default_obj')
-        madd_scenario_object_digest = client.execute_command('DEBUG DIGEST-VALUE scenario4')
+        madd_scenario_object_digest = client.execute_command('DEBUG DIGEST-VALUE scenario5')
         assert madd_scenario_object_digest == madd_default_object_digest
