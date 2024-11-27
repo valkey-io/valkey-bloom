@@ -129,7 +129,7 @@ impl ValkeyDataType for BloomFilterType {
         Some(item)
     }
 
-    /// A callback function that is used for DEBUG DIGEST.
+    /// Function that is used to generate a digest on the Bloom Object.
     fn debug_digest(&self, mut dig: Digest) {
         dig.add_long_long(self.expansion.into());
         dig.add_string_buffer(&self.fp_rate.to_le_bytes());

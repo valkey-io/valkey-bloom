@@ -17,9 +17,6 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
         error_count, add_operation_idx = self.add_items_till_capacity(client, filter_name, capacity, 1, item_prefix)
         with pytest.raises(Exception, match="non scaling filter is full"):
             client.execute_command(f'BF.ADD {filter_name} new_item')
-        # cmd debug digest
-        cmd_debug = client.debug_digest()
-        assert cmd_debug != None or 0000000000000000000000000000000000000000
         # Validate that is is filled.
         info = client.execute_command(f'BF.INFO {filter_name}')
         it = iter(info)
@@ -57,8 +54,6 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
             item_prefix,
         )
         self.fp_assert(error_count, num_operations, expected_fp_rate, fp_margin)
-        debug_copy = client.debug_digest()
-        assert debug_copy != None or 0000000000000000000000000000000000000000 or cmd_debug
         # Validate correctness on a copy of a non scaling bloom filter.
         self.validate_copied_bloom_correctness(client, filter_name, item_prefix, add_operation_idx, expected_fp_rate, fp_margin, info_dict)
 
@@ -72,9 +67,6 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
         filter_name = "filter1"
         # Create a scaling bloom filter and validate its behavior.
         assert client.execute_command(f'BF.RESERVE {filter_name} {expected_fp_rate} {initial_capacity} EXPANSION {expansion}') == b"OK"
-        # cmd debug digest
-        cmd_debug = client.debug_digest()
-        assert cmd_debug != None or 0000000000000000000000000000000000000000
         info = client.execute_command(f'BF.INFO {filter_name}')
         it = iter(info)
         info_dict = dict(zip(it, it))
@@ -134,7 +126,5 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
         info = client.execute_command(f'BF.INFO {filter_name}')
         it = iter(info)
         info_dict = dict(zip(it, it))
-        debug_copy = client.debug_digest()
-        assert debug_copy != None or 0000000000000000000000000000000000000000 or cmd_debug
         # Validate correctness on a copy of a scaling bloom filter.
         self.validate_copied_bloom_correctness(client, filter_name, item_prefix, add_operation_idx, expected_fp_rate, fp_margin, info_dict)

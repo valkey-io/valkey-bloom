@@ -40,18 +40,18 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         mexists_result = client.execute_command('BF.MEXISTS filter item1 item2 item3 item4')
         assert len(madd_result) == 4 and len(mexists_result) == 4
         # cmd debug digest
-        cmd_debug = client.debug_digest()
-        assert cmd_debug != None or 0000000000000000000000000000000000000000
-        debug_filter = client.execute_command('DEBUG DIGEST-VALUE filter')
+        server_digest = client.debug_digest()
+        assert server_digest != None or 0000000000000000000000000000000000000000
+        object_digest = client.execute_command('DEBUG DIGEST-VALUE filter')
         assert client.execute_command('COPY filter new_filter') == 1
-        debug_copy = client.debug_digest()
-        assert debug_copy != None or 0000000000000000000000000000000000000000
-        debug_new_filter = client.execute_command('DEBUG DIGEST-VALUE filter')
+        copied_server_digest = client.debug_digest()
+        assert copied_server_digest != None or 0000000000000000000000000000000000000000
+        copied_object_digest = client.execute_command('DEBUG DIGEST-VALUE filter')
         assert client.execute_command('EXISTS new_filter') == 1
         copy_mexists_result = client.execute_command('BF.MEXISTS new_filter item1 item2 item3 item4')
         assert mexists_result == copy_mexists_result
-        assert cmd_debug != debug_copy
-        assert debug_new_filter == debug_filter
+        assert server_digest != copied_server_digest
+        assert copied_object_digest == object_digest
     
     def test_memory_usage_cmd(self):
         client = self.server.get_new_client()
@@ -249,3 +249,34 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         assert client.execute_command('TTL TEST_PERSIST') > 0
         assert client.execute_command('PERSIST TEST_PERSIST') == 1
         assert client.execute_command('TTL TEST_PERSIST') == -1
+
+    def test_debug_cmd(self):
+        client = self.server.get_new_client()
+        default_obj = client.execute_command('BF.RESERVE default_obj 0.001 1000')
+        default_object_digest = client.execute_command('DEBUG DIGEST-VALUE default_obj')
+
+        scenario1_obj = client.execute_command('BF.INSERT scenario1 error 0.001 capacity 1000 items 1')
+        scenario1_object_digest = client.execute_command('DEBUG DIGEST-VALUE scenario1')
+        assert scenario1_obj != default_obj
+        assert scenario1_object_digest != default_object_digest
+        
+        scenario2_obj = client.execute_command('BF.INSERT scenario2 error 0.002 capacity 1000 items 1')
+        scenario2_object_digest = client.execute_command('DEBUG DIGEST-VALUE scenario2')
+        assert scenario2_obj != default_obj
+        assert scenario2_object_digest != default_object_digest
+
+        scenario3_obj = client.execute_command('BF.INSERT scenario3 error 0.002 capacity 1000 expansion 3 items 1')
+        scenario3_object_digest = client.execute_command('DEBUG DIGEST-VALUE scenario3')
+        assert scenario3_obj != default_obj
+        assert scenario3_object_digest != default_object_digest
+
+        scenario4_obj = client.execute_command('BF.INSERT scenario4 error 0.001 capacity 1000 items 1')
+        scenario4_object_digest = client.execute_command('DEBUG DIGEST-VALUE scenario4')
+        assert scenario4_obj != default_obj
+        assert scenario4_object_digest != default_object_digest
+
+        client.execute_command('BF.MADD default_obj 1 2 3')
+        client.execute_command('BF.MADD scenario4 2 3')
+        madd_default_object_digest = client.execute_command('DEBUG DIGEST-VALUE default_obj')
+        madd_scenario_object_digest = client.execute_command('DEBUG DIGEST-VALUE scenario4')
+        assert madd_scenario_object_digest == madd_default_object_digest
