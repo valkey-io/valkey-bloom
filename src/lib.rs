@@ -106,6 +106,7 @@ valkey_module! {
         ],
         bool: [
             ["bloom-use-random-seed", &*configs::BLOOM_USE_RANDOM_SEED, configs::BLOOM_USE_RANDOM_SEED_DEFAULT, ConfigurationFlags::DEFAULT, None],
+            ["bloom-defrag-enabled", &*configs::BLOOM_DEFRAG, configs::BLOOM_DEFRAG_DEAFULT,  ConfigurationFlags::DEFAULT, None],
         ],
         enum: [
         ],

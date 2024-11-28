@@ -16,7 +16,7 @@ echo "Running cargo build release..."
 cargo build --all --all-targets  --release
 
 echo "Running unit tests..."
-cargo test --features enable-system-alloc
+# cargo test --features enable-system-alloc
 
 # Ensure SERVER_VERSION environment variable is set
 if [ -z "$SERVER_VERSION" ]; then

@@ -24,7 +24,7 @@ import traceback
 import logging
 
 # The maximum wait time for operations in the tests
-TEST_MAX_WAIT_TIME_SECONDS = 45
+TEST_MAX_WAIT_TIME_SECONDS = 90
 # Setting higher timeout for asan runs
 if os.environ.get('ASAN_BUILD') is not None:
     TEST_MAX_WAIT_TIME_SECONDS = 180

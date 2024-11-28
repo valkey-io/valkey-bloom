@@ -2,6 +2,7 @@ import pytest, time
 import os
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 from valkeytests.conftest import resource_port_tracker
+from util.waiters import *
 
 class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
 
@@ -42,6 +43,41 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         assert bf_exists_result_2 == 1
         bf_info_result_2 = client.execute_command('BF.INFO testSave')
         assert bf_info_result_2 == bf_info_result_1
+
+    def get_custom_args(self):
+        args = super().get_custom_args()
+        # args.update({'activedefrag': 'yes'})
+
+        args.update({'activedefrag': 'yes', 'active-defrag-threshold-lower': '0', 'active-defrag-ignore-bytes': '1'})
+        return args
+
+
+    def test_basic_save_many(self):
+        client = self.server.get_new_client()
+        count = 500
+        for i in range(0, count):
+            name = str(i) + "key"
+
+            bf_add_result_1 = client.execute_command('BF.ADD ' + name + ' item')
+            assert bf_add_result_1 == 1
+
+        curr_item_count_1 = client.info_obj().num_keys()
+        assert curr_item_count_1 == count
+        # save rdb, restart sever
+        time.sleep(10)
+        client.bgsave()
+        self.server.wait_for_save_done()
+
+        self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
+        assert self.server.is_alive()
+        wait_for_equal(lambda: self.server.is_rdb_done_loading(), True)
+
+        # verify restore results
+        curr_item_count_1 = client.info_obj().num_keys()
+
+        assert curr_item_count_1 == count
+        time.sleep(100)
+
 
     def test_restore_failed_large_bloom_filter(self):
         client = self.server.get_new_client()

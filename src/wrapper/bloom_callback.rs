@@ -4,11 +4,17 @@ use crate::bloom::utils::BloomFilter;
 use crate::bloom::utils::BloomFilterType;
 use crate::configs;
 use crate::wrapper::digest::Digest;
+use crate::configs;
+use bit_vec::BitVec;
+use bloomfilter::Bloom;
+use lazy_static::lazy_static;
 use std::ffi::CString;
 use std::mem;
 use std::os::raw::{c_char, c_int, c_void};
+use std::ptr;
 use std::ptr::null_mut;
 use std::sync::atomic::Ordering;
+use std::sync::Mutex;
 use valkey_module::logging;
 use valkey_module::logging::{log_io_error, ValkeyLogLevel};
 use valkey_module::raw;
@@ -144,6 +150,111 @@ pub unsafe extern "C" fn bloom_free_effort(
     curr_item.free_effort()
 }
 
+// /// # Safety
+// /// Raw handler for the Bloom object's defrag callback.
+// pub unsafe extern "C" fn bloom_defrag(
+//     _defrag_ctx: *mut RedisModuleDefragCtx,
+//     _from_key: *mut RedisModuleString,
+//     value: *mut *mut c_void,
+// ) -> i32 {
+//     if !configs::BLOOM_DEFRAG.load(Ordering::Relaxed) {
+//         return 0;
+//     }
+//     let bloom_filter_type: &mut BloomFilterType = &mut *(*value).cast::<BloomFilterType>();
+
+//     let num_filts = bloom_filter_type.filters.len();
+
+//     for _ in 0..num_filts {
+//         let bloom_filter_box = bloom_filter_type.filters.remove(0);
+//         let bloom_filter = Box::into_raw(bloom_filter_box);
+//         logging::log_warning(format!("Before Address: {:p}", bloom_filter));
+//         let defrag_result = unsafe {
+//             raw::RedisModule_DefragAlloc.unwrap()(
+//                 core::ptr::null_mut(),
+//                 bloom_filter as *mut c_void,
+//             )
+//         };
+//         let mut defragged_filter = {
+//             if !defrag_result.is_null() {
+//                 Box::from_raw(defrag_result as *mut BloomFilter)
+//             } else {
+//                 Box::from_raw(bloom_filter)
+//             }
+//         };
+//         logging::log_warning(format!("After Address: {:p}", defragged_filter));
+//         // let test = Box::leak(defragged_filter.bloom);
+//         // let tes = Box::into_raw(test);
+//         // let inner_bloom = mem::replace(
+//         //     &mut defragged_filter.bloom,
+//         //     Box::new(bloomfilter::Bloom::new(1, 1)),
+//         // );
+//         // let inner_bloom = mem::replace(
+//         //     &mut defragged_filter.bloom,
+//         //     Box::from_raw(ptr::null::<bloomfilter::Bloom<[u8]>>() as *mut bloomfilter::Bloom<[u8]>),
+//         // );
+//         let inner_bloom = mem::take(&mut defragged_filter.bloom);
+//         let inner_bloom_ptr = Box::into_raw(inner_bloom);
+//         logging::log_warning(format!("Before bloom Address: {:p}", inner_bloom_ptr));
+//         let defragged_inner_bloom = raw::RedisModule_DefragAlloc.unwrap()(
+//             core::ptr::null_mut(),
+//             inner_bloom_ptr as *mut c_void,
+//         );
+//         defragged_filter.bloom = {
+//             if !defrag_result.is_null() {
+//                 Box::from_raw(defragged_inner_bloom as *mut bloomfilter::Bloom<[u8]>)
+//             } else {
+//                 Box::from_raw(inner_bloom_ptr)
+//             }
+//         };
+//         logging::log_warning(format!("After bloom Address: {:p}", defragged_filter.bloom));
+//         bloom_filter_type.filters.push(defragged_filter);
+//     }
+//     let val = unsafe { raw::RedisModule_DefragAlloc.unwrap()(core::ptr::null_mut(), *value) };
+//     if !val.is_null() {
+//         *value = val;
+//     }
+//     0
+// }
+
+lazy_static! {
+    static ref DEFRAG_BLOOM_FILTER: Mutex<Option<Box<Bloom<[u8]>>>> =
+        Mutex::new(Some(Box::new(Bloom::<[u8]>::new(1, 1))));
+    static ref DEFRAG_VEC: Mutex<Option<Vec<u32>>> = Mutex::new(Some(Vec::new()));
+}
+
+fn external_vec_defrag(mut vec: Vec<u32>) -> Vec<u32> {
+    let clonev = vec.clone();
+    let len = vec.len();
+    let capacity = vec.capacity();
+    // let ptr: *mut u32 = vec.as_mut_ptr();
+    let vec_ptr = Box::into_raw(vec.into_boxed_slice()) as *mut c_void;
+    logging::log_warning(format!("Before vec_ptr start Address: {:p}", vec_ptr));
+
+    let defragged_filters_ptr =
+        unsafe { raw::RedisModule_DefragAlloc.unwrap()(core::ptr::null_mut(), vec_ptr) };
+    logging::log_warning(format!(
+        "After hmmm vec Address: {:p}",
+        defragged_filters_ptr
+    ));
+    if !defragged_filters_ptr.is_null() {
+        unsafe { Vec::from_raw_parts(defragged_filters_ptr as *mut u32, len, capacity) }
+    } else {
+        unsafe { Vec::from_raw_parts(vec_ptr as *mut u32, len, capacity) }
+    }
+    // unsafe { Vec::from_raw_parts(defragged_filters_ptr as *mut u32, len, capacity) }
+}
+
+fn external_bitvec_defrag(bit_vec: BitVec) -> BitVec {
+    // let ptr: *mut BitVec = Box::into_raw(Box::new(bit_vec));
+    // logging::log_warning(format!("Before bloom bit_vec Address: {:p}", ptr));
+    // let defrag_result =
+    //     unsafe { raw::RedisModule_DefragAlloc.unwrap()(core::ptr::null_mut(), ptr as *mut c_void) };
+    // let mut defragged_filter = unsafe { Box::from_raw(defrag_result as *mut BitVec) };
+    // logging::log_warning(format!("After bloom bit_vec Address: {:p}", defragged_filter));
+    // *defragged_filter
+    bit_vec
+}
+
 /// # Safety
 /// Raw handler for the Bloom object's defrag callback.
 pub unsafe extern "C" fn bloom_defrag(
@@ -151,35 +262,111 @@ pub unsafe extern "C" fn bloom_defrag(
     _from_key: *mut RedisModuleString,
     value: *mut *mut c_void,
 ) -> i32 {
+    // logging::log_warning(format!("After here 0"));
+
     let bloom_filter_type: &mut BloomFilterType = &mut *(*value).cast::<BloomFilterType>();
 
     let num_filts = bloom_filter_type.filters.len();
 
+    logging::log_warning(format!(
+        "defrag in box Address: {:p}",
+        bloom_filter_type.filters.as_ptr()
+    ));
+
     for _ in 0..num_filts {
         let bloom_filter_box = bloom_filter_type.filters.remove(0);
         let bloom_filter = Box::into_raw(bloom_filter_box);
+
         let defrag_result = unsafe {
             raw::RedisModule_DefragAlloc.unwrap()(
                 core::ptr::null_mut(),
-                (bloom_filter as *const BloomFilter as *mut BloomFilter) as *mut c_void,
+                bloom_filter as *mut c_void,
             )
         };
-        let mut defragged_filter = Box::from_raw(defrag_result as *mut BloomFilter);
 
+        logging::log_warning(format!("Before Vec start Address: {:p}", defrag_result));
+
+        let mut defragged_filter = {
+            if !defrag_result.is_null() {
+                Box::from_raw(defrag_result as *mut BloomFilter)
+            } else {
+                Box::from_raw(bloom_filter)
+            }
+        };
+        let mut defrag_b = DEFRAG_BLOOM_FILTER.lock().unwrap();
         let inner_bloom = mem::replace(
             &mut defragged_filter.bloom,
-            Box::new(bloomfilter::Bloom::new(1, 1)),
+            defrag_b.take().expect("We expect default to exist"),
         );
         let inner_bloom_ptr = Box::into_raw(inner_bloom);
         let defragged_inner_bloom = raw::RedisModule_DefragAlloc.unwrap()(
             core::ptr::null_mut(),
             inner_bloom_ptr as *mut c_void,
         );
-        defragged_filter.bloom =
-            Box::from_raw(defragged_inner_bloom as *mut bloomfilter::Bloom<[u8]>);
+        logging::log_warning(format!("defrag in box Address: {:p}", defragged_filter));
+        if !defragged_inner_bloom.is_null() {
+            let inner_bloom = mem::replace(
+                &mut defragged_filter.bloom,
+                Box::from_raw(defragged_inner_bloom as *mut bloomfilter::Bloom<[u8]>),
+            );
+            *defrag_b = Some(inner_bloom); // Resetting the original static
+        } else {
+            let inner_bloom =
+                mem::replace(&mut defragged_filter.bloom, Box::from_raw(inner_bloom_ptr));
+            *defrag_b = Some(inner_bloom); // Resetting the original static
+        }
+        // let inner_bloom = mem::replace(
+        //     &mut defragged_filter.bloom,
+        //     Box::from_raw(defragged_inner_bloom as *mut bloomfilter::Bloom<[u8]>),
+        // );
+        // *defrag_b = Some(inner_bloom); // Resetting the original static
+
+        // logging::log_warning(format!("1bloom filter len: {}", bloom_filter_type.filters.len()));
+        // let mut defrag_v = DEFRAG_VEC.lock().unwrap();
+        // let placeholder = defrag_v.take().unwrap();
+        // defragged_filter
+        //     .bloom
+        //     .defrag_no(external_bitvec_defrag, external_vec_defrag);
+        // // *defrag_v = Some(newplaceholder); // Resetting the original static
+        // logging::log_warning(format!("After bloom Address: {:p}", defragged_filter.bloom));
+
+        // logging::log_warning(format!("2bloom filter len: {}", bloom_filter_type.filters.len()));
+        defragged_filter
+            .bloom
+            .defrag_no(external_bitvec_defrag, external_vec_defrag);
+
         bloom_filter_type.filters.push(defragged_filter);
     }
+    let filters_vec = mem::take(&mut bloom_filter_type.filters);
+    let filters_ptr = Box::into_raw(filters_vec.into_boxed_slice()) as *mut c_void;
+    // logging::log_warning(format!("Before Vec start Address: {:p}", filters_ptr));
+
+    let defragged_filters_ptr =
+        unsafe { raw::RedisModule_DefragAlloc.unwrap()(core::ptr::null_mut(), filters_ptr) };
+    logging::log_warning(format!(
+        "After Vec start Address: {:p} \n\n\n",
+        defragged_filters_ptr
+    ));
+    if !defragged_filters_ptr.is_null() {
+        bloom_filter_type.filters = unsafe {
+            Vec::from_raw_parts(
+                defragged_filters_ptr as *mut Box<BloomFilter>,
+                num_filts,
+                num_filts,
+            )
+        };
+    } else {
+        bloom_filter_type.filters = unsafe {
+            Vec::from_raw_parts(filters_ptr as *mut Box<BloomFilter>, num_filts, num_filts)
+        };
+    }
+    // logging::log_warning(format!("After here last"));
+
     let val = unsafe { raw::RedisModule_DefragAlloc.unwrap()(core::ptr::null_mut(), *value) };
-    *value = val;
+    if !val.is_null() {
+        *value = val;
+    }
+    logging::log_warning("After here super last");
+
     0
 }

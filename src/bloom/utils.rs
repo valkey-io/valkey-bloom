@@ -130,7 +130,9 @@ impl BloomFilterType {
 
     /// Return the total memory usage of the BloomFilterType object.
     pub fn memory_usage(&self) -> usize {
-        let mut mem: usize = std::mem::size_of::<BloomFilterType>();
+        let mut mem: usize = std::mem::size_of::<BloomFilterType>()
+            + (self.filters.capacity() * std::mem::size_of::<Box<BloomFilter>>());
+
         for filter in &self.filters {
             mem += filter.number_of_bytes();
         }
