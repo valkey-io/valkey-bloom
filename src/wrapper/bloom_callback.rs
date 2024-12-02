@@ -2,6 +2,7 @@ use crate::bloom;
 use crate::bloom::data_type::ValkeyDataType;
 use crate::bloom::utils::BloomFilterType;
 use crate::configs;
+use crate::wrapper::digest::Digest;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
@@ -116,6 +117,14 @@ pub unsafe extern "C" fn bloom_copy(
     let new_item = BloomFilterType::create_copy_from(curr_item);
     let bb = Box::new(new_item);
     Box::into_raw(bb).cast::<libc::c_void>()
+}
+
+/// # Safety
+/// Raw handler for the Bloom digest callback.
+pub unsafe extern "C" fn bloom_digest(md: *mut raw::RedisModuleDigest, value: *mut c_void) {
+    let mut dig = Digest::new(md);
+    let val = &*(value.cast::<BloomFilterType>());
+    val.debug_digest(dig);
 }
 
 /// # Safety

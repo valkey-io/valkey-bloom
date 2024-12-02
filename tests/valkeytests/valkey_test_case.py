@@ -474,7 +474,7 @@ class ValkeyTestCaseBase:
         self.port_tracker = resource_port_tracker
 
     def _get_valkey_args(self):
-        self.args.update({"maxmemory":self.maxmemory, "maxmemory-policy":"allkeys-random", "activerehashing":"yes", "databases": self.num_dbs, "repl-diskless-sync": "yes", "save": ""})
+        self.args.update({"maxmemory":self.maxmemory, "maxmemory-policy":"allkeys-random", "activerehashing":"yes", "databases": self.num_dbs, "repl-diskless-sync": "yes", "save": "", "enable-debug-command":"yes"})
         self.args.update(self.get_custom_args())
         return self.args
 

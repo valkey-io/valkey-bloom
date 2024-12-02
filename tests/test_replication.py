@@ -68,6 +68,16 @@ class TestBloomReplication(ReplicationTestCase):
                 assert primary_cmd_stats['cmdstat_BF.ADD']["calls"] == 2 and replica_cmd_stats['cmdstat_BF.ADD']["calls"] == 1
             else:
                 assert primary_cmd_stats['cmdstat_' + prefix]["calls"] == (expected_calls + 1) and replica_cmd_stats['cmdstat_' + prefix]["calls"] == expected_calls
+            
+            # cmd debug digest
+            server_digest_primary = self.client.debug_digest()
+            assert server_digest_primary != None or 0000000000000000000000000000000000000000
+            object_digest_primary = self.client.execute_command('DEBUG DIGEST-VALUE key')
+            server_digest_replica = self.client.debug_digest()
+            assert server_digest_primary == server_digest_replica
+            debug_digest_replica = self.replicas[0].client.execute_command('DEBUG DIGEST-VALUE key')
+            assert object_digest_primary == debug_digest_replica
+
             self.client.execute_command('FLUSHALL')
             self.waitForReplicaToSyncUp(self.replicas[0])
             self.client.execute_command('CONFIG RESETSTAT')

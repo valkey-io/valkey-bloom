@@ -67,7 +67,6 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
         filter_name = "filter1"
         # Create a scaling bloom filter and validate its behavior.
         assert client.execute_command(f'BF.RESERVE {filter_name} {expected_fp_rate} {initial_capacity} EXPANSION {expansion}') == b"OK"
-
         info = client.execute_command(f'BF.INFO {filter_name}')
         it = iter(info)
         info_dict = dict(zip(it, it))
