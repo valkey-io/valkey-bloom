@@ -105,14 +105,8 @@ impl ValkeyDataType for BloomFilterType {
                 (FIXED_SIP_KEY_ONE_A, FIXED_SIP_KEY_ONE_B),
                 (FIXED_SIP_KEY_TWO_A, FIXED_SIP_KEY_TWO_B),
             ];
-            let filter = BloomFilter::from_existing(
-                bitmap.as_ref(),
-                number_of_bits,
-                number_of_hash_functions as u32,
-                sip_keys,
-                num_items as u32,
-                capacity as u32,
-            );
+            let filter =
+                BloomFilter::from_existing(bitmap.as_ref(), num_items as u32, capacity as u32);
             filters.push(filter);
         }
         BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(

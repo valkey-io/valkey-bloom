@@ -24,13 +24,13 @@ pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mu
     let mut filter_list_iter = filter_list.iter().peekable();
     while let Some(filter) = filter_list_iter.next() {
         let bloom = &filter.bloom;
-        let bitmap = bloom.bitmap();
+        let bitmap = bloom.to_bytes();
         raw::RedisModule_SaveStringBuffer.unwrap()(
             rdb,
             bitmap.as_ptr().cast::<c_char>(),
             bitmap.len(),
         );
-        raw::save_unsigned(rdb, bloom.number_of_bits());
+        raw::save_unsigned(rdb, bloom.len());
         raw::save_unsigned(rdb, bloom.number_of_hash_functions() as u64);
         raw::save_unsigned(rdb, filter.capacity as u64);
         if filter_list_iter.peek().is_none() {
