@@ -96,7 +96,7 @@ impl ValkeyDataType for BloomFilterType {
                     return None;
                 }
             };
-            if !BloomFilter::validate_size(capacity as u32, new_fp_rate) {
+            if !BloomFilter::validate_size(capacity as i64, new_fp_rate) {
                 logging::log_warning("Failed to restore bloom object: Contains a filter larger than the max allowed size limit.");
                 return None;
             }
@@ -110,7 +110,7 @@ impl ValkeyDataType for BloomFilterType {
                 capacity
             };
             let filter =
-                BloomFilter::from_existing(bitmap.as_ref(), num_items as u32, capacity as u32);
+                BloomFilter::from_existing(bitmap.as_ref(), num_items as i64, capacity as i64);
             if !is_seed_random && filter.seed() != configs::FIXED_SEED {
                 logging::log_warning("Failed to restore bloom object: Object in fixed seed mode, but seed does not match FIXED_SEED.");
                 return None;
@@ -136,8 +136,8 @@ impl ValkeyDataType for BloomFilterType {
         dig.add_string_buffer(&self.tightening_ratio.to_le_bytes());
         for filter in &self.filters {
             dig.add_string_buffer(filter.bloom.as_slice());
-            dig.add_long_long(filter.num_items.into());
-            dig.add_long_long(filter.capacity.into());
+            dig.add_long_long(filter.num_items);
+            dig.add_long_long(filter.capacity);
         }
         dig.end_sequence();
     }

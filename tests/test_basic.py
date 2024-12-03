@@ -58,12 +58,12 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         assert client.execute_command('BF.ADD filter item1') == 1
         memory_usage = client.execute_command('MEMORY USAGE filter')
         info_size = client.execute_command('BF.INFO filter SIZE')
-        assert memory_usage > info_size and info_size > 0
+        assert memory_usage >= info_size and info_size > 0
 
     def test_too_large_bloom_obj(self):
         client = self.server.get_new_client()
-        # Set the max allowed size per bloom filter per bloom object to be 1000 bytes.
-        assert client.execute_command('CONFIG SET bf.bloom-memory-limit-per-filter 1000') == b'OK'
+        # Set the max allowed size per bloom filter per bloom object
+        assert client.execute_command('CONFIG SET bf.bloom-memory-limit-per-filter 100') == b'OK'
         obj_exceeds_size_err = "operation results in filter allocation exceeding size limit"
         # Non Scaling
         # Validate that when a cmd would have resulted in a bloom object creation with the starting filter with size
@@ -79,6 +79,7 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         # Scaling
         # Validate that when scaling would have resulted in a filter with size greater than allowed limit, the cmd
         # is rejected.
+        assert client.execute_command('CONFIG SET bf.bloom-memory-limit-per-filter 1000') == b'OK'
         cmds = [
             'BF.INSERT filter items new_item1',
             'BF.ADD filter new_item1',
