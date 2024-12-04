@@ -83,7 +83,9 @@ impl ValkeyDataType for BloomFilterType {
             let new_fp_rate = match Self::calculate_fp_rate(fp_rate, num_filters as i32) {
                 Ok(rate) => rate,
                 Err(_) => {
-                    logging::log_warning("Failed to restore bloom object: Reached max number of filters");
+                    logging::log_warning(
+                        "Failed to restore bloom object: Reached max number of filters",
+                    );
                     return None;
                 }
             };
