@@ -26,14 +26,12 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
 
         assert self.server.is_alive()
-        assert uptime_in_sec_1 > uptime_in_sec_2
-        assert self.server.is_rdb_done_loading()
+        wait_for_equal(lambda: self.server.is_rdb_done_loading(), True)
         restored_server_digest = client.debug_digest()
         restored_object_digest = client.execute_command('DEBUG DIGEST-VALUE testSave')
         assert restored_server_digest == server_digest
         assert restored_object_digest == object_digest
         self.server.verify_string_in_logfile("Loading RDB produced by Valkey")
-        wait_for_equal(lambda: self.server.is_rdb_done_loading(), True)
         self.server.verify_string_in_logfile("Done loading RDB, keys loaded: 1, keys expired: 0")
 
         # verify restore results

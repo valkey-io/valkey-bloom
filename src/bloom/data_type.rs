@@ -80,7 +80,6 @@ impl ValkeyDataType for BloomFilterType {
         } else {
             Vec::new()
         };
-        // let mut filters = Vec::new();
         for i in 0..num_filters {
             let Ok(bitmap) = raw::load_string_buffer(rdb) else {
                 return None;
@@ -116,13 +115,14 @@ impl ValkeyDataType for BloomFilterType {
                 logging::log_warning("Failed to restore bloom object: Object in fixed seed mode, but seed does not match FIXED_SEED.");
                 return None;
             }
-            filters.push(filter);
+            filters.push(Box::new(filter));
         }
         BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
             mem::size_of::<BloomFilterType>()
                 + (filters.capacity() * std::mem::size_of::<Box<BloomFilter>>()),
             std::sync::atomic::Ordering::Relaxed,
         );
+
         BLOOM_NUM_OBJECTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let item = BloomFilterType {
             expansion: expansion as u32,

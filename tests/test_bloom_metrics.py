@@ -132,6 +132,4 @@ class TestBloomMetrics(ValkeyBloomTestCaseBase):
 
         # Compare original and loaded scaled bloomfilter infos
         new_client = self.server.get_new_client()
-        # When we scale out in the original it scales the vec by a factor of four. However when we load from an rdb we create an exact sized vec, this means the last
-        # two 8 byte sized allocations for a vec are no longer in memory so we have 16 less bytes in memory now. Figure out if we want to do this
         self.verify_bloom_metrics(new_client.execute_command("INFO bf"), original_info_obj[3] + DEFAULT_BLOOM_FILTER_SIZE, 2, 3, 7501, 21000 + DEFAULT_BLOOM_FILTER_CAPACITY)

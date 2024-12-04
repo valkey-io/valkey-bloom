@@ -3,12 +3,10 @@ use crate::{
     configs::{self, BLOOM_EXPANSION_MAX, BLOOM_FP_RATE_MAX, BLOOM_FP_RATE_MIN},
     metrics,
 };
-use bloomfilter;
+use bloomfilter::Bloom;
 use bloomfilter::{deserialize, serialize};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::{mem, sync::atomic::Ordering};
-use std::{mem, os::raw::c_void, sync::atomic::Ordering};
-use valkey_module::{logging, raw};
 
 /// KeySpace Notification Events
 pub const ADD_EVENT: &str = "bloom.add";
@@ -114,8 +112,6 @@ impl BloomFilterType {
 
     /// Create a new BloomFilterType object from an existing one.
     pub fn create_copy_from(from_bf: &BloomFilterType) -> BloomFilterType {
-        let mut filters: Vec<BloomFilter> = Vec::with_capacity(from_bf.filters.len());
-        let mut filters: Vec<Box<BloomFilter>> = Vec::with_capacity(from_bf.filters.len());
         let mut filters: Vec<Box<BloomFilter>> = Vec::with_capacity(from_bf.filters.capacity());
         metrics::BLOOM_NUM_OBJECTS.fetch_add(1, Ordering::Relaxed);
         for filter in &from_bf.filters {
@@ -137,7 +133,8 @@ impl BloomFilterType {
 
     /// Return the total memory usage of the BloomFilterType object.
     pub fn memory_usage(&self) -> usize {
-        let mut mem: usize = std::mem::size_of::<BloomFilterType>();
+        let mut mem: usize = std::mem::size_of::<BloomFilterType>()
+            + (self.filters.capacity() * std::mem::size_of::<Box<BloomFilter>>());
         for filter in &self.filters {
             mem += filter.number_of_bytes();
         }
@@ -226,9 +223,10 @@ impl BloomFilterType {
             if validate_size_limit && !BloomFilter::validate_size(new_capacity, new_fp_rate) {
                 return Err(BloomError::ExceedsMaxBloomSize);
             }
+            let mut new_filter = Box::new(BloomFilter::new(new_fp_rate, new_capacity));
             let seed = self.seed();
             let mut new_filter = Box::new(BloomFilter::with_fixed_seed(new_fp_rate, new_capacity, &seed));
-            let capacity_before = self.filters.capacity();
+            let capacity_before: usize = self.filters.capacity();
             // Add item.
             new_filter.set(item);
             new_filter.num_items += 1;
@@ -262,6 +260,7 @@ impl BloomFilterType {
         }
     }
 
+    /// Calculate the false positive rate for the Nth filter using tightening ratio.
     pub fn calculate_fp_rate(fp_rate: f64, num_filters: i32) -> Result<f64, BloomError> {
         match fp_rate * configs::TIGHTENING_RATIO.powi(num_filters) {
             x if x > f64::MIN_POSITIVE => Ok(x),
@@ -362,8 +361,6 @@ impl BloomFilterType {
 /// well within the u32::MAX limit.
 #[derive(Serialize, Deserialize)]
 pub struct BloomFilter {
-    #[serde(serialize_with = "serialize", deserialize_with = "deserialize")]
-    pub bloom: bloomfilter::Bloom<[u8]>,
     #[serde(
         serialize_with = "serialize",
         deserialize_with = "deserialize_boxed_bloom"
@@ -372,9 +369,6 @@ pub struct BloomFilter {
     pub num_items: u32,
     pub capacity: u32,
 }
-
-use bloomfilter::Bloom;
-use serde::Deserializer;
 
 pub fn deserialize_boxed_bloom<'de, D>(deserializer: D) -> Result<Box<Bloom<[u8]>>, D::Error>
 where
@@ -447,7 +441,6 @@ impl BloomFilter {
     }
 
     pub fn number_of_bytes(&self) -> usize {
-        std::mem::size_of::<BloomFilter>() + (self.bloom.len() / 8) as usize
         std::mem::size_of::<BloomFilter>()
             + std::mem::size_of::<bloomfilter::Bloom<[u8]>>()
             + (self.bloom.len() / 8) as usize
@@ -653,7 +646,6 @@ mod tests {
             .all(|restore_filter| original_bloom_filter_type
                 .filters
                 .iter()
-                .any(|filter| filter.bloom.as_slice() == restore_filter.bloom.as_slice())));
                 .any(|filter| filter.bloom.as_slice() == restore_filter.bloom.as_slice())));
         let (error_count, _) = check_items_exist(
             restored_bloom_filter_type,
