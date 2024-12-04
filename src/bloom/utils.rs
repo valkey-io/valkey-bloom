@@ -230,6 +230,7 @@ impl BloomFilterType {
         }
     }
 
+    /// Calculate the false positive rate for the Nth filter using tightening ratio.
     pub fn calculate_fp_rate(fp_rate: f64, num_filters: i32) -> Result<f64, BloomError> {
         match fp_rate * configs::TIGHTENING_RATIO.powi(num_filters) {
             x if x > f64::MIN_POSITIVE => Ok(x),
