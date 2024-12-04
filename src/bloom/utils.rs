@@ -189,11 +189,9 @@ impl BloomFilterType {
             }
             // Scale out by adding a new filter with capacity bounded within the u32 range. false positive rate is also
             // bound within the range f64::MIN_POSITIVE <= x < 1.0.
-            let new_fp_rate = match self.fp_rate * configs::TIGHTENING_RATIO.powi(num_filters) {
-                x if x > f64::MIN_POSITIVE => x,
-                _ => {
-                    return Err(BloomError::MaxNumScalingFilters);
-                }
+            let new_fp_rate = match Self::calculate_fp_rate(self.fp_rate, num_filters) {
+                Ok(rate) => rate,
+                Err(e) => return Err(e),
             };
             let new_capacity = match filter.capacity.checked_mul(self.expansion) {
                 Some(new_capacity) => new_capacity,
@@ -229,6 +227,13 @@ impl BloomFilterType {
                 Ok(final_vec)
             }
             Err(_) => Err(BloomError::EncodeBloomFilterFailed),
+        }
+    }
+
+    pub fn calculate_fp_rate(fp_rate: f64, num_filters: i32) -> Result<f64, BloomError> {
+        match fp_rate * configs::TIGHTENING_RATIO.powi(num_filters) {
+            x if x > f64::MIN_POSITIVE => Ok(x),
+            _ => Err(BloomError::MaxNumScalingFilters),
         }
     }
 
@@ -333,7 +338,7 @@ impl BloomFilter {
             fp_rate,
             &configs::FIXED_SEED,
         )
-        .unwrap();
+        .expect("We expect bloomfilter::Bloom<[u8]> creation to succeed");
         let fltr = BloomFilter {
             bloom,
             num_items: 0,
@@ -350,7 +355,9 @@ impl BloomFilter {
 
     /// Create a new BloomFilter from dumped information (RDB load).
     pub fn from_existing(bitmap: &[u8], num_items: u32, capacity: u32) -> BloomFilter {
-        let bloom = bloomfilter::Bloom::from_slice(bitmap).unwrap();
+        let bloom = bloomfilter::Bloom::from_slice(bitmap)
+            .expect("We expect bloomfilter::Bloom<[u8]> creation to succeed");
+
         let fltr = BloomFilter {
             bloom,
             num_items,
@@ -383,27 +390,12 @@ impl BloomFilter {
         true
     }
 
-    /// Caculates the number of bytes that the bloom filter will require to be allocated using provided `number_of_bits`.
-    /// This is used before actually creating the bloom filter when checking if the filter is within the allowed size.
-    /// Returns whether the bloom filter is of a valid size or not.
-    pub fn validate_size_with_bits(number_of_bits: u64) -> bool {
-        let bytes = std::mem::size_of::<BloomFilter>() as u64 + number_of_bits;
-        if bytes > configs::BLOOM_MEMORY_LIMIT_PER_FILTER.load(Ordering::Relaxed) as u64 {
-            return false;
-        }
-        true
-    }
-
     pub fn check(&self, item: &[u8]) -> bool {
         self.bloom.check(item)
     }
 
     pub fn set(&mut self, item: &[u8]) {
         self.bloom.set(item)
-    }
-
-    pub fn sip_keys(&self) -> [(u64, u64); 2] {
-        self.bloom.sip_keys()
     }
 
     /// Create a new BloomFilter from an existing BloomFilter object (COPY command).

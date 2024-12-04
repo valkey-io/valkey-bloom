@@ -31,8 +31,6 @@ pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mu
             bitmap.as_ptr().cast::<c_char>(),
             bitmap.len(),
         );
-        raw::save_unsigned(rdb, bloom.len());
-        raw::save_unsigned(rdb, bloom.number_of_hash_functions() as u64);
         raw::save_unsigned(rdb, filter.capacity as u64);
         if filter_list_iter.peek().is_none() {
             raw::save_unsigned(rdb, filter.num_items as u64);
