@@ -23,11 +23,8 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         # save rdb, restart sever
         client.bgsave()
         self.server.wait_for_save_done()
-        # Keep the server running for 1 second more to have a larger uptime.
-        time.sleep(1)
-        uptime_in_sec_1 = self.client.info_obj().uptime_in_secs()
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
-        uptime_in_sec_2 = self.client.info_obj().uptime_in_secs()
+
         assert self.server.is_alive()
         assert uptime_in_sec_1 > uptime_in_sec_2
         assert self.server.is_rdb_done_loading()
@@ -35,6 +32,9 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         restored_object_digest = client.execute_command('DEBUG DIGEST-VALUE testSave')
         assert restored_server_digest == server_digest
         assert restored_object_digest == object_digest
+        self.server.verify_string_in_logfile("Loading RDB produced by Valkey")
+        wait_for_equal(lambda: self.server.is_rdb_done_loading(), True)
+        self.server.verify_string_in_logfile("Done loading RDB, keys loaded: 1, keys expired: 0")
 
         # verify restore results
         curr_item_count_2 = client.info_obj().num_keys()
@@ -43,14 +43,6 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         assert bf_exists_result_2 == 1
         bf_info_result_2 = client.execute_command('BF.INFO testSave')
         assert bf_info_result_2 == bf_info_result_1
-
-    def get_custom_args(self):
-        args = super().get_custom_args()
-        # args.update({'activedefrag': 'yes'})
-
-        args.update({'activedefrag': 'yes', 'active-defrag-threshold-lower': '0', 'active-defrag-ignore-bytes': '1'})
-        return args
-
 
     def test_basic_save_many(self):
         client = self.server.get_new_client()
@@ -70,7 +62,9 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
 
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
+        self.server.verify_string_in_logfile("Loading RDB produced by Valkey")
         wait_for_equal(lambda: self.server.is_rdb_done_loading(), True)
+        self.server.verify_string_in_logfile("Done loading RDB, keys loaded: 500, keys expired: 0")
 
         # verify restore results
         curr_item_count_1 = client.info_obj().num_keys()

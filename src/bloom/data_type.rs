@@ -71,11 +71,16 @@ impl ValkeyDataType for BloomFilterType {
         let Ok(fp_rate) = raw::load_double(rdb) else {
             return None;
         };
-        let mut filters: Vec<BloomFilter> = Vec::with_capacity(num_filters as usize);
         let Ok(is_seed_random_u64) = raw::load_unsigned(rdb) else {
             return None;
         };
         let is_seed_random = is_seed_random_u64 == 1;
+        let mut filters = if num_filters == 1 {
+            Vec::with_capacity(1)
+        } else {
+            Vec::new()
+        };
+        // let mut filters = Vec::new();
         for i in 0..num_filters {
             let Ok(bitmap) = raw::load_string_buffer(rdb) else {
                 return None;
@@ -114,7 +119,8 @@ impl ValkeyDataType for BloomFilterType {
             filters.push(filter);
         }
         BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
-            mem::size_of::<BloomFilterType>(),
+            mem::size_of::<BloomFilterType>()
+                + (filters.capacity() * std::mem::size_of::<Box<BloomFilter>>()),
             std::sync::atomic::Ordering::Relaxed,
         );
         BLOOM_NUM_OBJECTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

@@ -98,6 +98,11 @@ impl BloomFilterType {
             false => Box::new(BloomFilter::with_fixed_seed(fp_rate, capacity, &configs::FIXED_SEED)),
         };
         let filters = vec![bloom];
+        metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
+            mem::size_of::<BloomFilterType>()
+                + (filters.capacity() * std::mem::size_of::<Box<BloomFilter>>()),
+            std::sync::atomic::Ordering::Relaxed,
+        );
         let bloom = BloomFilterType {
             expansion,
             fp_rate,
@@ -111,15 +116,17 @@ impl BloomFilterType {
     pub fn create_copy_from(from_bf: &BloomFilterType) -> BloomFilterType {
         let mut filters: Vec<BloomFilter> = Vec::with_capacity(from_bf.filters.len());
         let mut filters: Vec<Box<BloomFilter>> = Vec::with_capacity(from_bf.filters.len());
+        let mut filters: Vec<Box<BloomFilter>> = Vec::with_capacity(from_bf.filters.capacity());
         metrics::BLOOM_NUM_OBJECTS.fetch_add(1, Ordering::Relaxed);
-        metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
-            mem::size_of::<BloomFilterType>(),
-            std::sync::atomic::Ordering::Relaxed,
-        );
         for filter in &from_bf.filters {
             let new_filter = Box::new(BloomFilter::create_copy_from(filter));
             filters.push(new_filter);
         }
+        metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
+            mem::size_of::<BloomFilterType>()
+                + (filters.capacity() * std::mem::size_of::<Box<BloomFilter>>()),
+            std::sync::atomic::Ordering::Relaxed,
+        );
         BloomFilterType {
             expansion: from_bf.expansion,
             fp_rate: from_bf.fp_rate,
@@ -130,9 +137,7 @@ impl BloomFilterType {
 
     /// Return the total memory usage of the BloomFilterType object.
     pub fn memory_usage(&self) -> usize {
-        let mut mem: usize = std::mem::size_of::<BloomFilterType>()
-            + (self.filters.capacity() * std::mem::size_of::<Box<BloomFilter>>());
-
+        let mut mem: usize = std::mem::size_of::<BloomFilterType>();
         for filter in &self.filters {
             mem += filter.number_of_bytes();
         }
@@ -222,11 +227,21 @@ impl BloomFilterType {
                 return Err(BloomError::ExceedsMaxBloomSize);
             }
             let seed = self.seed();
-            let mut new_filter = BloomFilter::with_fixed_seed(new_fp_rate, new_capacity, &seed);
+            let mut new_filter = Box::new(BloomFilter::with_fixed_seed(new_fp_rate, new_capacity, &seed));
+            let capacity_before = self.filters.capacity();
             // Add item.
             new_filter.set(item);
             new_filter.num_items += 1;
             self.filters.push(new_filter);
+            // If we went over capacity and scaled the vec out we need to update the memory usage by the new capacity
+            if capacity_before != self.filters.capacity() {
+                metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
+                    (self.filters.capacity() - capacity_before)
+                        * std::mem::size_of::<Box<BloomFilter>>(),
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+            }
+
             metrics::BLOOM_NUM_ITEMS_ACROSS_OBJECTS
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return Ok(1);
@@ -313,7 +328,8 @@ impl BloomFilterType {
                 // add bloom filter type metrics.
                 metrics::BLOOM_NUM_OBJECTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
-                    mem::size_of::<BloomFilterType>(),
+                    mem::size_of::<BloomFilterType>()
+                        + (item.filters.capacity() * std::mem::size_of::<Box<BloomFilter>>()),
                     std::sync::atomic::Ordering::Relaxed,
                 );
                 // add bloom filter metrics.
@@ -348,9 +364,23 @@ impl BloomFilterType {
 pub struct BloomFilter {
     #[serde(serialize_with = "serialize", deserialize_with = "deserialize")]
     pub bloom: bloomfilter::Bloom<[u8]>,
+    #[serde(
+        serialize_with = "serialize",
+        deserialize_with = "deserialize_boxed_bloom"
+    )]
     pub bloom: Box<bloomfilter::Bloom<[u8]>>,
     pub num_items: u32,
     pub capacity: u32,
+}
+
+use bloomfilter::Bloom;
+use serde::Deserializer;
+
+pub fn deserialize_boxed_bloom<'de, D>(deserializer: D) -> Result<Box<Bloom<[u8]>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize(deserializer).map(Box::new)
 }
 
 impl BloomFilter {
@@ -420,7 +450,7 @@ impl BloomFilter {
         std::mem::size_of::<BloomFilter>() + (self.bloom.len() / 8) as usize
         std::mem::size_of::<BloomFilter>()
             + std::mem::size_of::<bloomfilter::Bloom<[u8]>>()
-            + (self.bloom.number_of_bits() / 8) as usize
+            + (self.bloom.len() / 8) as usize
     }
 
     /// Caculates the number of bytes that the bloom filter will require to be allocated.
@@ -442,12 +472,18 @@ impl BloomFilter {
     pub fn set(&mut self, item: &[u8]) {
         self.bloom.set(item)
     }
+
+    /// Create a new BloomFilter from an existing BloomFilter object (COPY command).
+    pub fn create_copy_from(bf: &BloomFilter) -> BloomFilter {
+        BloomFilter::from_existing(bf.bloom.as_slice(), bf.num_items, bf.capacity)
+    }
 }
 
 impl Drop for BloomFilterType {
     fn drop(&mut self) {
         metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_sub(
-            std::mem::size_of::<BloomFilterType>(),
+            std::mem::size_of::<BloomFilterType>()
+                + (self.filters.capacity() * std::mem::size_of::<Box<BloomFilter>>()),
             std::sync::atomic::Ordering::Relaxed,
         );
         metrics::BLOOM_NUM_OBJECTS.fetch_sub(1, Ordering::Relaxed);
@@ -617,6 +653,7 @@ mod tests {
             .all(|restore_filter| original_bloom_filter_type
                 .filters
                 .iter()
+                .any(|filter| filter.bloom.as_slice() == restore_filter.bloom.as_slice())));
                 .any(|filter| filter.bloom.as_slice() == restore_filter.bloom.as_slice())));
         let (error_count, _) = check_items_exist(
             restored_bloom_filter_type,

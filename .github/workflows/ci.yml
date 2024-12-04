@@ -100,4 +100,4 @@ jobs:
     - name: Update module path
       run: echo "MODULE_PATH=$(realpath target/release/libvalkey_bloom.so)" >> $GITHUB_ENV
     - name: Run integration tests 
-      run: python -m pytest --cache-clear -v "tests/" 
+      run: python -m pytest --cache-clear -v "tests/" -m "not skip_for_asan"

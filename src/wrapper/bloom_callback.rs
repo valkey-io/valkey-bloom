@@ -11,7 +11,6 @@ use lazy_static::lazy_static;
 use std::ffi::CString;
 use std::mem;
 use std::os::raw::{c_char, c_int, c_void};
-use std::ptr;
 use std::ptr::null_mut;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
@@ -19,6 +18,8 @@ use valkey_module::logging;
 use valkey_module::logging::{log_io_error, ValkeyLogLevel};
 use valkey_module::raw;
 use valkey_module::{RedisModuleDefragCtx, RedisModuleString};
+
+use super::defrag::Defrag;
 
 // Note: methods in this mod are for the bloom module data type callbacks.
 // The reason they are unsafe is because the callback methods are expected to be
@@ -39,7 +40,7 @@ pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mu
     let mut filter_list_iter = filter_list.iter().peekable();
     while let Some(filter) = filter_list_iter.next() {
         let bloom = &filter.bloom;
-        let bitmap = bloom.to_bytes();
+        let bitmap = bloom.as_slice();
         raw::RedisModule_SaveStringBuffer.unwrap()(
             rdb,
             bitmap.as_ptr().cast::<c_char>(),
@@ -150,142 +151,97 @@ pub unsafe extern "C" fn bloom_free_effort(
     curr_item.free_effort()
 }
 
-// /// # Safety
-// /// Raw handler for the Bloom object's defrag callback.
-// pub unsafe extern "C" fn bloom_defrag(
-//     _defrag_ctx: *mut RedisModuleDefragCtx,
-//     _from_key: *mut RedisModuleString,
-//     value: *mut *mut c_void,
-// ) -> i32 {
-//     if !configs::BLOOM_DEFRAG.load(Ordering::Relaxed) {
-//         return 0;
-//     }
-//     let bloom_filter_type: &mut BloomFilterType = &mut *(*value).cast::<BloomFilterType>();
-
-//     let num_filts = bloom_filter_type.filters.len();
-
-//     for _ in 0..num_filts {
-//         let bloom_filter_box = bloom_filter_type.filters.remove(0);
-//         let bloom_filter = Box::into_raw(bloom_filter_box);
-//         logging::log_warning(format!("Before Address: {:p}", bloom_filter));
-//         let defrag_result = unsafe {
-//             raw::RedisModule_DefragAlloc.unwrap()(
-//                 core::ptr::null_mut(),
-//                 bloom_filter as *mut c_void,
-//             )
-//         };
-//         let mut defragged_filter = {
-//             if !defrag_result.is_null() {
-//                 Box::from_raw(defrag_result as *mut BloomFilter)
-//             } else {
-//                 Box::from_raw(bloom_filter)
-//             }
-//         };
-//         logging::log_warning(format!("After Address: {:p}", defragged_filter));
-//         // let test = Box::leak(defragged_filter.bloom);
-//         // let tes = Box::into_raw(test);
-//         // let inner_bloom = mem::replace(
-//         //     &mut defragged_filter.bloom,
-//         //     Box::new(bloomfilter::Bloom::new(1, 1)),
-//         // );
-//         // let inner_bloom = mem::replace(
-//         //     &mut defragged_filter.bloom,
-//         //     Box::from_raw(ptr::null::<bloomfilter::Bloom<[u8]>>() as *mut bloomfilter::Bloom<[u8]>),
-//         // );
-//         let inner_bloom = mem::take(&mut defragged_filter.bloom);
-//         let inner_bloom_ptr = Box::into_raw(inner_bloom);
-//         logging::log_warning(format!("Before bloom Address: {:p}", inner_bloom_ptr));
-//         let defragged_inner_bloom = raw::RedisModule_DefragAlloc.unwrap()(
-//             core::ptr::null_mut(),
-//             inner_bloom_ptr as *mut c_void,
-//         );
-//         defragged_filter.bloom = {
-//             if !defrag_result.is_null() {
-//                 Box::from_raw(defragged_inner_bloom as *mut bloomfilter::Bloom<[u8]>)
-//             } else {
-//                 Box::from_raw(inner_bloom_ptr)
-//             }
-//         };
-//         logging::log_warning(format!("After bloom Address: {:p}", defragged_filter.bloom));
-//         bloom_filter_type.filters.push(defragged_filter);
-//     }
-//     let val = unsafe { raw::RedisModule_DefragAlloc.unwrap()(core::ptr::null_mut(), *value) };
-//     if !val.is_null() {
-//         *value = val;
-//     }
-//     0
-// }
-
+/// Lazy static for a default temporary bloom that gets swapped during defrag.
 lazy_static! {
     static ref DEFRAG_BLOOM_FILTER: Mutex<Option<Box<Bloom<[u8]>>>> =
-        Mutex::new(Some(Box::new(Bloom::<[u8]>::new(1, 1))));
-    static ref DEFRAG_VEC: Mutex<Option<Vec<u32>>> = Mutex::new(Some(Vec::new()));
+        Mutex::new(Some(Box::new(Bloom::<[u8]>::new(1, 1).unwrap())));
 }
 
-fn external_vec_defrag(mut vec: Vec<u32>) -> Vec<u32> {
-    let clonev = vec.clone();
+/// Defragments a vector of bytes. This function is designed to be used as a callback.
+///
+/// This function takes ownership of a `Vec<u8>`, attempts to defragment it using an external
+/// defragmentation mechanism, and returns a new `Vec<u8>` that may have been defragmented.
+///
+/// # Arguments
+///
+/// * `vec` - A `Vec<u8>` to be defragmented.
+///
+/// # Returns
+///
+/// Returns a new `Vec<u8>` that may have been defragmented. If defragmentation was successful,
+/// the returned vector will use the newly allocated memory. If defragmentation failed or was
+/// not necessary, the original vector's memory will be used.
+fn external_vec_defrag(mut vec: Vec<u8>) -> Vec<u8> {
+    let defrag = Defrag::new(core::ptr::null_mut());
     let len = vec.len();
     let capacity = vec.capacity();
-    // let ptr: *mut u32 = vec.as_mut_ptr();
     let vec_ptr = Box::into_raw(vec.into_boxed_slice()) as *mut c_void;
-    logging::log_warning(format!("Before vec_ptr start Address: {:p}", vec_ptr));
-
-    let defragged_filters_ptr =
-        unsafe { raw::RedisModule_DefragAlloc.unwrap()(core::ptr::null_mut(), vec_ptr) };
-    logging::log_warning(format!(
-        "After hmmm vec Address: {:p}",
-        defragged_filters_ptr
-    ));
+    let defragged_filters_ptr = unsafe { defrag.alloc(vec_ptr) };
     if !defragged_filters_ptr.is_null() {
-        unsafe { Vec::from_raw_parts(defragged_filters_ptr as *mut u32, len, capacity) }
+        unsafe { Vec::from_raw_parts(defragged_filters_ptr as *mut u8, len, capacity) }
     } else {
-        unsafe { Vec::from_raw_parts(vec_ptr as *mut u32, len, capacity) }
+        unsafe { Vec::from_raw_parts(vec_ptr as *mut u8, len, capacity) }
     }
-    // unsafe { Vec::from_raw_parts(defragged_filters_ptr as *mut u32, len, capacity) }
-}
-
-fn external_bitvec_defrag(bit_vec: BitVec) -> BitVec {
-    // let ptr: *mut BitVec = Box::into_raw(Box::new(bit_vec));
-    // logging::log_warning(format!("Before bloom bit_vec Address: {:p}", ptr));
-    // let defrag_result =
-    //     unsafe { raw::RedisModule_DefragAlloc.unwrap()(core::ptr::null_mut(), ptr as *mut c_void) };
-    // let mut defragged_filter = unsafe { Box::from_raw(defrag_result as *mut BitVec) };
-    // logging::log_warning(format!("After bloom bit_vec Address: {:p}", defragged_filter));
-    // *defragged_filter
-    bit_vec
 }
 
 /// # Safety
 /// Raw handler for the Bloom object's defrag callback.
+///
+/// There are a few different structures we will be defragging we will explain them top down then afterwards state the order in which
+/// we will defrag. Starting from the top which is passed in as the variable named value. We have the BloomFilterType this BloomFilterType
+/// contains a vec of BloomFilters. These BloomFilters then each have a Bloom object. Finally each of these Bloom objects have a Vec.
+///
+/// This order of defragmention is as follows (1 to 3 is in a loop for the number of filters):
+/// 1. BloomFilter within the BloomFilterType
+/// 2. Bloom objects within each BloomFilter
+/// 3. Vec within each Bloom object
+/// 4. Vec of BloomFilters in the BloomFilterType
+/// 5. The BloomFilterType itself
+///
+/// We use a cursor to track the current filter of BloomFilterType that we are defragging. This cursor will start at 0
+/// if we finished all the filters the last time we defragged this object or if we havent defragged it before. We will determine
+/// that we have spent to much time on defragging this specific object from the should_stop_defrag() method. If we didn't defrag
+/// all the filters then we set the cursor so we know where to start from the next time we defrag and return a 1 to show we didn't
+/// finish.
+///
+/// # Arguments
+///
+/// * `defrag_ctx` - A raw pointer to the defragmentation context.
+/// * `_from_key` - A raw pointer to the Redis module string (unused in this function).
+/// * `value` - A mutable raw pointer to a raw pointer representing the BloomFilterType to be defragmented.
+///
+/// # Returns
+///
+/// Returns an `i32` where:
+/// * 0 indicates successful complete defragmentation.
+/// * 1 indicates incomplete defragmentation (not all filters were defragged).
 pub unsafe extern "C" fn bloom_defrag(
-    _defrag_ctx: *mut RedisModuleDefragCtx,
+    defrag_ctx: *mut RedisModuleDefragCtx,
     _from_key: *mut RedisModuleString,
     value: *mut *mut c_void,
 ) -> i32 {
-    // logging::log_warning(format!("After here 0"));
+    // If defrag is disabled we will just exit straight away
+    if !configs::BLOOM_DEFRAG.load(Ordering::Relaxed) {
+        return 0;
+    }
 
+    // Get the cursor for the BloomFilterType otherwise start the cursor at 0
+    let mut cursor: u64 = 0;
+    let defrag = Defrag::new(defrag_ctx);
+    defrag.curserget(&mut cursor);
+
+    // Convert pointer to BloomFilterType so we can operate on it.
     let bloom_filter_type: &mut BloomFilterType = &mut *(*value).cast::<BloomFilterType>();
 
-    let num_filts = bloom_filter_type.filters.len();
+    let num_filters = bloom_filter_type.filters.len();
+    let filters_capacity = bloom_filter_type.filters.capacity();
 
-    logging::log_warning(format!(
-        "defrag in box Address: {:p}",
-        bloom_filter_type.filters.as_ptr()
-    ));
-
-    for _ in 0..num_filts {
-        let bloom_filter_box = bloom_filter_type.filters.remove(0);
+    // While we are within a timeframe decided from should_stop_defrag and not over the number of filters defrag the next filter
+    while defrag.should_stop_defrag() == 0 && cursor < num_filters.try_into().unwrap() {
+        // Remove the current filter, unbox it, and attempt to defragment.
+        let bloom_filter_box = bloom_filter_type.filters.remove(cursor.try_into().unwrap());
         let bloom_filter = Box::into_raw(bloom_filter_box);
-
-        let defrag_result = unsafe {
-            raw::RedisModule_DefragAlloc.unwrap()(
-                core::ptr::null_mut(),
-                bloom_filter as *mut c_void,
-            )
-        };
-
-        logging::log_warning(format!("Before Vec start Address: {:p}", defrag_result));
-
+        let defrag_result = defrag.alloc(bloom_filter as *mut c_void);
         let mut defragged_filter = {
             if !defrag_result.is_null() {
                 Box::from_raw(defrag_result as *mut BloomFilter)
@@ -293,80 +249,71 @@ pub unsafe extern "C" fn bloom_defrag(
                 Box::from_raw(bloom_filter)
             }
         };
-        let mut defrag_b = DEFRAG_BLOOM_FILTER.lock().unwrap();
+        // Swap the Bloom object with a temporary one for defragmentation
+        let mut temporary_bloom = DEFRAG_BLOOM_FILTER.lock().unwrap();
         let inner_bloom = mem::replace(
             &mut defragged_filter.bloom,
-            defrag_b.take().expect("We expect default to exist"),
+            temporary_bloom.take().expect("We expect default to exist"),
         );
+        // Convert the inner_bloom into the correct type and then try to defragment it
         let inner_bloom_ptr = Box::into_raw(inner_bloom);
-        let defragged_inner_bloom = raw::RedisModule_DefragAlloc.unwrap()(
-            core::ptr::null_mut(),
-            inner_bloom_ptr as *mut c_void,
-        );
-        logging::log_warning(format!("defrag in box Address: {:p}", defragged_filter));
+        let defragged_inner_bloom = defrag.alloc(inner_bloom_ptr as *mut c_void);
+        // Defragment the Vec within the Bloom object using the external callback
         if !defragged_inner_bloom.is_null() {
-            let inner_bloom = mem::replace(
-                &mut defragged_filter.bloom,
-                Box::from_raw(defragged_inner_bloom as *mut bloomfilter::Bloom<[u8]>),
-            );
-            *defrag_b = Some(inner_bloom); // Resetting the original static
-        } else {
             let inner_bloom =
-                mem::replace(&mut defragged_filter.bloom, Box::from_raw(inner_bloom_ptr));
-            *defrag_b = Some(inner_bloom); // Resetting the original static
+                unsafe { Box::from_raw(defragged_inner_bloom as *mut bloomfilter::Bloom<[u8]>) };
+            let external_bloom =
+                inner_bloom.realloc_large_heap_allocated_objects(external_vec_defrag);
+            let placeholder_bloom =
+                mem::replace(&mut defragged_filter.bloom, Box::new(external_bloom));
+            *temporary_bloom = Some(placeholder_bloom); // Reset the original static
+        } else {
+            let inner_bloom = unsafe { Box::from_raw(inner_bloom_ptr) };
+            let external_bloom =
+                inner_bloom.realloc_large_heap_allocated_objects(external_vec_defrag);
+            let placeholder_bloom =
+                mem::replace(&mut defragged_filter.bloom, Box::new(external_bloom));
+            *temporary_bloom = Some(placeholder_bloom); // Reset the original static
         }
-        // let inner_bloom = mem::replace(
-        //     &mut defragged_filter.bloom,
-        //     Box::from_raw(defragged_inner_bloom as *mut bloomfilter::Bloom<[u8]>),
-        // );
-        // *defrag_b = Some(inner_bloom); // Resetting the original static
 
-        // logging::log_warning(format!("1bloom filter len: {}", bloom_filter_type.filters.len()));
-        // let mut defrag_v = DEFRAG_VEC.lock().unwrap();
-        // let placeholder = defrag_v.take().unwrap();
-        // defragged_filter
-        //     .bloom
-        //     .defrag_no(external_bitvec_defrag, external_vec_defrag);
-        // // *defrag_v = Some(newplaceholder); // Resetting the original static
-        // logging::log_warning(format!("After bloom Address: {:p}", defragged_filter.bloom));
-
-        // logging::log_warning(format!("2bloom filter len: {}", bloom_filter_type.filters.len()));
-        defragged_filter
-            .bloom
-            .defrag_no(external_bitvec_defrag, external_vec_defrag);
-
-        bloom_filter_type.filters.push(defragged_filter);
+        // Reinsert the defragmented filter and increment the cursor
+        bloom_filter_type
+            .filters
+            .insert(cursor.try_into().unwrap(), defragged_filter);
+        cursor += 1;
     }
+    // Save the cursor for where we will start defragmenting from next time
+    defrag.curserset(cursor);
+    // If not all filters were looked at, return 1 to indicate incomplete defragmentation
+    if cursor < (num_filters).try_into().unwrap() {
+        return 1;
+    }
+    // Defragment the Vec of filters itself
     let filters_vec = mem::take(&mut bloom_filter_type.filters);
     let filters_ptr = Box::into_raw(filters_vec.into_boxed_slice()) as *mut c_void;
-    // logging::log_warning(format!("Before Vec start Address: {:p}", filters_ptr));
-
-    let defragged_filters_ptr =
-        unsafe { raw::RedisModule_DefragAlloc.unwrap()(core::ptr::null_mut(), filters_ptr) };
-    logging::log_warning(format!(
-        "After Vec start Address: {:p} \n\n\n",
-        defragged_filters_ptr
-    ));
+    let defragged_filters_ptr = defrag.alloc(filters_ptr);
     if !defragged_filters_ptr.is_null() {
         bloom_filter_type.filters = unsafe {
             Vec::from_raw_parts(
                 defragged_filters_ptr as *mut Box<BloomFilter>,
-                num_filts,
-                num_filts,
+                num_filters,
+                filters_capacity,
             )
         };
     } else {
         bloom_filter_type.filters = unsafe {
-            Vec::from_raw_parts(filters_ptr as *mut Box<BloomFilter>, num_filts, num_filts)
+            Vec::from_raw_parts(
+                filters_ptr as *mut Box<BloomFilter>,
+                num_filters,
+                filters_capacity,
+            )
         };
     }
-    // logging::log_warning(format!("After here last"));
-
-    let val = unsafe { raw::RedisModule_DefragAlloc.unwrap()(core::ptr::null_mut(), *value) };
+    // Finally, attempt to defragment the BloomFilterType itself
+    let val = defrag.alloc(*value);
     if !val.is_null() {
         *value = val;
     }
-    logging::log_warning("After here super last");
-
+    // Return 0 to indicate successful complete defragmentation
     0
 }
