@@ -6,7 +6,7 @@ use crate::{
 use bloomfilter::Bloom;
 use bloomfilter::{deserialize, serialize};
 use serde::{Deserialize, Deserializer, Serialize};
-use std::{mem, sync::atomic::Ordering};
+use std::sync::atomic::Ordering;
 
 /// KeySpace Notification Events
 pub const ADD_EVENT: &str = "bloom.add";
@@ -86,27 +86,23 @@ impl BloomFilterType {
             return Err(BloomError::ExceedsMaxBloomSize);
         }
         metrics::BLOOM_NUM_OBJECTS.fetch_add(1, Ordering::Relaxed);
-        metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
-            mem::size_of::<BloomFilterType>(),
-            std::sync::atomic::Ordering::Relaxed,
-        );
         // Create the bloom filter and add to the main BloomFilter object.
         let bloom = match use_random_seed {
             true => Box::new(BloomFilter::with_random_seed(fp_rate, capacity)),
-            false => Box::new(BloomFilter::with_fixed_seed(fp_rate, capacity, &configs::FIXED_SEED)),
+            false => Box::new(BloomFilter::with_fixed_seed(
+                fp_rate,
+                capacity,
+                &configs::FIXED_SEED,
+            )),
         };
         let filters = vec![bloom];
-        metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
-            mem::size_of::<BloomFilterType>()
-                + (filters.capacity() * std::mem::size_of::<Box<BloomFilter>>()),
-            std::sync::atomic::Ordering::Relaxed,
-        );
         let bloom = BloomFilterType {
             expansion,
             fp_rate,
             filters,
             is_seed_random: use_random_seed,
         };
+        bloom.bloom_filter_type_incr_metrics_on_new_create();
         Ok(bloom)
     }
 
@@ -118,11 +114,7 @@ impl BloomFilterType {
             let new_filter = Box::new(BloomFilter::create_copy_from(filter));
             filters.push(new_filter);
         }
-        metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
-            mem::size_of::<BloomFilterType>()
-                + (filters.capacity() * std::mem::size_of::<Box<BloomFilter>>()),
-            std::sync::atomic::Ordering::Relaxed,
-        );
+        from_bf.bloom_filter_type_incr_metrics_on_new_create();
         BloomFilterType {
             expansion: from_bf.expansion,
             fp_rate: from_bf.fp_rate,
@@ -131,10 +123,9 @@ impl BloomFilterType {
         }
     }
 
-    /// Return the total memory usage of the BloomFilterType object.
+    /// Return the total memory usage of the BloomFilterType object and every allocation it contains.
     pub fn memory_usage(&self) -> usize {
-        let mut mem: usize = std::mem::size_of::<BloomFilterType>()
-            + (self.filters.capacity() * std::mem::size_of::<Box<BloomFilter>>());
+        let mut mem: usize = self.bloom_filter_type_memory_usage();
         for filter in &self.filters {
             mem += filter.number_of_bytes();
         }
@@ -223,28 +214,35 @@ impl BloomFilterType {
             if validate_size_limit && !BloomFilter::validate_size(new_capacity, new_fp_rate) {
                 return Err(BloomError::ExceedsMaxBloomSize);
             }
-            let mut new_filter = Box::new(BloomFilter::new(new_fp_rate, new_capacity));
             let seed = self.seed();
-            let mut new_filter = Box::new(BloomFilter::with_fixed_seed(new_fp_rate, new_capacity, &seed));
-            let capacity_before: usize = self.filters.capacity();
+            let mut new_filter = Box::new(BloomFilter::with_fixed_seed(
+                new_fp_rate,
+                new_capacity,
+                &seed,
+            ));
+            let memory_usage_before: usize = self.bloom_filter_type_memory_usage();
             // Add item.
             new_filter.set(item);
             new_filter.num_items += 1;
             self.filters.push(new_filter);
             // If we went over capacity and scaled the vec out we need to update the memory usage by the new capacity
-            if capacity_before != self.filters.capacity() {
-                metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
-                    (self.filters.capacity() - capacity_before)
-                        * std::mem::size_of::<Box<BloomFilter>>(),
-                    std::sync::atomic::Ordering::Relaxed,
-                );
-            }
+            let memory_usage_after = self.bloom_filter_type_memory_usage();
 
+            metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
+                memory_usage_after - memory_usage_before,
+                std::sync::atomic::Ordering::Relaxed,
+            );
             metrics::BLOOM_NUM_ITEMS_ACROSS_OBJECTS
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return Ok(1);
         }
         Ok(0)
+    }
+
+    /// Calculates the memory usage of a BloomFilterType object
+    fn bloom_filter_type_memory_usage(&self) -> usize {
+        std::mem::size_of::<BloomFilterType>()
+            + (self.filters.capacity() * std::mem::size_of::<Box<BloomFilter>>())
     }
 
     /// Serializes bloomFilter to a byte array.
@@ -268,6 +266,14 @@ impl BloomFilterType {
         }
     }
 
+    /// Increments metrics related to Bloom filter memory usage upon creation of a new filter.
+    pub fn bloom_filter_type_incr_metrics_on_new_create(&self) {
+        metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
+            self.bloom_filter_type_memory_usage(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+
     /// Deserialize a byte array to bloom filter.
     /// We will need to handle any current or previous version and deserializing the bytes into a bloom object of the running Module's current version `BLOOM_TYPE_VERSION`.
     pub fn decode_bloom_filter(
@@ -286,8 +292,8 @@ impl BloomFilterType {
                     u32,
                     f64,
                     bool,
-                    Vec<BloomFilter>,
-                ) = match bincode::deserialize::<(u32, f64, bool, Vec<BloomFilter>)>(
+                    Vec<Box<BloomFilter>>,
+                ) = match bincode::deserialize::<(u32, f64, bool, Vec<Box<BloomFilter>>)>(
                     &decoded_bytes[1..],
                 ) {
                     Ok(values) => {
@@ -326,25 +332,15 @@ impl BloomFilterType {
                 };
                 // add bloom filter type metrics.
                 metrics::BLOOM_NUM_OBJECTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
-                    mem::size_of::<BloomFilterType>()
-                        + (item.filters.capacity() * std::mem::size_of::<Box<BloomFilter>>()),
-                    std::sync::atomic::Ordering::Relaxed,
-                );
+                item.bloom_filter_type_incr_metrics_on_new_create();
                 // add bloom filter metrics.
+
                 for filter in &item.filters {
-                    metrics::BLOOM_NUM_FILTERS_ACROSS_OBJECTS
-                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
-                        filter.number_of_bytes(),
-                        std::sync::atomic::Ordering::Relaxed,
-                    );
                     metrics::BLOOM_NUM_ITEMS_ACROSS_OBJECTS.fetch_add(
                         filter.num_items.into(),
                         std::sync::atomic::Ordering::Relaxed,
                     );
-                    metrics::BLOOM_CAPACITY_ACROSS_OBJECTS
-                        .fetch_add(filter.capacity.into(), std::sync::atomic::Ordering::Relaxed);
+                    filter.bloom_filter_incr_metrics_on_new_create();
                 }
                 Ok(item)
             }
@@ -388,20 +384,22 @@ impl BloomFilter {
             num_items: 0,
             capacity,
         };
-        fltr.incr_metrics_on_new_create();
+        fltr.bloom_filter_incr_metrics_on_new_create();
         fltr
     }
 
     /// Instantiate empty BloomFilter object with a randomly generated seed used to create sip keys.
     pub fn with_random_seed(fp_rate: f64, capacity: u32) -> BloomFilter {
-        let bloom = bloomfilter::Bloom::new_for_fp_rate(capacity as usize, fp_rate)
-            .expect("We expect bloomfilter::Bloom<[u8]> creation to succeed");
+        let bloom = Box::new(
+            bloomfilter::Bloom::new_for_fp_rate(capacity as usize, fp_rate)
+                .expect("We expect bloomfilter::Bloom<[u8]> creation to succeed"),
+        );
         let fltr = BloomFilter {
             bloom,
             num_items: 0,
             capacity,
         };
-        fltr.incr_metrics_on_new_create();
+        fltr.bloom_filter_incr_metrics_on_new_create();
         fltr
     }
 
@@ -415,7 +413,7 @@ impl BloomFilter {
             num_items,
             capacity,
         };
-        fltr.incr_metrics_on_new_create();
+        fltr.bloom_filter_incr_metrics_on_new_create();
         metrics::BLOOM_NUM_ITEMS_ACROSS_OBJECTS
             .fetch_add(num_items.into(), std::sync::atomic::Ordering::Relaxed);
         fltr
@@ -426,7 +424,7 @@ impl BloomFilter {
         BloomFilter::from_existing(&bf.bloom.to_bytes(), bf.num_items, bf.capacity)
     }
 
-    fn incr_metrics_on_new_create(&self) {
+    fn bloom_filter_incr_metrics_on_new_create(&self) {
         metrics::BLOOM_NUM_FILTERS_ACROSS_OBJECTS
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES
@@ -465,18 +463,12 @@ impl BloomFilter {
     pub fn set(&mut self, item: &[u8]) {
         self.bloom.set(item)
     }
-
-    /// Create a new BloomFilter from an existing BloomFilter object (COPY command).
-    pub fn create_copy_from(bf: &BloomFilter) -> BloomFilter {
-        BloomFilter::from_existing(bf.bloom.as_slice(), bf.num_items, bf.capacity)
-    }
 }
 
 impl Drop for BloomFilterType {
     fn drop(&mut self) {
         metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_sub(
-            std::mem::size_of::<BloomFilterType>()
-                + (self.filters.capacity() * std::mem::size_of::<Box<BloomFilter>>()),
+            self.bloom_filter_type_memory_usage(),
             std::sync::atomic::Ordering::Relaxed,
         );
         metrics::BLOOM_NUM_OBJECTS.fetch_sub(1, Ordering::Relaxed);

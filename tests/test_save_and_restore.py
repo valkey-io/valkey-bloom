@@ -54,21 +54,19 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         curr_item_count_1 = client.info_obj().num_keys()
         assert curr_item_count_1 == count
         # save rdb, restart sever
-        time.sleep(10)
         client.bgsave()
         self.server.wait_for_save_done()
 
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
-        self.server.verify_string_in_logfile("Loading RDB produced by Valkey")
         wait_for_equal(lambda: self.server.is_rdb_done_loading(), True)
+        self.server.verify_string_in_logfile("Loading RDB produced by Valkey")
         self.server.verify_string_in_logfile("Done loading RDB, keys loaded: 500, keys expired: 0")
 
         # verify restore results
         curr_item_count_1 = client.info_obj().num_keys()
 
         assert curr_item_count_1 == count
-        time.sleep(100)
 
 
     def test_restore_failed_large_bloom_filter(self):

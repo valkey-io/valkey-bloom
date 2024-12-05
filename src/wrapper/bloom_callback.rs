@@ -12,6 +12,7 @@ use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
+use valkey_module::logging;
 use valkey_module::logging::{log_io_error, ValkeyLogLevel};
 use valkey_module::raw;
 use valkey_module::{RedisModuleDefragCtx, RedisModuleString};
@@ -225,7 +226,7 @@ pub unsafe extern "C" fn bloom_defrag(
     // Get the cursor for the BloomFilterType otherwise start the cursor at 0
     let mut cursor: u64 = 0;
     let defrag = Defrag::new(defrag_ctx);
-    defrag.curserget(&mut cursor);
+    defrag.cursorget(&mut cursor);
 
     // Convert pointer to BloomFilterType so we can operate on it.
     let bloom_filter_type: &mut BloomFilterType = &mut *(*value).cast::<BloomFilterType>();
@@ -234,9 +235,9 @@ pub unsafe extern "C" fn bloom_defrag(
     let filters_capacity = bloom_filter_type.filters.capacity();
 
     // While we are within a timeframe decided from should_stop_defrag and not over the number of filters defrag the next filter
-    while defrag.should_stop_defrag() == 0 && cursor < num_filters.try_into().unwrap() {
+    while !defrag.should_stop_defrag() && cursor < num_filters as u64 {
         // Remove the current filter, unbox it, and attempt to defragment.
-        let bloom_filter_box = bloom_filter_type.filters.remove(cursor.try_into().unwrap());
+        let bloom_filter_box = bloom_filter_type.filters.remove(cursor as usize);
         let bloom_filter = Box::into_raw(bloom_filter_box);
         let defrag_result = defrag.alloc(bloom_filter as *mut c_void);
         let mut defragged_filter = {
@@ -247,7 +248,9 @@ pub unsafe extern "C" fn bloom_defrag(
             }
         };
         // Swap the Bloom object with a temporary one for defragmentation
-        let mut temporary_bloom = DEFRAG_BLOOM_FILTER.lock().unwrap();
+        let mut temporary_bloom = DEFRAG_BLOOM_FILTER
+            .lock()
+            .expect("We expect default to exist");
         let inner_bloom = mem::replace(
             &mut defragged_filter.bloom,
             temporary_bloom.take().expect("We expect default to exist"),
@@ -276,13 +279,13 @@ pub unsafe extern "C" fn bloom_defrag(
         // Reinsert the defragmented filter and increment the cursor
         bloom_filter_type
             .filters
-            .insert(cursor.try_into().unwrap(), defragged_filter);
+            .insert(cursor as usize, defragged_filter);
         cursor += 1;
     }
     // Save the cursor for where we will start defragmenting from next time
-    defrag.curserset(cursor);
+    defrag.cursorset(cursor);
     // If not all filters were looked at, return 1 to indicate incomplete defragmentation
-    if cursor < (num_filters).try_into().unwrap() {
+    if cursor < num_filters as u64 {
         return 1;
     }
     // Defragment the Vec of filters itself

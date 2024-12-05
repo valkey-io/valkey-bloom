@@ -16,8 +16,6 @@ pub const BLOOM_FP_RATE_MAX: f64 = 1.0;
 
 pub const BLOOM_USE_RANDOM_SEED_DEFAULT: bool = true;
 
-pub const BLOOM_USE_RANDOM_SEED_DEFAULT: bool = true;
-
 pub const BLOOM_DEFRAG_DEAFULT: bool = true;
 // Max Memory usage allowed per bloom filter within a bloom object (64MB).
 // Beyond this threshold, a bloom object is classified as large and is exempt from defrag operations.

@@ -198,3 +198,13 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
         assert num_filters == expected_num_filters
         assert num_items == expected_num_items
         assert sum_capacity == expected_sum_capacity
+
+    def parse_valkey_info(self, section):
+        mem_info = self.client.execute_command('INFO ' + section)
+        lines = mem_info.decode('utf-8').split('\r\n')        
+        stats_dict = {}
+        for line in lines:
+            if ':' in line:
+                key, value = line.split(':', 1)
+                stats_dict[key.strip()] = value.strip()
+        return stats_dict

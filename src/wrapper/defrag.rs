@@ -20,22 +20,22 @@ impl Defrag {
 
     /// # Safety
     ///
-    /// This function sis temporary and will be removed once implemented in valkeymodule-rs .
-    pub unsafe fn curserset(&self, cursor: u64) -> i32 {
+    /// This function is temporary and will be removed once implemented in valkeymodule-rs .
+    pub unsafe fn cursorset(&self, cursor: u64) -> i32 {
         unsafe { raw::RedisModule_DefragCursorSet.unwrap()(self.defrag_ctx, cursor) }
     }
 
     /// # Safety
     ///
-    /// This function sis temporary and will be removed once implemented in valkeymodule-rs .
-    pub unsafe fn curserget(&self, cursor: *mut u64) -> i32 {
+    /// This function is temporary and will be removed once implemented in valkeymodule-rs .
+    pub unsafe fn cursorget(&self, cursor: *mut u64) -> i32 {
         unsafe { raw::RedisModule_DefragCursorGet.unwrap()(self.defrag_ctx, cursor) }
     }
 
     /// # Safety
     ///
-    /// This function sis temporary and will be removed once implemented in valkeymodule-rs .
-    pub unsafe fn should_stop_defrag(&self) -> i32 {
-        unsafe { raw::RedisModule_DefragShouldStop.unwrap()(self.defrag_ctx) }
+    /// This function is temporary and will be removed once implemented in valkeymodule-rs .
+    pub unsafe fn should_stop_defrag(&self) -> bool {
+        unsafe { raw::RedisModule_DefragShouldStop.unwrap()(self.defrag_ctx) != 0 }
     }
 }

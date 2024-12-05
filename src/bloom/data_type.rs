@@ -75,11 +75,9 @@ impl ValkeyDataType for BloomFilterType {
             return None;
         };
         let is_seed_random = is_seed_random_u64 == 1;
-        let mut filters = if num_filters == 1 {
-            Vec::with_capacity(1)
-        } else {
-            Vec::new()
-        };
+
+        let mut filters = Vec::with_capacity(1);
+
         for i in 0..num_filters {
             let Ok(bitmap) = raw::load_string_buffer(rdb) else {
                 return None;
@@ -117,11 +115,6 @@ impl ValkeyDataType for BloomFilterType {
             }
             filters.push(Box::new(filter));
         }
-        BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
-            mem::size_of::<BloomFilterType>()
-                + (filters.capacity() * std::mem::size_of::<Box<BloomFilter>>()),
-            std::sync::atomic::Ordering::Relaxed,
-        );
 
         BLOOM_NUM_OBJECTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let item = BloomFilterType {
@@ -130,6 +123,7 @@ impl ValkeyDataType for BloomFilterType {
             is_seed_random,
             filters,
         };
+        item.bloom_filter_type_incr_metrics_on_new_create();
         Some(item)
     }
 
