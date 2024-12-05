@@ -7,6 +7,7 @@ pub mod metrics;
 pub mod wrapper;
 use crate::bloom::command_handler;
 use crate::bloom::data_type::BLOOM_FILTER_TYPE;
+use valkey_module::logging;
 use valkey_module_macros::info_command_handler;
 
 pub const MODULE_NAME: &str = "bf";
@@ -85,16 +86,19 @@ valkey_module! {
     ],
     init: initialize,
     deinit: deinitialize,
+    acl_categories: [
+        "bloom",
+    ]
     commands: [
-        ["BF.ADD", bloom_add_command, "write fast deny-oom", 1, 1, 1],
-        ["BF.MADD", bloom_madd_command, "write fast deny-oom", 1, 1, 1],
-        ["BF.EXISTS", bloom_exists_command, "readonly fast", 1, 1, 1],
-        ["BF.MEXISTS", bloom_mexists_command, "readonly fast", 1, 1, 1],
-        ["BF.CARD", bloom_card_command, "readonly fast", 1, 1, 1],
-        ["BF.RESERVE", bloom_reserve_command, "write fast deny-oom", 1, 1, 1],
-        ["BF.INFO", bloom_info_command, "readonly fast", 1, 1, 1],
-        ["BF.INSERT", bloom_insert_command, "write fast deny-oom", 1, 1, 1],
-        ["BF.LOAD", bloom_load_command, "write fast deny-oom", 1, 1, 1]
+        ["BF.ADD", bloom_add_command, "write fast deny-oom", 1, 1, 1, "bloom"],
+        ["BF.MADD", bloom_madd_command, "write fast deny-oom", 1, 1, 1, "bloom"],
+        ["BF.EXISTS", bloom_exists_command, "readonly fast", 1, 1, 1, "bloom"],
+        ["BF.MEXISTS", bloom_mexists_command, "readonly fast", 1, 1, 1, "bloom"],
+        ["BF.CARD", bloom_card_command, "readonly fast", 1, 1, 1, "bloom"],
+        ["BF.RESERVE", bloom_reserve_command, "write fast deny-oom", 1, 1, 1, "bloom"],
+        ["BF.INFO", bloom_info_command, "readonly fast", 1, 1, 1, "bloom"],
+        ["BF.INSERT", bloom_insert_command, "write fast deny-oom", 1, 1, 1, "bloom"],
+        ["BF.LOAD", bloom_load_command, "write fast deny-oom", 1, 1, 1, "bloom"]
     ],
     configurations: [
         i64: [
