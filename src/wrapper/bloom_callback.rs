@@ -22,6 +22,7 @@ pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mu
     raw::save_unsigned(rdb, v.filters.len() as u64);
     raw::save_unsigned(rdb, v.expansion as u64);
     raw::save_double(rdb, v.fp_rate);
+    raw::save_double(rdb, v.tightening_ratio);
     let mut is_seed_random = 0;
     if v.is_seed_random {
         is_seed_random = 1;

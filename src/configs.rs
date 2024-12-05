@@ -36,6 +36,8 @@ lazy_static! {
 // Tightening ratio used during scale out for the calculation of fp_rate of every new filter within a bloom object to
 // maintain the bloom object's overall fp_rate to the configured value.
 pub const TIGHTENING_RATIO: f64 = 0.5;
+pub const TIGHTENING_RATIO_MIN: f64 = 0.0;
+pub const TIGHTENING_RATIO_MAX: f64 = 1.0;
 // Max number of filters allowed within a bloom object.
 pub const MAX_FILTERS_PER_OBJ: i32 = i32::MAX;
 /// Below constants are fixed seed and sip keys to help create bloom objects using the same seed and to restore the bloom objects with the same hasher which

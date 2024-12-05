@@ -4,7 +4,7 @@ use crate::bloom::utils::BloomFilterType;
 use crate::configs;
 use crate::configs::{
     BLOOM_CAPACITY_MAX, BLOOM_CAPACITY_MIN, BLOOM_EXPANSION_MAX, BLOOM_EXPANSION_MIN,
-    BLOOM_FP_RATE_MAX, BLOOM_FP_RATE_MIN,
+    BLOOM_FP_RATE_MAX, BLOOM_FP_RATE_MIN, TIGHTENING_RATIO_MAX, TIGHTENING_RATIO_MIN,
 };
 use std::sync::atomic::Ordering;
 use valkey_module::ContextFlags;
@@ -110,11 +110,13 @@ pub fn bloom_filter_add_value(
         None => {
             // Instantiate empty bloom filter.
             let fp_rate = configs::BLOOM_FP_RATE_DEFAULT;
+            let tightening_ratio = configs::TIGHTENING_RATIO;
             let capacity = configs::BLOOM_CAPACITY.load(Ordering::Relaxed) as u32;
             let expansion = configs::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
             let use_random_seed = configs::BLOOM_USE_RANDOM_SEED.load(Ordering::Relaxed);
             let mut bloom = match BloomFilterType::new_reserved(
                 fp_rate,
+                tightening_ratio,
                 capacity,
                 expansion,
                 use_random_seed,
@@ -279,8 +281,10 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
             let use_random_seed = configs::BLOOM_USE_RANDOM_SEED.load(Ordering::Relaxed);
             // Skip bloom filter size validation on replicated cmds.
             let validate_size_limit = !ctx.get_flags().contains(ContextFlags::REPLICATED);
+            let tightening_ratio = configs::TIGHTENING_RATIO;
             let bloom = match BloomFilterType::new_reserved(
                 fp_rate,
+                tightening_ratio,
                 capacity,
                 expansion,
                 use_random_seed,
@@ -302,6 +306,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
 
 pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     let argc = input_args.len();
+    let replicated_cmd = ctx.get_flags().contains(ContextFlags::REPLICATED);
     // At the very least, we need: BF.INSERT <key> ITEMS <item>
     if argc < 4 {
         return Err(ValkeyError::WrongArity);
@@ -311,6 +316,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
     let filter_name = &input_args[idx];
     idx += 1;
     let mut fp_rate = configs::BLOOM_FP_RATE_DEFAULT;
+    let mut tightening_ratio = configs::TIGHTENING_RATIO;
     let mut capacity = configs::BLOOM_CAPACITY.load(Ordering::Relaxed) as u32;
     let mut expansion = configs::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
     let mut nocreate = false;
@@ -328,6 +334,21 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                     }
                     _ => {
                         return Err(ValkeyError::Str(utils::BAD_ERROR_RATE));
+                    }
+                };
+            }
+            "TIGHTENING" if replicated_cmd => {
+                if idx >= (argc - 1) {
+                    return Err(ValkeyError::WrongArity);
+                }
+                idx += 1;
+                tightening_ratio = match input_args[idx].to_string_lossy().parse::<f64>() {
+                    Ok(num) if num > TIGHTENING_RATIO_MIN && num < TIGHTENING_RATIO_MAX => num,
+                    Ok(num) if !(num > TIGHTENING_RATIO_MIN && num < TIGHTENING_RATIO_MAX) => {
+                        return Err(ValkeyError::Str(utils::ERROR_RATIO_RANGE));
+                    }
+                    _ => {
+                        return Err(ValkeyError::Str(utils::BAD_ERROR_RATIO));
                     }
                 };
             }
@@ -387,7 +408,6 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
         }
     };
     // Skip bloom filter size validation on replicated cmds.
-    let validate_size_limit = !ctx.get_flags().contains(ContextFlags::REPLICATED);
     let mut add_succeeded = false;
     match value {
         Some(bloom) => {
@@ -398,7 +418,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                 bloom,
                 true,
                 &mut add_succeeded,
-                validate_size_limit,
+                !replicated_cmd,
             );
             replicate_and_notify_events(ctx, filter_name, add_succeeded, false);
             response
@@ -410,10 +430,11 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
             let use_random_seed = configs::BLOOM_USE_RANDOM_SEED.load(Ordering::Relaxed);
             let mut bloom = match BloomFilterType::new_reserved(
                 fp_rate,
+                tightening_ratio,
                 capacity,
                 expansion,
                 use_random_seed,
-                validate_size_limit,
+                !replicated_cmd,
             ) {
                 Ok(bf) => bf,
                 Err(err) => return Err(ValkeyError::Str(err.as_str())),
@@ -425,7 +446,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                 &mut bloom,
                 true,
                 &mut add_succeeded,
-                validate_size_limit,
+                !replicated_cmd,
             );
             match filter_key.set_value(&BLOOM_FILTER_TYPE, bloom) {
                 Ok(()) => {

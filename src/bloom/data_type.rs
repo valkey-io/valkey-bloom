@@ -71,6 +71,9 @@ impl ValkeyDataType for BloomFilterType {
         let Ok(fp_rate) = raw::load_double(rdb) else {
             return None;
         };
+        let Ok(tightening_ratio) = raw::load_double(rdb) else {
+            return None;
+        };
         let mut filters: Vec<BloomFilter> = Vec::with_capacity(num_filters as usize);
         let Ok(is_seed_random_u64) = raw::load_unsigned(rdb) else {
             return None;
@@ -121,6 +124,7 @@ impl ValkeyDataType for BloomFilterType {
         let item = BloomFilterType {
             expansion: expansion as u32,
             fp_rate,
+            tightening_ratio,
             is_seed_random,
             filters,
         };
@@ -131,6 +135,7 @@ impl ValkeyDataType for BloomFilterType {
     fn debug_digest(&self, mut dig: Digest) {
         dig.add_long_long(self.expansion.into());
         dig.add_string_buffer(&self.fp_rate.to_le_bytes());
+        dig.add_string_buffer(&self.tightening_ratio.to_le_bytes());
         for filter in &self.filters {
             dig.add_string_buffer(filter.bloom.as_slice());
             dig.add_long_long(filter.num_items.into());

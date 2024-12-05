@@ -4,7 +4,7 @@ from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 from valkeytests.conftest import resource_port_tracker
 from util.waiters import *
 
-DEFAULT_BLOOM_FILTER_SIZE = 179952
+DEFAULT_BLOOM_FILTER_SIZE = 179960
 DEFAULT_BLOOM_FILTER_CAPACITY = 100000
 class TestBloomMetrics(ValkeyBloomTestCaseBase):
 
