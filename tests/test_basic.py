@@ -297,3 +297,28 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
             assert madd_scenario_object_digest != madd_default_object_digest
         else:
             madd_scenario_object_digest == madd_default_object_digest
+
+    def test_bloom_wrong_type(self):
+        # List of all bloom commands
+        bloom_commands = [
+            'BF.ADD key item',
+            'BF.EXISTS key item',
+            'BF.MADD key item1 item2 item3',
+            'BF.MEXISTS key item2 item3 item4',
+            'BF.INSERT key ITEMS item',
+            'BF.INFO key filters',
+            'BF.CARD key',
+            'BF.RESERVE key 0.01 1000',
+        ]
+        client = self.server.get_new_client()
+        # Set the key we try to perform bloom commands on
+        client.execute_command("set key value")
+        # Run each command and check we get the correct error returned
+        for cmd in bloom_commands:
+            cmd_name = cmd.split()[0]
+            try:
+                result = client.execute_command(cmd)
+                assert False, f"{cmd_name} on existing non bloom object should fail, instead: {result}"
+            except Exception as e:
+                
+                assert str(e) == f"WRONGTYPE Operation against a key holding the wrong kind of value"

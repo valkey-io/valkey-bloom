@@ -87,7 +87,7 @@ pub fn bloom_filter_add_value(
     let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(ValkeyError::Str(utils::ERROR));
+            return Err(ValkeyError::WrongType);
         }
     };
     // Skip bloom filter size validation on replicated cmds.
@@ -173,7 +173,7 @@ pub fn bloom_filter_exists(
     let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(ValkeyError::Str(utils::ERROR));
+            return Err(ValkeyError::WrongType);
         }
     };
     if !multi {
@@ -201,7 +201,7 @@ pub fn bloom_filter_card(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
     let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(ValkeyError::Str(utils::ERROR));
+            return Err(ValkeyError::WrongType);
         }
     };
     match value {
@@ -270,7 +270,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
     let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(ValkeyError::Str(utils::ERROR));
+            return Err(ValkeyError::WrongType);
         }
     };
     match value {
@@ -383,7 +383,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
     let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(ValkeyError::Str(utils::ERROR));
+            return Err(ValkeyError::WrongType);
         }
     };
     // Skip bloom filter size validation on replicated cmds.
@@ -451,7 +451,7 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
     let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
         Ok(v) => v,
         Err(_) => {
-            return Err(ValkeyError::Str(utils::ERROR));
+            return Err(ValkeyError::WrongType);
         }
     };
     match value {
@@ -513,7 +513,7 @@ pub fn bloom_filter_load(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
         Ok(v) => v,
         Err(_) => {
             // error
-            return Err(ValkeyError::Str(utils::ERROR));
+            return Err(ValkeyError::WrongType);
         }
     };
     match filter {
