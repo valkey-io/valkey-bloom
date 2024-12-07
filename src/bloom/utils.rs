@@ -21,6 +21,7 @@ pub const NON_SCALING_FILTER_FULL: &str = "ERR non scaling filter is full";
 pub const NOT_FOUND: &str = "ERR not found";
 pub const ITEM_EXISTS: &str = "ERR item exists";
 pub const INVALID_INFO_VALUE: &str = "ERR invalid information value";
+pub const INVALID_SEED: &str = "ERR invalid seed";
 pub const BAD_EXPANSION: &str = "ERR bad expansion";
 pub const BAD_CAPACITY: &str = "ERR bad capacity";
 pub const BAD_ERROR_RATE: &str = "ERR bad error rate";
@@ -69,12 +70,13 @@ impl BloomError {
 /// Can contain one or more filters.
 /// This is a generic top level structure which is not coupled to any bloom crate.
 #[derive(Serialize, Deserialize)]
+#[allow(clippy::vec_box)]
 pub struct BloomFilterType {
-    pub expansion: u32,
-    pub fp_rate: f64,
-    pub tightening_ratio: f64,
-    pub is_seed_random: bool,
-    pub filters: Vec<Box<BloomFilter>>,
+    expansion: u32,
+    fp_rate: f64,
+    tightening_ratio: f64,
+    is_seed_random: bool,
+    filters: Vec<Box<BloomFilter>>,
 }
 
 impl BloomFilterType {
@@ -84,7 +86,7 @@ impl BloomFilterType {
         tightening_ratio: f64,
         capacity: i64,
         expansion: u32,
-        use_random_seed: bool,
+        seed: (Option<[u8; 32]>, bool),
         validate_size_limit: bool,
     ) -> Result<BloomFilterType, BloomError> {
         // Reject the request, if the operation will result in creation of a bloom object containing a filter
@@ -93,13 +95,16 @@ impl BloomFilterType {
             return Err(BloomError::ExceedsMaxBloomSize);
         }
         // Create the bloom filter and add to the main BloomFilter object.
-        let bloom = match use_random_seed {
-            true => Box::new(BloomFilter::with_random_seed(fp_rate, capacity)),
-            false => Box::new(BloomFilter::with_fixed_seed(
-                fp_rate,
-                capacity,
-                &configs::FIXED_SEED,
-            )),
+        let is_seed_random;
+        let bloom = match seed {
+            (None, _) => {
+                is_seed_random = true;
+                Box::new(BloomFilter::with_random_seed(fp_rate, capacity))
+            }
+            (Some(seed), is_random) => {
+                is_seed_random = is_random;
+                Box::new(BloomFilter::with_fixed_seed(fp_rate, capacity, &seed))
+            }
         };
         let filters = vec![bloom];
         let bloom = BloomFilterType {
@@ -107,13 +112,32 @@ impl BloomFilterType {
             fp_rate,
             tightening_ratio,
             filters,
-            is_seed_random: use_random_seed,
+            is_seed_random,
         };
         bloom.bloom_filter_type_incr_metrics_on_new_create();
         Ok(bloom)
     }
 
-    /// Create a new BloomFilterType object from an existing one.
+    /// Create a BloomFilterType object from existing data (RDB Load / Restore).
+    pub fn from_existing(
+        expansion: u32,
+        fp_rate: f64,
+        tightening_ratio: f64,
+        is_seed_random: bool,
+        filters: Vec<Box<BloomFilter>>,
+    ) -> BloomFilterType {
+        let bloom = BloomFilterType {
+            expansion,
+            fp_rate,
+            tightening_ratio,
+            is_seed_random,
+            filters,
+        };
+        bloom.bloom_filter_type_incr_metrics_on_new_create();
+        bloom
+    }
+
+    /// Create a new BloomFilterType object from an existing one (COPY).
     pub fn create_copy_from(from_bf: &BloomFilterType) -> BloomFilterType {
         let mut filters: Vec<Box<BloomFilter>> = Vec::with_capacity(from_bf.filters.capacity());
         for filter in &from_bf.filters {
@@ -178,6 +202,41 @@ impl BloomFilterType {
             .first()
             .expect("Every BloomObject is expected to have at least one filter")
             .seed()
+    }
+
+    /// Return the expansion of the bloom object.
+    pub fn expansion(&self) -> u32 {
+        self.expansion
+    }
+
+    /// Return the false postive rate of the bloom object.
+    pub fn fp_rate(&self) -> f64 {
+        self.fp_rate
+    }
+
+    /// Return the tightening ratio of the bloom object.
+    pub fn tightening_ratio(&self) -> f64 {
+        self.tightening_ratio
+    }
+
+    /// Return whether the bloom object uses a random seed.
+    pub fn is_seed_random(&self) -> bool {
+        self.is_seed_random
+    }
+
+    /// Return the number of filters in the bloom object.
+    pub fn num_filters(&self) -> usize {
+        self.filters.len()
+    }
+
+    /// Return a borrowed ref to the vector of filters in the bloom object.
+    pub fn filters(&self) -> &Vec<Box<BloomFilter>> {
+        &self.filters
+    }
+
+    /// Return a mutatively borrowed ref to the vector of filters in the bloom object.
+    pub fn filters_mut(&mut self) -> &mut Vec<Box<BloomFilter>> {
+        &mut self.filters
     }
 
     /// Add an item to the BloomFilterType object.
@@ -274,7 +333,7 @@ impl BloomFilterType {
     }
 
     /// Increments metrics related to Bloom filter memory usage upon creation of a new filter.
-    pub fn bloom_filter_type_incr_metrics_on_new_create(&self) {
+    fn bloom_filter_type_incr_metrics_on_new_create(&self) {
         metrics::BLOOM_NUM_OBJECTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
@@ -374,9 +433,9 @@ pub struct BloomFilter {
         serialize_with = "serialize",
         deserialize_with = "deserialize_boxed_bloom"
     )]
-    pub bloom: Box<bloomfilter::Bloom<[u8]>>,
-    pub num_items: i64,
-    pub capacity: i64,
+    bloom: Box<bloomfilter::Bloom<[u8]>>,
+    num_items: i64,
+    capacity: i64,
 }
 
 pub fn deserialize_boxed_bloom<'de, D>(deserializer: D) -> Result<Box<Bloom<[u8]>>, D::Error>
@@ -449,6 +508,26 @@ impl BloomFilter {
     /// Return the seed used by the sip hasher of the raw bloom.
     pub fn seed(&self) -> [u8; 32] {
         self.bloom.seed()
+    }
+
+    /// Return the numer of items in the BloomFilter.
+    pub fn num_items(&self) -> i64 {
+        self.num_items
+    }
+
+    /// Return the capcity of the BloomFilter - number of items that can be added to it.
+    pub fn capacity(&self) -> i64 {
+        self.capacity
+    }
+
+    /// Return a borrowed ref to the raw bloom of the BloomFilter.
+    pub fn raw_bloom(&self) -> &bloomfilter::Bloom<[u8]> {
+        &self.bloom
+    }
+
+    /// Return a mutatively borrowed ref to the raw bloom of the BloomFilter.
+    pub fn raw_bloom_mut(&mut self) -> &mut Box<bloomfilter::Bloom<[u8]>> {
+        &mut self.bloom
     }
 
     pub fn number_of_bytes(&self) -> usize {
@@ -678,8 +757,12 @@ mod tests {
         fp_assert(error_count, num_operations, expected_fp_rate, fp_margin);
     }
 
-    #[rstest(is_seed_random, case::random_seed(true), case::fixed_seed(false))]
-    fn test_scaling_filter(is_seed_random: bool) {
+    #[rstest(
+        seed,
+        case::random_seed((None, true)),
+        case::fixed_seed((Some(configs::FIXED_SEED), false))
+    )]
+    fn test_non_scaling_filter(seed: (Option<[u8; 32]>, bool)) {
         let rand_prefix = random_prefix(7);
         // 1 in every 1000 operations is expected to be a false positive.
         let expected_fp_rate: f64 = 0.001;
@@ -693,7 +776,7 @@ mod tests {
             tightening_ratio,
             initial_capacity,
             expansion,
-            is_seed_random,
+            seed,
             true,
         )
         .expect("Expect bloom creation to succeed");
@@ -742,8 +825,12 @@ mod tests {
         );
     }
 
-    #[rstest(is_seed_random, case::random_seed(true), case::fixed_seed(false))]
-    fn test_non_scaling_filter(is_seed_random: bool) {
+    #[rstest(
+        seed,
+        case::random_seed((None, true)),
+        case::fixed_seed((Some(configs::FIXED_SEED), false))
+    )]
+    fn test_scaling_filter(seed: (Option<[u8; 32]>, bool)) {
         let rand_prefix = random_prefix(7);
         // 1 in every 1000 operations is expected to be a false positive.
         let expected_fp_rate: f64 = 0.001;
@@ -756,7 +843,7 @@ mod tests {
             tightening_ratio,
             initial_capacity,
             expansion,
-            is_seed_random,
+            seed,
             true,
         )
         .expect("Expect bloom creation to succeed");
@@ -834,19 +921,27 @@ mod tests {
     fn test_exceeded_size_limit() {
         // Validate that bloom filter allocations within bloom objects are rejected if their memory usage would be beyond
         // the configured limit.
-        let result = BloomFilterType::new_reserved(0.5_f64, 0.5_f64, i64::MAX, 1, true, true);
+        let result =
+            BloomFilterType::new_reserved(0.5_f64, 0.5_f64, i64::MAX, 1, (None, true), true);
         assert_eq!(result.err(), Some(BloomError::ExceedsMaxBloomSize));
         let capacity = 50000000;
         assert!(!BloomFilter::validate_size(capacity, 0.001_f64));
-        let result2 = BloomFilterType::new_reserved(0.001_f64, 0.5_f64, capacity, 1, true, true);
+        let result2 =
+            BloomFilterType::new_reserved(0.001_f64, 0.5_f64, capacity, 1, (None, true), true);
         assert_eq!(result2.err(), Some(BloomError::ExceedsMaxBloomSize));
     }
 
     #[rstest(expansion, case::nonscaling(0), case::scaling(2))]
     fn test_bf_encode_and_decode(expansion: u32) {
-        let mut bf =
-            BloomFilterType::new_reserved(0.5_f64, 0.5_f64, 1000_i64, expansion, true, true)
-                .unwrap();
+        let mut bf = BloomFilterType::new_reserved(
+            0.5_f64,
+            0.5_f64,
+            1000_i64,
+            expansion,
+            (None, true),
+            true,
+        )
+        .unwrap();
         let item = "item1";
         let _ = bf.add_item(item.as_bytes(), true);
         // action
@@ -870,7 +965,8 @@ mod tests {
     fn test_bf_decode_when_unsupported_version_should_failed() {
         // arrange: prepare bloom filter
         let mut bf =
-            BloomFilterType::new_reserved(0.5_f64, 0.5_f64, 1000_i64, 2, true, true).unwrap();
+            BloomFilterType::new_reserved(0.5_f64, 0.5_f64, 1000_i64, 2, (None, true), true)
+                .unwrap();
         let key = "key";
         let _ = bf.add_item(key.as_bytes(), true).unwrap();
 
@@ -893,7 +989,8 @@ mod tests {
     fn test_bf_decode_when_bytes_is_empty_should_failed() {
         // arrange: prepare bloom filter
         let mut bf =
-            BloomFilterType::new_reserved(0.5_f64, 0.5_f64, 1000_i64, 2, true, true).unwrap();
+            BloomFilterType::new_reserved(0.5_f64, 0.5_f64, 1000_i64, 2, (None, true), true)
+                .unwrap();
         let key = "key";
         let _ = bf.add_item(key.as_bytes(), true);
 
@@ -914,7 +1011,8 @@ mod tests {
     fn test_bf_decode_when_bytes_is_exceed_limit_should_failed() {
         // arrange: prepare bloom filter
         let mut bf =
-            BloomFilterType::new_reserved(0.5_f64, 0.5_f64, 1000_i64, 2, true, true).unwrap();
+            BloomFilterType::new_reserved(0.5_f64, 0.5_f64, 1000_i64, 2, (None, true), true)
+                .unwrap();
         let key = "key";
         let _ = bf.add_item(key.as_bytes(), true);
         let origin_fp_rate = bf.fp_rate;
@@ -931,7 +1029,8 @@ mod tests {
 
         // build a larger than 64mb filter
         let extra_large_filter =
-            BloomFilterType::new_reserved(0.01_f64, 0.5_f64, 57000000, 2, true, false).unwrap();
+            BloomFilterType::new_reserved(0.01_f64, 0.5_f64, 57000000, 2, (None, true), false)
+                .unwrap();
         let vec = extra_large_filter.encode_bloom_filter().unwrap();
         // should return error
         assert_eq!(

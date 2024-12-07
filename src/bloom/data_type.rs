@@ -117,27 +117,27 @@ impl ValkeyDataType for BloomFilterType {
             }
             filters.push(Box::new(filter));
         }
-
-        let item = BloomFilterType {
-            expansion: expansion as u32,
+        let item = BloomFilterType::from_existing(
+            expansion as u32,
             fp_rate,
             tightening_ratio,
             is_seed_random,
             filters,
-        };
-        item.bloom_filter_type_incr_metrics_on_new_create();
+        );
         Some(item)
     }
 
     /// Function that is used to generate a digest on the Bloom Object.
     fn debug_digest(&self, mut dig: Digest) {
-        dig.add_long_long(self.expansion.into());
-        dig.add_string_buffer(&self.fp_rate.to_le_bytes());
-        dig.add_string_buffer(&self.tightening_ratio.to_le_bytes());
-        for filter in &self.filters {
-            dig.add_string_buffer(filter.bloom.as_slice());
-            dig.add_long_long(filter.num_items);
-            dig.add_long_long(filter.capacity);
+        dig.add_long_long(self.expansion() as i64);
+        dig.add_string_buffer(&self.fp_rate().to_le_bytes());
+        dig.add_string_buffer(&self.tightening_ratio().to_le_bytes());
+        let is_seed_random = if self.is_seed_random() { 1 } else { 0 };
+        dig.add_long_long(is_seed_random);
+        for filter in self.filters() {
+            dig.add_string_buffer(filter.raw_bloom().as_slice());
+            dig.add_long_long(filter.num_items());
+            dig.add_long_long(filter.capacity());
         }
         dig.end_sequence();
     }

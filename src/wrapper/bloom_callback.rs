@@ -26,28 +26,25 @@ use super::defrag::Defrag;
 /// # Safety
 pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_void) {
     let v = &*value.cast::<BloomFilterType>();
-    raw::save_unsigned(rdb, v.filters.len() as u64);
-    raw::save_unsigned(rdb, v.expansion as u64);
-    raw::save_double(rdb, v.fp_rate);
-    raw::save_double(rdb, v.tightening_ratio);
-    let mut is_seed_random = 0;
-    if v.is_seed_random {
-        is_seed_random = 1;
-    }
+    raw::save_unsigned(rdb, v.num_filters() as u64);
+    raw::save_unsigned(rdb, v.expansion() as u64);
+    raw::save_double(rdb, v.fp_rate());
+    raw::save_double(rdb, v.tightening_ratio());
+    let is_seed_random = if v.is_seed_random() { 1 } else { 0 };
     raw::save_unsigned(rdb, is_seed_random);
-    let filter_list = &v.filters;
+    let filter_list = v.filters();
     let mut filter_list_iter = filter_list.iter().peekable();
     while let Some(filter) = filter_list_iter.next() {
-        let bloom = &filter.bloom;
+        let bloom = filter.raw_bloom();
         let bitmap = bloom.as_slice();
         raw::RedisModule_SaveStringBuffer.unwrap()(
             rdb,
             bitmap.as_ptr().cast::<c_char>(),
             bitmap.len(),
         );
-        raw::save_unsigned(rdb, filter.capacity as u64);
+        raw::save_unsigned(rdb, filter.capacity() as u64);
         if filter_list_iter.peek().is_none() {
-            raw::save_unsigned(rdb, filter.num_items as u64);
+            raw::save_unsigned(rdb, filter.num_items() as u64);
         }
     }
 }
@@ -150,7 +147,7 @@ pub unsafe extern "C" fn bloom_free_effort(
     curr_item.free_effort()
 }
 
-/// Lazy static for a default temporary bloom that gets swapped during defrag.
+// Lazy static for a default temporary bloom that gets swapped during defrag.
 lazy_static! {
     static ref DEFRAG_BLOOM_FILTER: Mutex<Option<Box<Bloom<[u8]>>>> =
         Mutex::new(Some(Box::new(Bloom::<[u8]>::new(1, 1).unwrap())));
@@ -170,7 +167,7 @@ lazy_static! {
 /// Returns a new `Vec<u8>` that may have been defragmented. If defragmentation was successful,
 /// the returned vector will use the newly allocated memory. If defragmentation failed or was
 /// not necessary, the original vector's memory will be used.
-fn external_vec_defrag(mut vec: Vec<u8>) -> Vec<u8> {
+fn external_vec_defrag(vec: Vec<u8>) -> Vec<u8> {
     let defrag = Defrag::new(core::ptr::null_mut());
     let len = vec.len();
     let capacity = vec.capacity();
@@ -231,13 +228,13 @@ pub unsafe extern "C" fn bloom_defrag(
     // Convert pointer to BloomFilterType so we can operate on it.
     let bloom_filter_type: &mut BloomFilterType = &mut *(*value).cast::<BloomFilterType>();
 
-    let num_filters = bloom_filter_type.filters.len();
-    let filters_capacity = bloom_filter_type.filters.capacity();
+    let num_filters = bloom_filter_type.num_filters();
+    let filters_capacity = bloom_filter_type.filters().capacity();
 
     // While we are within a timeframe decided from should_stop_defrag and not over the number of filters defrag the next filter
     while !defrag.should_stop_defrag() && cursor < num_filters as u64 {
         // Remove the current filter, unbox it, and attempt to defragment.
-        let bloom_filter_box = bloom_filter_type.filters.remove(cursor as usize);
+        let bloom_filter_box = bloom_filter_type.filters_mut().remove(cursor as usize);
         let bloom_filter = Box::into_raw(bloom_filter_box);
         let defrag_result = defrag.alloc(bloom_filter as *mut c_void);
         let mut defragged_filter = {
@@ -252,7 +249,7 @@ pub unsafe extern "C" fn bloom_defrag(
             .lock()
             .expect("We expect default to exist");
         let inner_bloom = mem::replace(
-            &mut defragged_filter.bloom,
+            defragged_filter.raw_bloom_mut(),
             temporary_bloom.take().expect("We expect default to exist"),
         );
         // Convert the inner_bloom into the correct type and then try to defragment it
@@ -265,20 +262,20 @@ pub unsafe extern "C" fn bloom_defrag(
             let external_bloom =
                 inner_bloom.realloc_large_heap_allocated_objects(external_vec_defrag);
             let placeholder_bloom =
-                mem::replace(&mut defragged_filter.bloom, Box::new(external_bloom));
+                mem::replace(defragged_filter.raw_bloom_mut(), Box::new(external_bloom));
             *temporary_bloom = Some(placeholder_bloom); // Reset the original static
         } else {
             let inner_bloom = unsafe { Box::from_raw(inner_bloom_ptr) };
             let external_bloom =
                 inner_bloom.realloc_large_heap_allocated_objects(external_vec_defrag);
             let placeholder_bloom =
-                mem::replace(&mut defragged_filter.bloom, Box::new(external_bloom));
+                mem::replace(defragged_filter.raw_bloom_mut(), Box::new(external_bloom));
             *temporary_bloom = Some(placeholder_bloom); // Reset the original static
         }
 
         // Reinsert the defragmented filter and increment the cursor
         bloom_filter_type
-            .filters
+            .filters_mut()
             .insert(cursor as usize, defragged_filter);
         cursor += 1;
     }
@@ -289,11 +286,11 @@ pub unsafe extern "C" fn bloom_defrag(
         return 1;
     }
     // Defragment the Vec of filters itself
-    let filters_vec = mem::take(&mut bloom_filter_type.filters);
+    let filters_vec = mem::take(bloom_filter_type.filters_mut());
     let filters_ptr = Box::into_raw(filters_vec.into_boxed_slice()) as *mut c_void;
     let defragged_filters_ptr = defrag.alloc(filters_ptr);
     if !defragged_filters_ptr.is_null() {
-        bloom_filter_type.filters = unsafe {
+        *bloom_filter_type.filters_mut() = unsafe {
             Vec::from_raw_parts(
                 defragged_filters_ptr as *mut Box<BloomFilter>,
                 num_filters,
@@ -301,7 +298,7 @@ pub unsafe extern "C" fn bloom_defrag(
             )
         };
     } else {
-        bloom_filter_type.filters = unsafe {
+        *bloom_filter_type.filters_mut() = unsafe {
             Vec::from_raw_parts(
                 filters_ptr as *mut Box<BloomFilter>,
                 num_filters,

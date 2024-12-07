@@ -7,7 +7,6 @@ pub mod metrics;
 pub mod wrapper;
 use crate::bloom::command_handler;
 use crate::bloom::data_type::BLOOM_FILTER_TYPE;
-use valkey_module::logging;
 use valkey_module_macros::info_command_handler;
 
 pub const MODULE_NAME: &str = "bf";
