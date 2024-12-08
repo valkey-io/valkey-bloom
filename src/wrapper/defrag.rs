@@ -1,7 +1,6 @@
-use std::os::raw::{c_ulong, c_void};
+use std::os::raw::c_void;
 
-use valkey_module::raw;
-
+use valkey_module::{raw, Status};
 pub struct Defrag {
     pub defrag_ctx: *mut raw::RedisModuleDefragCtx,
 }
@@ -21,15 +20,27 @@ impl Defrag {
     /// # Safety
     ///
     /// This function is temporary and will be removed once implemented in valkeymodule-rs .
-    pub unsafe fn cursorset(&self, cursor: u64) -> i32 {
-        unsafe { raw::RedisModule_DefragCursorSet.unwrap()(self.defrag_ctx, cursor) }
+    pub unsafe fn set_cursor(&self, cursor: u64) -> Status {
+        let status = unsafe { raw::RedisModule_DefragCursorSet.unwrap()(self.defrag_ctx, cursor) };
+        if status as isize == raw::REDISMODULE_OK {
+            Status::Ok
+        } else {
+            Status::Err
+        }
     }
 
     /// # Safety
     ///
     /// This function is temporary and will be removed once implemented in valkeymodule-rs .
-    pub unsafe fn cursorget(&self, cursor: *mut u64) -> i32 {
-        unsafe { raw::RedisModule_DefragCursorGet.unwrap()(self.defrag_ctx, cursor) }
+    pub unsafe fn get_cursor(&self) -> Option<u64> {
+        let mut cursor: u64 = 0;
+        let status =
+            unsafe { raw::RedisModule_DefragCursorGet.unwrap()(self.defrag_ctx, &mut cursor) };
+        if status as isize == raw::REDISMODULE_OK {
+            Some(cursor)
+        } else {
+            None
+        }
     }
 
     /// # Safety

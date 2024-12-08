@@ -199,6 +199,13 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
         assert num_items == expected_num_items
         assert sum_capacity == expected_sum_capacity
 
+    """
+    This method will parse the return of an INFO command and return a python dict where each metric is a key value pair.
+    We can pass in specific sections in order to not have the dict store irrelevant fields related to what we want to check.
+    Example of parsing the returned dict:
+        stats = self.parse_valkey_info("STATS")
+        stats.get('active_defrag_misses')
+    """
     def parse_valkey_info(self, section):
         mem_info = self.client.execute_command('INFO ' + section)
         lines = mem_info.decode('utf-8').split('\r\n')        

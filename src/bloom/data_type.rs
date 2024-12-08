@@ -1,12 +1,9 @@
 use crate::bloom::utils::BloomFilter;
 use crate::bloom::utils::BloomFilterType;
 use crate::configs;
-use crate::metrics::BLOOM_NUM_OBJECTS;
-use crate::metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES;
 use crate::wrapper::bloom_callback;
 use crate::wrapper::digest::Digest;
 use crate::MODULE_NAME;
-use std::mem;
 use std::os::raw::c_int;
 use valkey_module::native_types::ValkeyType;
 use valkey_module::{logging, raw};
@@ -71,11 +68,16 @@ impl ValkeyDataType for BloomFilterType {
         let Ok(fp_rate) = raw::load_double(rdb) else {
             return None;
         };
+
+        let Ok(tightening_ratio) = raw::load_double(rdb) else {
+            return None;
+        };
         let Ok(is_seed_random_u64) = raw::load_unsigned(rdb) else {
             return None;
         };
         let is_seed_random = is_seed_random_u64 == 1;
-
+        // We start off with capacity as 1 to match the same expansion of the vector that would have occurred during bloom
+        // object creation and scaling as a result of BF.* operations.
         let mut filters = Vec::with_capacity(1);
 
         for i in 0..num_filters {
@@ -116,10 +118,10 @@ impl ValkeyDataType for BloomFilterType {
             filters.push(Box::new(filter));
         }
 
-        BLOOM_NUM_OBJECTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let item = BloomFilterType {
             expansion: expansion as u32,
             fp_rate,
+            tightening_ratio,
             is_seed_random,
             filters,
         };
@@ -131,6 +133,7 @@ impl ValkeyDataType for BloomFilterType {
     fn debug_digest(&self, mut dig: Digest) {
         dig.add_long_long(self.expansion.into());
         dig.add_string_buffer(&self.fp_rate.to_le_bytes());
+        dig.add_string_buffer(&self.tightening_ratio.to_le_bytes());
         for filter in &self.filters {
             dig.add_string_buffer(filter.bloom.as_slice());
             dig.add_long_long(filter.num_items.into());

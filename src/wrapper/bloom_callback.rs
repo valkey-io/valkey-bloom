@@ -29,6 +29,7 @@ pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mu
     raw::save_unsigned(rdb, v.filters.len() as u64);
     raw::save_unsigned(rdb, v.expansion as u64);
     raw::save_double(rdb, v.fp_rate);
+    raw::save_double(rdb, v.tightening_ratio);
     let mut is_seed_random = 0;
     if v.is_seed_random {
         is_seed_random = 1;
@@ -224,9 +225,8 @@ pub unsafe extern "C" fn bloom_defrag(
     }
 
     // Get the cursor for the BloomFilterType otherwise start the cursor at 0
-    let mut cursor: u64 = 0;
     let defrag = Defrag::new(defrag_ctx);
-    defrag.cursorget(&mut cursor);
+    let mut cursor = defrag.get_cursor().unwrap_or(0);
 
     // Convert pointer to BloomFilterType so we can operate on it.
     let bloom_filter_type: &mut BloomFilterType = &mut *(*value).cast::<BloomFilterType>();
@@ -283,7 +283,7 @@ pub unsafe extern "C" fn bloom_defrag(
         cursor += 1;
     }
     // Save the cursor for where we will start defragmenting from next time
-    defrag.cursorset(cursor);
+    defrag.set_cursor(cursor);
     // If not all filters were looked at, return 1 to indicate incomplete defragmentation
     if cursor < num_filters as u64 {
         return 1;
