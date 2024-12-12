@@ -161,6 +161,8 @@ class TestBloomReplication(ReplicationTestCase):
         # replicated with the properties below.
         assert self.client.execute_command('CONFIG SET bf.bloom-capacity 1000') == b'OK'
         assert self.client.execute_command('CONFIG SET bf.bloom-expansion 3') == b'OK'
+        assert self.client.execute_command('CONFIG SET bf.bloom-fp-rate 0.1') == b'OK'
+        assert self.client.execute_command('CONFIG SET bf.bloom-tightening-ratio 0.75') == b'OK'
         # Test bloom object creation with every command type.
         bloom_write_cmds = [
             ('BF.ADD', 'BF.ADD key item'),
@@ -181,3 +183,7 @@ class TestBloomReplication(ReplicationTestCase):
             assert object_digest_primary == debug_digest_replica
             self.client.execute_command('FLUSHALL')
             self.waitForReplicaToSyncUp(self.replicas[0])
+            assert self.replicas[0].client.execute_command('CONFIG GET bf.bloom-capacity')[1] == b'100'
+            assert self.replicas[0].client.execute_command('CONFIG GET bf.bloom-expansion')[1] == b'2'
+            assert self.replicas[0].client.execute_command('CONFIG GET bf.bloom-fp-rate')[1] == b'0.01'
+            assert self.replicas[0].client.execute_command('CONFIG GET bf.bloom-tightening-ratio')[1] == b'0.5'

@@ -1,6 +1,8 @@
 use metrics::bloom_info_handler;
-use valkey_module::configuration::ConfigurationFlags;
-use valkey_module::{valkey_module, Context, InfoContext, Status, ValkeyResult, ValkeyString};
+use valkey_module::{
+    configuration::ConfigurationFlags, valkey_module, Context, InfoContext, Status, ValkeyGILGuard,
+    ValkeyResult, ValkeyString,
+};
 pub mod bloom;
 pub mod configs;
 pub mod metrics;
@@ -106,6 +108,8 @@ valkey_module! {
             ["bloom-memory-limit-per-filter", &*configs::BLOOM_MEMORY_LIMIT_PER_FILTER, configs::BLOOM_MEMORY_LIMIT_PER_FILTER_DEFAULT, configs::BLOOM_MEMORY_LIMIT_PER_FILTER_MIN, configs::BLOOM_MEMORY_LIMIT_PER_FILTER_MAX, ConfigurationFlags::DEFAULT, None],
         ],
         string: [
+            ["bloom-fp-rate", &*configs::BLOOM_FP_RATE, configs::BLOOM_FP_RATE_DEFAULT, ConfigurationFlags::DEFAULT, None, Some(Box::new(configs::on_string_config_set))],
+            ["bloom-tightening-ratio", &*configs::BLOOM_TIGHTENING_RATIO, configs::TIGHTENING_RATIO_DEFAULT, ConfigurationFlags::DEFAULT, None, Some(Box::new(configs::on_string_config_set))],
         ],
         bool: [
             ["bloom-use-random-seed", &*configs::BLOOM_USE_RANDOM_SEED, configs::BLOOM_USE_RANDOM_SEED_DEFAULT, ConfigurationFlags::DEFAULT, None],

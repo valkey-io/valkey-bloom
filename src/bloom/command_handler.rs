@@ -4,7 +4,7 @@ use crate::bloom::utils::BloomFilterType;
 use crate::configs;
 use crate::configs::{
     BLOOM_CAPACITY_MAX, BLOOM_CAPACITY_MIN, BLOOM_EXPANSION_MAX, BLOOM_EXPANSION_MIN,
-    BLOOM_FP_RATE_MAX, BLOOM_FP_RATE_MIN, TIGHTENING_RATIO_MAX, TIGHTENING_RATIO_MIN,
+    BLOOM_FP_RATE_MAX, BLOOM_FP_RATE_MIN, BLOOM_TIGHTENING_RATIO_MAX, BLOOM_TIGHTENING_RATIO_MIN,
 };
 use std::sync::atomic::Ordering;
 use valkey_module::ContextFlags;
@@ -203,8 +203,12 @@ pub fn bloom_filter_add_value(
         }
         None => {
             // Instantiate empty bloom filter.
-            let fp_rate = configs::BLOOM_FP_RATE_DEFAULT;
-            let tightening_ratio = configs::TIGHTENING_RATIO;
+            let fp_rate = *configs::BLOOM_FP_RATE_F64
+                .lock()
+                .expect("Unable to get a lock on fp_rate static");
+            let tightening_ratio = *configs::BLOOM_TIGHTENING_F64
+                .lock()
+                .expect("Unable to get a lock on tightening ratio static");
             let capacity = configs::BLOOM_CAPACITY.load(Ordering::Relaxed);
             let expansion = configs::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
             let use_random_seed = configs::BLOOM_USE_RANDOM_SEED.load(Ordering::Relaxed);
@@ -401,7 +405,9 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
             };
             // Skip bloom filter size validation on replicated cmds.
             let validate_size_limit = !ctx.get_flags().contains(ContextFlags::REPLICATED);
-            let tightening_ratio = configs::TIGHTENING_RATIO;
+            let tightening_ratio = *configs::BLOOM_TIGHTENING_F64
+                .lock()
+                .expect("Failed to lock tightening ratio");
             let bloom = match BloomFilterType::new_reserved(
                 fp_rate,
                 tightening_ratio,
@@ -444,8 +450,12 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
     let filter_name = &input_args[idx];
     idx += 1;
     let replicated_cmd = ctx.get_flags().contains(ContextFlags::REPLICATED);
-    let mut fp_rate = configs::BLOOM_FP_RATE_DEFAULT;
-    let mut tightening_ratio = configs::TIGHTENING_RATIO;
+    let mut fp_rate = *configs::BLOOM_FP_RATE_F64
+        .lock()
+        .expect("Unable to get a lock on fp_rate static");
+    let mut tightening_ratio = *configs::BLOOM_TIGHTENING_F64
+        .lock()
+        .expect("Unable to get a lock on tightening ratio static");
     let mut capacity = configs::BLOOM_CAPACITY.load(Ordering::Relaxed);
     let mut expansion = configs::BLOOM_EXPANSION.load(Ordering::Relaxed) as u32;
     let use_random_seed = configs::BLOOM_USE_RANDOM_SEED.load(Ordering::Relaxed);
@@ -479,8 +489,15 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                 }
                 idx += 1;
                 tightening_ratio = match input_args[idx].to_string_lossy().parse::<f64>() {
-                    Ok(num) if num > TIGHTENING_RATIO_MIN && num < TIGHTENING_RATIO_MAX => num,
-                    Ok(num) if !(num > TIGHTENING_RATIO_MIN && num < TIGHTENING_RATIO_MAX) => {
+                    Ok(num)
+                        if num > BLOOM_TIGHTENING_RATIO_MIN && num < BLOOM_TIGHTENING_RATIO_MAX =>
+                    {
+                        num
+                    }
+                    Ok(num)
+                        if !(num > BLOOM_TIGHTENING_RATIO_MIN
+                            && num < BLOOM_TIGHTENING_RATIO_MAX) =>
+                    {
                         return Err(ValkeyError::Str(utils::ERROR_RATIO_RANGE));
                     }
                     _ => {

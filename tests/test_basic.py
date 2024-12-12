@@ -299,6 +299,22 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         else:
             madd_scenario_object_digest == madd_default_object_digest
 
+        # scenario 6 validates that digest differs on bloom objects after changing the tightening_ratio config
+        client.execute_command('BF.RESERVE tightening_ratio 0.001 1000')
+        assert self.client.execute_command('CONFIG SET bf.bloom-tightening-ratio 0.75') == b'OK'
+        client.execute_command('BF.RESERVE tightening_ratio2 0.001 1000')
+        scenario_tightening_ratio_object_digest = client.execute_command('DEBUG DIGEST-VALUE tightening_ratio')
+        scenario_tightening_ratio2_digest = client.execute_command('DEBUG DIGEST-VALUE tightening_ratio2')
+        assert scenario_tightening_ratio_object_digest != scenario_tightening_ratio2_digest
+
+        # scenario 7 validates that digest differs on bloom objects after changing the fp_rate config
+        client.execute_command('BF.INSERT fp_rate capacity 1000 items 1')
+        assert self.client.execute_command('CONFIG SET bf.bloom-fp-rate 0.5') == b'OK'
+        client.execute_command('BF.INSERT fp_rate2 capacity 1000 items 1')
+        fp_rate_object_digest = client.execute_command('DEBUG DIGEST-VALUE fp_rate')
+        scenario_fp_rate2_digest = client.execute_command('DEBUG DIGEST-VALUE fp_rate2')
+        assert fp_rate_object_digest != scenario_fp_rate2_digest
+
     def test_bloom_wrong_type(self):
         # List of all bloom commands
         bloom_commands = [
@@ -323,3 +339,19 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
             except Exception as e:
                 
                 assert str(e) == f"WRONGTYPE Operation against a key holding the wrong kind of value"
+    
+    def test_bloom_string_config_set(self):
+        """
+        This is a test that validates the bloom string configuration set logic.
+        """     
+        assert self.client.execute_command('CONFIG SET bf.bloom-fp-rate 0.1') == b'OK'
+        assert self.client.execute_command('CONFIG SET bf.bloom-tightening-ratio 0.75') == b'OK'
+        
+        assert self.client.execute_command('CONFIG GET bf.bloom-fp-rate')[1] == b'0.1'
+        assert self.client.execute_command('CONFIG GET bf.bloom-tightening-ratio')[1] == b'0.75'
+        try:
+            assert self.client.execute_command('CONFIG SET bf.bloom-fp-rate 1.1') == b'ERR (0 < error rate range < 1)'\
+                and self.client.execute_command('CONFIG SET bf.bloom-tightening-ratio 1.75') == b'ERR (0 < error ratio range < 1)'
+        except ResponseError as e:
+            assert str(e) == f"CONFIG SET failed (possibly related to argument 'bf.bloom-fp-rate') - ERR (0 < error rate range < 1)"\
+                and f"CONFIG SET failed (possibly related to argument 'bf.bloom-tightening-ratio') - ERR (0 < error rate range < 1)"

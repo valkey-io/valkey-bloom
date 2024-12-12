@@ -1,8 +1,8 @@
 use super::data_type::BLOOM_TYPE_VERSION;
 use crate::{
     configs::{
-        self, BLOOM_EXPANSION_MAX, BLOOM_FP_RATE_MAX, BLOOM_FP_RATE_MIN, TIGHTENING_RATIO_MAX,
-        TIGHTENING_RATIO_MIN,
+        self, BLOOM_EXPANSION_MAX, BLOOM_FP_RATE_MAX, BLOOM_FP_RATE_MIN,
+        BLOOM_TIGHTENING_RATIO_MAX, BLOOM_TIGHTENING_RATIO_MIN,
     },
     metrics,
 };
@@ -265,10 +265,11 @@ impl BloomFilterType {
             }
             // Scale out by adding a new filter with capacity bounded within the u32 range. false positive rate is also
             // bound within the range f64::MIN_POSITIVE <= x < 1.0.
-            let new_fp_rate = match Self::calculate_fp_rate(self.fp_rate, num_filters) {
-                Ok(rate) => rate,
-                Err(e) => return Err(e),
-            };
+            let new_fp_rate =
+                match Self::calculate_fp_rate(self.fp_rate, num_filters, self.tightening_ratio) {
+                    Ok(rate) => rate,
+                    Err(e) => return Err(e),
+                };
             let new_capacity = match filter.capacity.checked_mul(self.expansion.into()) {
                 Some(new_capacity) => new_capacity,
                 None => {
@@ -325,8 +326,12 @@ impl BloomFilterType {
     }
 
     /// Calculate the false positive rate for the Nth filter using tightening ratio.
-    pub fn calculate_fp_rate(fp_rate: f64, num_filters: i32) -> Result<f64, BloomError> {
-        match fp_rate * configs::TIGHTENING_RATIO.powi(num_filters) {
+    pub fn calculate_fp_rate(
+        fp_rate: f64,
+        num_filters: i32,
+        tightening_ratio: f64,
+    ) -> Result<f64, BloomError> {
+        match fp_rate * tightening_ratio.powi(num_filters) {
             x if x > f64::MIN_POSITIVE => Ok(x),
             _ => Err(BloomError::MaxNumScalingFilters),
         }
@@ -374,7 +379,9 @@ impl BloomFilterType {
                         if !(values.1 > BLOOM_FP_RATE_MIN && values.1 < BLOOM_FP_RATE_MAX) {
                             return Err(BloomError::ErrorRateRange);
                         }
-                        if !(values.2 > TIGHTENING_RATIO_MIN && values.2 < TIGHTENING_RATIO_MAX) {
+                        if !(values.2 > BLOOM_TIGHTENING_RATIO_MIN
+                            && values.2 < BLOOM_TIGHTENING_RATIO_MAX)
+                        {
                             return Err(BloomError::ErrorRateRange);
                         }
                         if values.4.len() >= configs::MAX_FILTERS_PER_OBJ as usize {

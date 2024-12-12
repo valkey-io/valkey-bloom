@@ -87,15 +87,16 @@ impl ValkeyDataType for BloomFilterType {
             let Ok(capacity) = raw::load_unsigned(rdb) else {
                 return None;
             };
-            let new_fp_rate = match Self::calculate_fp_rate(fp_rate, num_filters as i32) {
-                Ok(rate) => rate,
-                Err(_) => {
-                    logging::log_warning(
-                        "Failed to restore bloom object: Reached max number of filters",
-                    );
-                    return None;
-                }
-            };
+            let new_fp_rate =
+                match Self::calculate_fp_rate(fp_rate, num_filters as i32, tightening_ratio) {
+                    Ok(rate) => rate,
+                    Err(_) => {
+                        logging::log_warning(
+                            "Failed to restore bloom object: Reached max number of filters",
+                        );
+                        return None;
+                    }
+                };
             if !BloomFilter::validate_size(capacity as i64, new_fp_rate) {
                 logging::log_warning("Failed to restore bloom object: Contains a filter larger than the max allowed size limit.");
                 return None;
