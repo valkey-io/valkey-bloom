@@ -3,6 +3,7 @@ use crate::bloom::data_type::ValkeyDataType;
 use crate::bloom::utils::BloomFilter;
 use crate::bloom::utils::BloomFilterType;
 use crate::configs;
+use crate::metrics;
 use crate::wrapper::digest::Digest;
 use bloomfilter::Bloom;
 use lazy_static::lazy_static;
@@ -174,8 +175,10 @@ fn external_vec_defrag(vec: Vec<u8>) -> Vec<u8> {
     let vec_ptr = Box::into_raw(vec.into_boxed_slice()) as *mut c_void;
     let defragged_filters_ptr = unsafe { defrag.alloc(vec_ptr) };
     if !defragged_filters_ptr.is_null() {
+        metrics::BLOOM_DEFRAG_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         unsafe { Vec::from_raw_parts(defragged_filters_ptr as *mut u8, len, capacity) }
     } else {
+        metrics::BLOOM_DEFRAG_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         unsafe { Vec::from_raw_parts(vec_ptr as *mut u8, len, capacity) }
     }
 }
@@ -239,8 +242,10 @@ pub unsafe extern "C" fn bloom_defrag(
         let defrag_result = defrag.alloc(bloom_filter as *mut c_void);
         let mut defragged_filter = {
             if !defrag_result.is_null() {
+                metrics::BLOOM_DEFRAG_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 Box::from_raw(defrag_result as *mut BloomFilter)
             } else {
+                metrics::BLOOM_DEFRAG_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 Box::from_raw(bloom_filter)
             }
         };
@@ -257,6 +262,8 @@ pub unsafe extern "C" fn bloom_defrag(
         let defragged_inner_bloom = defrag.alloc(inner_bloom_ptr as *mut c_void);
         // Defragment the Vec within the Bloom object using the external callback
         if !defragged_inner_bloom.is_null() {
+            metrics::BLOOM_DEFRAG_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
             let inner_bloom =
                 unsafe { Box::from_raw(defragged_inner_bloom as *mut bloomfilter::Bloom<[u8]>) };
             let external_bloom =
@@ -265,6 +272,8 @@ pub unsafe extern "C" fn bloom_defrag(
                 mem::replace(defragged_filter.raw_bloom_mut(), Box::new(external_bloom));
             *temporary_bloom = Some(placeholder_bloom); // Reset the original static
         } else {
+            metrics::BLOOM_DEFRAG_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
             let inner_bloom = unsafe { Box::from_raw(inner_bloom_ptr) };
             let external_bloom =
                 inner_bloom.realloc_large_heap_allocated_objects(external_vec_defrag);
@@ -290,6 +299,7 @@ pub unsafe extern "C" fn bloom_defrag(
     let filters_ptr = Box::into_raw(filters_vec.into_boxed_slice()) as *mut c_void;
     let defragged_filters_ptr = defrag.alloc(filters_ptr);
     if !defragged_filters_ptr.is_null() {
+        metrics::BLOOM_DEFRAG_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         *bloom_filter_type.filters_mut() = unsafe {
             Vec::from_raw_parts(
                 defragged_filters_ptr as *mut Box<BloomFilter>,
@@ -298,6 +308,7 @@ pub unsafe extern "C" fn bloom_defrag(
             )
         };
     } else {
+        metrics::BLOOM_DEFRAG_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         *bloom_filter_type.filters_mut() = unsafe {
             Vec::from_raw_parts(
                 filters_ptr as *mut Box<BloomFilter>,
@@ -309,7 +320,10 @@ pub unsafe extern "C" fn bloom_defrag(
     // Finally, attempt to defragment the BloomFilterType itself
     let val = defrag.alloc(*value);
     if !val.is_null() {
+        metrics::BLOOM_DEFRAG_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         *value = val;
+    } else {
+        metrics::BLOOM_DEFRAG_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
     // Return 0 to indicate successful complete defragmentation
     0

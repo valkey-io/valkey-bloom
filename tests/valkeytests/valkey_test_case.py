@@ -193,6 +193,10 @@ class ValkeyClient(StrictValkey):
     def info_obj(self):
         """Return a ValkeyInfo object for the current client info"""
         return ValkeyInfo(self.info('all'))
+    
+    def info_section(self, section):
+        """Return a ValkeyInfo object for the current client info section"""
+        return ValkeyInfo(self.info(section))
 
     def bitfield(self, name, *values):
         """

@@ -8,6 +8,8 @@ lazy_static! {
     pub static ref BLOOM_NUM_FILTERS_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
     pub static ref BLOOM_NUM_ITEMS_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
     pub static ref BLOOM_CAPACITY_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
+    pub static ref BLOOM_DEFRAG_HITS: AtomicU64 = AtomicU64::new(0);
+    pub static ref BLOOM_DEFRAG_MISSES: AtomicU64 = AtomicU64::new(0);
 }
 
 pub fn bloom_info_handler(ctx: &InfoContext) -> ValkeyResult<()> {
@@ -40,6 +42,16 @@ pub fn bloom_info_handler(ctx: &InfoContext) -> ValkeyResult<()> {
             BLOOM_CAPACITY_ACROSS_OBJECTS
                 .load(Ordering::Relaxed)
                 .to_string(),
+        )?
+        .build_section()?
+        .add_section("bloom_defrag_metrics")
+        .field(
+            "bloom_defrag_hits",
+            BLOOM_DEFRAG_HITS.load(Ordering::Relaxed).to_string(),
+        )?
+        .field(
+            "bloom_defrag_misses",
+            BLOOM_DEFRAG_MISSES.load(Ordering::Relaxed).to_string(),
         )?
         .build_section()?
         .build_info()?;
