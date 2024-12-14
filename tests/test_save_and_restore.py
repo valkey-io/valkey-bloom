@@ -85,7 +85,6 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         assert bf_exists_result_1 == 1
         bf_info_result_1 = client.execute_command('BF.INFO testSave')
         assert(len(bf_info_result_1)) != 0
-        curr_item_count_1 = client.info_obj().num_keys()
 
         # Save rdb and try to load this on a sever. Validate module data type load fails and server does not startup.
         client.bgsave()

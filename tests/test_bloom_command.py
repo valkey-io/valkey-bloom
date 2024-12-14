@@ -25,10 +25,6 @@ class TestBloomCommand(ValkeyBloomTestCaseBase):
         # test set up
         assert self.client.execute_command('BF.ADD key item') == 1
         assert self.client.execute_command('BF.RESERVE bf 0.01 1000') == b'OK'
-        # non scaling filter
-        assert self.client.execute_command('BF.RESERVE bf_non 0.01 2 NONSCALING') == b'OK'
-        assert self.client.execute_command('BF.ADD bf_non 0') == 1
-        assert self.client.execute_command('BF.ADD bf_non 1') == 1
 
         basic_error_test_cases = [
             # not found
@@ -93,27 +89,24 @@ class TestBloomCommand(ValkeyBloomTestCaseBase):
         basic_behavior_test_case = [
             ('BF.ADD key item', 1),
             ('BF.ADD key item', 0),
-            ('BF.ADD key item1', 1),
             ('BF.EXISTS key item', 1),
-            ('BF.EXISTS key item2', 0),
-            ('BF.MADD key item item2', [0, 1]),
+            ('BF.MADD key item item2', 2),
             ('BF.EXISTS key item', 1),
             ('BF.EXISTS key item2', 1),
-            ('BF.EXISTS key item3', 0),
-            ('BF.MADD hello world1 world2 world3', [1, 1, 1]),
-            ('BF.MADD hello world1 world2 world3 world4', [0, 0, 0, 1]),
-            ('BF.MEXISTS hello world5', [0]),
-            ('BF.MADD hello world5', [1]),
-            ('BF.MEXISTS hello world5 world6 world7', [1, 0, 0]),
-            ('BF.INSERT TEST ITEMS ITEM', [1]),
-            ('BF.INSERT TEST CAPACITY 1000 ITEMS ITEM', [0]),
-            ('BF.INSERT TEST CAPACITY 200 error 0.50 ITEMS ITEM ITEM1 ITEM2', [0, 1, 1]),
-            ('BF.INSERT TEST CAPACITY 300 ERROR 0.50 EXPANSION 1 ITEMS ITEM FOO', [0, 1]),
-            ('BF.INSERT TEST ERROR 0.50 EXPANSION 3 NOCREATE items BOO', [1]), 
-            ('BF.INSERT TEST ERROR 0.50 EXPANSION 1 NOCREATE NONSCALING items BOO', [0]),
-            ('BF.INSERT TEST_EXPANSION EXPANSION 9 ITEMS ITEM', [1]),
-            ('BF.INSERT TEST_CAPACITY CAPACITY 2000 ITEMS ITEM', [1]),
-            ('BF.INSERT TEST_ITEMS ITEMS 1 2 3 EXPANSION 2', [1, 1, 1, 1, 0]),
+            ('BF.MADD hello world1 world2 world3', 3),
+            ('BF.MADD hello world1 world2 world3 world4', 4),
+            ('BF.MEXISTS hello world5', 1),
+            ('BF.MADD hello world5', 1),
+            ('BF.MEXISTS hello world5 world6 world7', 3),
+            ('BF.INSERT TEST ITEMS ITEM', 1),
+            ('BF.INSERT TEST CAPACITY 1000 ITEMS ITEM', 1),
+            ('BF.INSERT TEST CAPACITY 200 error 0.50 ITEMS ITEM ITEM1 ITEM2', 3),
+            ('BF.INSERT TEST CAPACITY 300 ERROR 0.50 EXPANSION 1 ITEMS ITEM FOO', 2),
+            ('BF.INSERT TEST ERROR 0.50 EXPANSION 3 NOCREATE items BOO', 1), 
+            ('BF.INSERT TEST ERROR 0.50 EXPANSION 1 NOCREATE NONSCALING items BOO', 1),
+            ('BF.INSERT TEST_EXPANSION EXPANSION 9 ITEMS ITEM', 1),
+            ('BF.INSERT TEST_CAPACITY CAPACITY 2000 ITEMS ITEM', 1),
+            ('BF.INSERT TEST_ITEMS ITEMS 1 2 3 EXPANSION 2', 5),
             ('BF.INFO TEST Capacity', 100),
             ('BF.INFO TEST ITEMS', 5),
             ('BF.INFO TEST filters', 1),
@@ -125,6 +118,7 @@ class TestBloomCommand(ValkeyBloomTestCaseBase):
             ('BF.CARD TEST', 5),
             ('bf.card HELLO', 0),
             ('BF.RESERVE bf 0.01 1000', b'OK'),
+            ('BF.EXISTS bf non_existant', 0),
             ('BF.RESERVE bf_exp 0.01 1000 EXPANSION 2', b'OK'),
             ('BF.RESERVE bf_non 0.01 1000 NONSCALING', b'OK'),
             ('bf.info bf_exp expansion', 2),
@@ -134,6 +128,11 @@ class TestBloomCommand(ValkeyBloomTestCaseBase):
         for test_case in basic_behavior_test_case:
             cmd = test_case[0]
             expected_result = test_case[1]
+            # For Cardinality commands we want to add items till we are at the number of items we expect then check Cardinality worked
+            if cmd.upper().startswith("BF.CARD"):
+                self.add_items_till_capacity(self.client, cmd.split()[-1], expected_result, 1, "item_prefix")
+            # For multi commands expected result is actually the length of the expected return. While for other commands this we have the literal
+            # expected result
             self.verify_command_success_reply(self.client, cmd, expected_result)
 
         # test bf.info

@@ -33,32 +33,88 @@ class TestValkeyBloomCompatibility(ValkeyBloomTestCaseBase):
         assert decoded_r.bf().create("bloom_e", 0.01, 1000, expansion=1)
         assert decoded_r.bf().create("bloom_ns", 0.01, 1000, noScale=True)
 
+# valkey-bloom start
+
+    # def test_bf_add(self):
+    #     decoded_r = self.server.get_new_client()
+    #     assert decoded_r.bf().create("bloom", 0.01, 1000)
+    #     assert 1 == decoded_r.bf().add("bloom", "foo")
+    #     assert 0 == decoded_r.bf().add("bloom", "foo")
+    #     assert [0] == self.intlist(decoded_r.bf().madd("bloom", "foo"))
+    #     assert [0, 1] == decoded_r.bf().madd("bloom", "foo", "bar")
+    #     assert [0, 0, 1] == decoded_r.bf().madd("bloom", "foo", "bar", "baz")
+    #     assert 1 == decoded_r.bf().exists("bloom", "foo")
+    #     assert 0 == decoded_r.bf().exists("bloom", "noexist")
+    #     assert [1, 0] == self.intlist(decoded_r.bf().mexists("bloom", "foo", "noexist"))
+
     def test_bf_add(self):
         decoded_r = self.server.get_new_client()
         assert decoded_r.bf().create("bloom", 0.01, 1000)
+        assert 0 == decoded_r.bf().exists("bloom", "noexist")
         assert 1 == decoded_r.bf().add("bloom", "foo")
         assert 0 == decoded_r.bf().add("bloom", "foo")
         assert [0] == self.intlist(decoded_r.bf().madd("bloom", "foo"))
-        assert [0, 1] == decoded_r.bf().madd("bloom", "foo", "bar")
-        assert [0, 0, 1] == decoded_r.bf().madd("bloom", "foo", "bar", "baz")
+        madd_return = decoded_r.bf().madd("bloom", "foo", "bar")
+        assert 0 == madd_return[0]
+        assert 2 == len(madd_return)
+        self.check_return_of_multi_commands(madd_return)
+        madd_return = decoded_r.bf().madd("bloom", "foo", "bar", "baz")
+        assert 3 == len(madd_return)
+        self.check_return_of_multi_commands(madd_return)
         assert 1 == decoded_r.bf().exists("bloom", "foo")
-        assert 0 == decoded_r.bf().exists("bloom", "noexist")
-        assert [1, 0] == self.intlist(decoded_r.bf().mexists("bloom", "foo", "noexist"))
+        mexists_return = self.intlist(decoded_r.bf().mexists("bloom", "foo", "noexist"))
+        assert 1 == mexists_return[0]
 
+    # def test_bf_insert(self):
+    #     decoded_r = self.server.get_new_client()
+    #     assert decoded_r.bf().create("bloom", 0.01, 1000)
+    #     assert [1] == self.intlist(decoded_r.bf().insert("bloom", ["foo"]))
+    #     assert [0, 1] == self.intlist(decoded_r.bf().insert("bloom", ["foo", "bar"]))
+    #     assert [1] == self.intlist(decoded_r.bf().insert("captest", ["foo"], capacity=10))
+    #     assert [1] == self.intlist(decoded_r.bf().insert("errtest", ["foo"], error=0.01))
+    #     assert 1 == decoded_r.bf().exists("bloom", "foo")
+    #     assert 0 == decoded_r.bf().exists("bloom", "noexist")
+    #     assert [1, 0] == self.intlist(decoded_r.bf().mexists("bloom", "foo", "noexist"))
+    #     info = decoded_r.bf().info("bloom")
+    #     self.assert_resp_response(
+    #         decoded_r,
+    #         2,
+    #         info.get("insertedNum"),
+    #         info.get("Number of items inserted"),
+    #     )
+    #     self.assert_resp_response(
+    #         decoded_r,
+    #         1000,
+    #         info.get("capacity"),
+    #         info.get("Capacity"),
+    #     )
+    #     self.assert_resp_response(
+    #         decoded_r,
+    #         1,
+    #         info.get("filterNum"),
+    #         info.get("Number of filters"),
+    #     )
     def test_bf_insert(self):
         decoded_r = self.server.get_new_client()
         assert decoded_r.bf().create("bloom", 0.01, 1000)
         assert [1] == self.intlist(decoded_r.bf().insert("bloom", ["foo"]))
-        assert [0, 1] == self.intlist(decoded_r.bf().insert("bloom", ["foo", "bar"]))
+        bloom_insert_return = self.intlist(decoded_r.bf().insert("bloom", ["foo", "bar"]))
+        assert 2 == len(bloom_insert_return)
+        assert 0 == bloom_insert_return[0]
+        num_items_inserted = -1
+        if bloom_insert_return[1] == 1 or bloom_insert_return[1] == 0:
+            # We have inserted either 1 or 2 items. If this returned 1 that means we inserted a new item and have two items
+            # otherwise we had a false positive and only have inserted 1 item 
+            num_items_inserted = bloom_insert_return[1] + 1
         assert [1] == self.intlist(decoded_r.bf().insert("captest", ["foo"], capacity=10))
         assert [1] == self.intlist(decoded_r.bf().insert("errtest", ["foo"], error=0.01))
         assert 1 == decoded_r.bf().exists("bloom", "foo")
-        assert 0 == decoded_r.bf().exists("bloom", "noexist")
-        assert [1, 0] == self.intlist(decoded_r.bf().mexists("bloom", "foo", "noexist"))
+        mexists_return = self.intlist(decoded_r.bf().mexists("bloom", "foo", "noexist"))
+        assert 1 == mexists_return[0]
         info = decoded_r.bf().info("bloom")
         self.assert_resp_response(
             decoded_r,
-            2,
+            num_items_inserted,
             info.get("insertedNum"),
             info.get("Number of items inserted"),
         )
@@ -74,6 +130,12 @@ class TestValkeyBloomCompatibility(ValkeyBloomTestCaseBase):
             info.get("filterNum"),
             info.get("Number of filters"),
         )
+
+    def check_return_of_multi_commands(self, returned_count):
+        for value in returned_count:
+            assert value in [0, 1], f"Returned Value: {value} is not 0 or 1"
+
+# valkey-bloom end
 
     def test_bf_info(self):
         decoded_r = self.server.get_new_client()

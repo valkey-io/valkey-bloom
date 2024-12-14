@@ -31,7 +31,7 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         bf_exists_result = client.execute_command('BF.EXISTS filter1 item1')
         assert bf_exists_result == 1
         bf_exists_result = client.execute_command('BF.EXISTS filter1 item2')
-        assert bf_exists_result == 0
+        assert bf_exists_result == 0 or bf_exists_result == 1
 
     def test_copy_and_exists_cmd(self):
         client = self.server.get_new_client()

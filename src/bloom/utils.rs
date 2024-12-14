@@ -598,12 +598,14 @@ mod tests {
     /// Loops until the capacity of the provided bloom filter is reached and adds a new item to it in every iteration.
     /// The item name is rand_prefix + the index (starting from starting_item_idx).
     /// With every add operation, fp_count is tracked as we expect the add operation to return 1, since it is a new item.
+    /// There is an option to pass in an expected error and assert that we throw that error
     /// Returns the number of errors (false positives) and the final item index.
     fn add_items_till_capacity(
         bf: &mut BloomFilterType,
         capacity_needed: i64,
         starting_item_idx: i64,
         rand_prefix: &String,
+        expected_error: Option<BloomError>,
     ) -> (i64, i64) {
         let mut new_item_idx = starting_item_idx;
         let mut fp_count = 0;
@@ -616,14 +618,26 @@ mod tests {
                     fp_count += 1;
                 }
                 Ok(1) => {
+                    if let Some(err) = expected_error {
+                        panic!(
+                            "Expected error on the bloom object during during item add: {:?}",
+                            err
+                        );
+                    }
                     cardinality += 1;
                 }
                 Ok(i64::MIN..=-1_i64) | Ok(2_i64..=i64::MAX) => {
                     panic!("We do not expect add_item to return any Integer other than 0 or 1.")
                 }
-                Err(e) => {
-                    panic!("We do not expect add_item to throw errors on this scalable filter test, {:?}", e);
-                }
+                Err(e) => match &expected_error {
+                    Some(expected) => {
+                        assert_eq!(&e, expected, "Error doesn't match the expected error");
+                        break;
+                    }
+                    None => {
+                        panic!("Unexpected error when adding items: {:?}", e);
+                    }
+                },
             };
             new_item_idx += 1;
         }
@@ -781,10 +795,14 @@ mod tests {
         )
         .expect("Expect bloom creation to succeed");
         let (error_count, add_operation_idx) =
-            add_items_till_capacity(&mut bf, initial_capacity, 1, &rand_prefix);
-        assert_eq!(
-            bf.add_item(b"new_item", true),
-            Err(BloomError::NonScalingFilterFull)
+            add_items_till_capacity(&mut bf, initial_capacity, 1, &rand_prefix, None);
+        // Check adding to a full non scaling filter will throw an error
+        add_items_till_capacity(
+            &mut bf,
+            initial_capacity + 1,
+            1,
+            &rand_prefix,
+            Some(BloomError::NonScalingFilterFull),
         );
         assert_eq!(bf.capacity(), initial_capacity);
         assert_eq!(bf.cardinality(), initial_capacity);
@@ -860,6 +878,7 @@ mod tests {
                 expected_total_capacity,
                 add_operation_idx + 1,
                 &rand_prefix,
+                None,
             );
             add_operation_idx = new_add_operation_idx;
             total_error_count += error_count;

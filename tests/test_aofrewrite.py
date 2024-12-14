@@ -1,4 +1,4 @@
-import time
+from util.waiters import *
 from valkeytests.valkey_test_case import ValkeyAction
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 from valkeytests.conftest import resource_port_tracker
@@ -61,7 +61,6 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         self.client.bgrewriteaof()
         self.server.wait_for_action_done(ValkeyAction.AOF_REWRITE)
         # restart server
-        time.sleep(1)
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
         restored_server_digest = self.client.debug_digest()
@@ -78,4 +77,5 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
 
         # Delete the scaled bloomfilter to check both filters are deleted and metrics stats are set accordingly
         self.client.execute_command('DEL key1')
+        wait_for_equal(lambda: self.client.execute_command('BF.EXISTS key1 item_prefix1'), 0)
         self.verify_bloom_metrics(self.client.execute_command("INFO bf"), 0, 0, 0, 0, 0)

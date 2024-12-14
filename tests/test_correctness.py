@@ -15,8 +15,7 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
         assert client.execute_command(f'BF.RESERVE {filter_name} {expected_fp_rate} {capacity} NONSCALING') == b"OK"
         # Add items and fill the filter to capacity.
         error_count, add_operation_idx = self.add_items_till_capacity(client, filter_name, capacity, 1, item_prefix)
-        with pytest.raises(Exception, match="non scaling filter is full"):
-            client.execute_command(f'BF.ADD {filter_name} new_item')
+        self.add_items_till_scaling_failure(client, filter_name, add_operation_idx, item_prefix)
         # Validate that is is filled.
         info = client.execute_command(f'BF.INFO {filter_name}')
         it = iter(info)

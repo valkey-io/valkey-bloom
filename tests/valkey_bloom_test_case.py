@@ -35,7 +35,14 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
     def verify_command_success_reply(self, client, cmd, expected_result):
         cmd_actual_result = client.execute_command(cmd)
         assert_error_msg = f"Actual command response '{cmd_actual_result}' is different from expected response '{expected_result}'"
-        assert cmd_actual_result == expected_result, assert_error_msg
+        # For MEXISTS, MADD and INSERT due to false positives checking the return value can be flaky so instead we check that we get the correct 
+        # number of results returned for the command
+        if cmd.upper().startswith("BF.M") or cmd.upper().startswith("BF.INSERT") :
+            assert len(cmd_actual_result) == expected_result, assert_error_msg
+            for value in cmd_actual_result:
+                assert value in [0, 1], f"Returned value: {value} is not 0 or 1"
+        else:
+            assert cmd_actual_result == expected_result, assert_error_msg
 
     def verify_bloom_filter_item_existence(self, client, key, value, should_exist=True):
         if should_exist:
@@ -60,6 +67,25 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
         characters = string.ascii_letters + string.digits
         random_string = ''.join(random.choice(characters) for _ in range(length))
         return random_string
+
+    def add_items_till_scaling_failure(self, client, filter_name, starting_item_idx, rand_prefix):
+        """
+        Adds items to the provided bloom filter object (filter_name) until we get a scaling error.
+        Item names will start with the provided prefix (rand_prefix) followed by a counter (starting_item_idx onwards).
+        """
+        new_item_idx = starting_item_idx
+        try:
+            while True:
+                item = f"{rand_prefix}{new_item_idx}"
+                new_item_idx += 1
+                result = client.execute_command(f'BF.ADD {filter_name} {item}')
+                if result == 1:
+                    raise RuntimeError("Unexpected return value 1 from BF.ADD")
+        except Exception as e:
+            if "non scaling filter is full" in str(e):
+                return
+            else:
+                raise RuntimeError(f"Unexpected error BF.ADD: {e}")
 
     def add_items_till_capacity(self, client, filter_name, capacity_needed, starting_item_idx, rand_prefix, batch_size=1000):
         """

@@ -9,11 +9,11 @@ class TestBloomACLCategory(ValkeyBloomTestCaseBase):
         bloom_commands = [
             ('BF.ADD add_key item', 1),
             ('BF.EXISTS add_key item', 1),
-            ('BF.MADD madd_key item1 item2 item3', [1, 1, 1]),
-            ('BF.MEXISTS madd_key item2 item3 item4', [1, 1, 0]),
+            ('BF.CARD add_key', 1),
+            ('BF.MADD madd_key item1 item2 item3', 3),
+            ('BF.MEXISTS madd_key item2 item3 item4', 3),
             ('BF.INSERT insert_key ITEMS item', [1]),
             ('BF.INFO insert_key filters', 1),
-            ('BF.CARD madd_key', 3),
             ('BF.RESERVE reserve_key 0.01 1000', b'OK'),
         ]
         client = self.server.get_new_client()
@@ -42,7 +42,12 @@ class TestBloomACLCategory(ValkeyBloomTestCaseBase):
             cmd_name = cmd[0].split()[0]
             try:
                 result = client.execute_command(cmd[0])
-                assert result == cmd[1], f"{cmd_name} should work for default user"
+                if cmd[0].startswith("BF.M"):
+                    assert len(result) == cmd[1]
+                    # The first add in a new bloom object should always return 1. For MEXISTS the first item we check will have been added as well so should exist
+                    assert result[0] == 1
+                else:
+                    assert result == cmd[1], f"{cmd_name} should work for default user"
             except Exception as e:
                 assert False, f"bloomuser should be able to execute {cmd_name}: {str(e)}"
 
