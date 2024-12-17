@@ -127,6 +127,8 @@ class TestBloomCommand(ValkeyBloomTestCaseBase):
 
         for test_case in basic_behavior_test_case:
             cmd = test_case[0]
+            # For non multi commands, this is the verbatim expected result. 
+            # For multi commands, test_case[1] contains the number of item add/exists results which are expected to be 0 or 1.
             expected_result = test_case[1]
             # For Cardinality commands we want to add items till we are at the number of items we expect then check Cardinality worked
             if cmd.upper().startswith("BF.CARD"):
