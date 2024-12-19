@@ -24,7 +24,7 @@ jobs:
         cargo fmt --check
         cargo clippy --profile release --all-targets -- -D clippy::all
     - name: Release Build
-      run: cargo build --all --all-targets  --release
+      run: RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release
     - name: Run unit tests
       run: cargo test --features enable-system-alloc
     - name: Make valkey-server binary
@@ -58,7 +58,7 @@ jobs:
         cargo fmt --check
         cargo clippy --profile release --all-targets -- -D clippy::all
     - name: Release Build
-      run: cargo build --all --all-targets --release
+      run: RUSTFLAGS="-D warnings" cargo build --all --all-targets --release
     - name: Run unit tests
       run: cargo test --features enable-system-alloc
 
@@ -77,7 +77,7 @@ jobs:
         cargo fmt --check
         cargo clippy --profile release --all-targets -- -D clippy::all
     - name: Release Build
-      run: cargo build --all --all-targets  --release
+      run: RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release
     - name: Run unit tests
       run: cargo test --features enable-system-alloc
     - name: Make Valkey-server binary with asan

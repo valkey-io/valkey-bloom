@@ -13,7 +13,7 @@ cargo fmt --check
 cargo clippy --profile release --all-targets -- -D clippy::all
 
 echo "Running cargo build release..."
-cargo build --all --all-targets  --release
+RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release
 
 echo "Running unit tests..."
 cargo test --features enable-system-alloc

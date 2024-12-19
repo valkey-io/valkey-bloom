@@ -2,11 +2,9 @@ use crate::bloom::utils;
 use lazy_static::lazy_static;
 use std::sync::atomic::{AtomicBool, AtomicI64};
 use std::sync::Mutex;
-use valkey_module::logging;
 use valkey_module::{
-    configuration::{ConfigurationContext, ConfigurationFlags},
-    valkey_module, ConfigurationValue, Context, InfoContext, Status, ValkeyError, ValkeyGILGuard,
-    ValkeyResult, ValkeyString,
+    configuration::ConfigurationContext, ConfigurationValue, ValkeyError, ValkeyGILGuard,
+    ValkeyString,
 };
 
 /// Configurations
@@ -85,7 +83,6 @@ pub fn on_string_config_set(
             return Err(ValkeyError::Str("Invalid floating-point value"));
         }
     };
-
     match name {
         "bloom-fp-rate" => {
             if !(BLOOM_FP_RATE_MIN..BLOOM_FP_RATE_MAX).contains(&value) {

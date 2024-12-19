@@ -407,7 +407,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
             let validate_size_limit = !ctx.get_flags().contains(ContextFlags::REPLICATED);
             let tightening_ratio = *configs::BLOOM_TIGHTENING_F64
                 .lock()
-                .expect("Failed to lock tightening ratio");
+                .expect("Unable to get a lock on tightening ratio static");
             let bloom = match BloomFilterType::new_reserved(
                 fp_rate,
                 tightening_ratio,

@@ -1,7 +1,7 @@
 use metrics::bloom_info_handler;
 use valkey_module::{
-    configuration::ConfigurationFlags, valkey_module, Context, InfoContext, Status, ValkeyGILGuard,
-    ValkeyResult, ValkeyString,
+    configuration::ConfigurationFlags, valkey_module, Context, InfoContext, Status, ValkeyResult,
+    ValkeyString,
 };
 pub mod bloom;
 pub mod configs;

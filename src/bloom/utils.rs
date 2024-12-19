@@ -543,16 +543,21 @@ impl BloomFilter {
             + (self.bloom.len() / 8) as usize
     }
 
-    /// Caculates the number of bytes that the bloom filter will require to be allocated.
     /// This is used before actually creating the bloom filter when checking if the filter is within the allowed size.
     /// Returns whether the bloom filter is of a valid size or not.
     pub fn validate_size(capacity: i64, fp_rate: f64) -> bool {
-        let bytes = bloomfilter::Bloom::<[u8]>::compute_bitmap_size(capacity as usize, fp_rate)
-            + std::mem::size_of::<BloomFilter>();
+        let bytes = Self::compute_size(capacity, fp_rate);
         if bytes > configs::BLOOM_MEMORY_LIMIT_PER_FILTER.load(Ordering::Relaxed) as usize {
             return false;
         }
         true
+    }
+
+    /// Caculates the number of bytes that the bloom filter will require to be allocated.
+    fn compute_size(capacity: i64, fp_rate: f64) -> usize {
+        std::mem::size_of::<BloomFilter>()
+            + std::mem::size_of::<bloomfilter::Bloom<[u8]>>()
+            + bloomfilter::Bloom::<[u8]>::compute_bitmap_size(capacity as usize, fp_rate)
     }
 
     pub fn check(&self, item: &[u8]) -> bool {
