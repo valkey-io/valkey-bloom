@@ -1,6 +1,8 @@
 import pytest, time
 import os
+from valkey import ResponseError
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
+from valkey_test_case import ValkeyServerHandle
 from valkeytests.conftest import resource_port_tracker
 from util.waiters import *
 
@@ -96,3 +98,38 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         self.wait_for_logfile(logfile, large_obj_restore_err)
         self.wait_for_logfile(logfile, internal_rdb_err)
         assert not self.server.is_alive()
+
+    def test_rdb_restore_non_bloom_compatibility(self):
+        # Create a rdb on bloom-module enabled server
+        bf_client = self.server.get_new_client()
+        bf_client.execute_command("BF.ADD key val")
+        bf_client.execute_command("set string val")
+        assert bf_client.info_obj().num_keys() == 2
+        assert bf_client.execute_command("del key") == 1
+        assert bf_client.info_obj().num_keys() == 1
+        assert bf_client.get("string") == b"val"
+        bf_client.bgsave()
+        self.server.wait_for_save_done()
+        rdb_file = self.server.args["dbfilename"]
+
+        # Create a server without bloom-module
+        self.server_id += 1
+        new_server = ValkeyServerHandle(bind_ip=self.get_bind_ip(), port=self.get_bind_port(), port_tracker=self.port_tracker,
+                                        cwd=self.testdir, server_id=self.server_id, server_path=self.server_path)
+        new_server.set_startup_args({"dbfilename": rdb_file})
+        new_server.start()
+        assert new_server.is_alive()
+        new_client = new_server.get_new_client()
+        wait_for_equal(lambda: new_server.is_rdb_done_loading(), True)
+
+        # Verification
+        assert new_client.execute_command("info bf") == b''
+        try:
+            new_client.execute_command("bf add test val")
+            assert False
+        except ResponseError as e:
+            assert "unknown command" in str(e)
+
+        assert new_client.info_obj().num_keys() == 1
+        assert new_client.get("string") == b"val"
+        new_server.exit()
