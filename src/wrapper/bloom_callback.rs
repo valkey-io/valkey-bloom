@@ -1,7 +1,7 @@
 use crate::bloom;
 use crate::bloom::data_type::ValkeyDataType;
 use crate::bloom::utils::BloomFilter;
-use crate::bloom::utils::BloomFilterType;
+use crate::bloom::utils::BloomObject;
 use crate::configs;
 use crate::metrics;
 use crate::wrapper::digest::Digest;
@@ -26,7 +26,7 @@ use super::defrag::Defrag;
 
 /// # Safety
 pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_void) {
-    let v = &*value.cast::<BloomFilterType>();
+    let v = &*value.cast::<BloomObject>();
     raw::save_unsigned(rdb, v.num_filters() as u64);
     raw::save_unsigned(rdb, v.expansion() as u64);
     raw::save_double(rdb, v.fp_rate());
@@ -55,7 +55,7 @@ pub unsafe extern "C" fn bloom_rdb_load(
     rdb: *mut raw::RedisModuleIO,
     encver: c_int,
 ) -> *mut c_void {
-    if let Some(item) = <BloomFilterType as ValkeyDataType>::load_from_rdb(rdb, encver) {
+    if let Some(item) = <BloomObject as ValkeyDataType>::load_from_rdb(rdb, encver) {
         let bb = Box::new(item);
         Box::into_raw(bb).cast::<libc::c_void>()
     } else {
@@ -70,15 +70,11 @@ pub unsafe extern "C" fn bloom_aof_rewrite(
     key: *mut raw::RedisModuleString,
     value: *mut c_void,
 ) {
-    let filter = &*value.cast::<BloomFilterType>();
-    let hex = match filter.encode_bloom_filter() {
+    let filter = &*value.cast::<BloomObject>();
+    let hex = match filter.encode_object() {
         Ok(val) => val,
         Err(err) => {
-            log_io_error(
-                aof,
-                ValkeyLogLevel::Warning,
-                &format!("encode bloom filter failed. {}", err.as_str()),
-            );
+            log_io_error(aof, ValkeyLogLevel::Warning, err.as_str());
             return;
         }
     };
@@ -107,13 +103,13 @@ pub unsafe extern "C" fn bloom_aux_load(
 /// # Safety
 /// Free a bloom object
 pub unsafe extern "C" fn bloom_free(value: *mut c_void) {
-    drop(Box::from_raw(value.cast::<BloomFilterType>()));
+    drop(Box::from_raw(value.cast::<BloomObject>()));
 }
 
 /// # Safety
 /// Compute the memory usage for a bloom object.
 pub unsafe extern "C" fn bloom_mem_usage(value: *const c_void) -> usize {
-    let item = &*value.cast::<BloomFilterType>();
+    let item = &*value.cast::<BloomObject>();
     item.memory_usage()
 }
 
@@ -124,8 +120,8 @@ pub unsafe extern "C" fn bloom_copy(
     _to_key: *mut RedisModuleString,
     value: *const c_void,
 ) -> *mut c_void {
-    let curr_item = &*value.cast::<BloomFilterType>();
-    let new_item = BloomFilterType::create_copy_from(curr_item);
+    let curr_item = &*value.cast::<BloomObject>();
+    let new_item = BloomObject::create_copy_from(curr_item);
     let bb = Box::new(new_item);
     Box::into_raw(bb).cast::<libc::c_void>()
 }
@@ -134,7 +130,7 @@ pub unsafe extern "C" fn bloom_copy(
 /// Raw handler for the Bloom digest callback.
 pub unsafe extern "C" fn bloom_digest(md: *mut raw::RedisModuleDigest, value: *mut c_void) {
     let dig = Digest::new(md);
-    let val = &*(value.cast::<BloomFilterType>());
+    let val = &*(value.cast::<BloomObject>());
     val.debug_digest(dig);
 }
 
@@ -144,17 +140,18 @@ pub unsafe extern "C" fn bloom_free_effort(
     _from_key: *mut RedisModuleString,
     value: *const c_void,
 ) -> usize {
-    let curr_item = &*value.cast::<BloomFilterType>();
+    let curr_item = &*value.cast::<BloomObject>();
     curr_item.free_effort()
 }
 
-// Lazy static for a default temporary bloom that gets swapped during defrag.
+// Lazy static for a default temporary external crate Bloom structure that gets swapped during defrag.
 lazy_static! {
     static ref DEFRAG_BLOOM_FILTER: Mutex<Option<Box<Bloom<[u8]>>>> =
         Mutex::new(Some(Box::new(Bloom::<[u8]>::new(1, 1).unwrap())));
 }
 
-/// Defragments a vector of bytes. This function is designed to be used as a callback.
+/// Defragments a vector of bytes (bit vector) of the external crate Bloom structure. This function is designed to be
+/// used as a callback.
 ///
 /// This function takes ownership of a `Vec<u8>`, attempts to defragment it using an external
 /// defragmentation mechanism, and returns a new `Vec<u8>` that may have been defragmented.
@@ -186,28 +183,29 @@ fn external_vec_defrag(vec: Vec<u8>) -> Vec<u8> {
 /// # Safety
 /// Raw handler for the Bloom object's defrag callback.
 ///
-/// There are a few different structures we will be defragging we will explain them top down then afterwards state the order in which
-/// we will defrag. Starting from the top which is passed in as the variable named value. We have the BloomFilterType this BloomFilterType
-/// contains a vec of BloomFilters. These BloomFilters then each have a Bloom object. Finally each of these Bloom objects have a Vec.
+/// We will be defragging every allocation of the Bloom data type. We will explain them top down, then afterwards state the order in which
+/// we will defrag. Starting from the top, which is passed in as the variable named `value`, we have the BloomObject. This BloomObject
+/// contains a vec of BloomFilter structs. Each BloomFilter contains a Bloom structure implemented in an external Rust crate.
+/// Finally, each of these external Bloom structures contains a Vec (bit vector).
 ///
-/// This order of defragmention is as follows (1 to 3 is in a loop for the number of filters):
-/// 1. BloomFilter within the BloomFilterType
-/// 2. Bloom objects within each BloomFilter
-/// 3. Vec within each Bloom object
-/// 4. Vec of BloomFilters in the BloomFilterType
-/// 5. The BloomFilterType itself
+/// The order of defragmention is as follows (1 to 3 is in a loop for the number of filters):
+/// 1. BloomFilter structures within the top level BloomObject structure
+/// 2. External Bloom structures within each BloomFilter
+/// 3. Vec (Bit vector) within each external Bloom structure
+/// 4. Vec of the BloomFilter/s in the BloomObject
+/// 5. The BloomObject itself
 ///
-/// We use a cursor to track the current filter of BloomFilterType that we are defragging. This cursor will start at 0
+/// We use a cursor to track the current filter of BloomObject that we are defragging. This cursor will start at 0
 /// if we finished all the filters the last time we defragged this object or if we havent defragged it before. We will determine
-/// that we have spent to much time on defragging this specific object from the should_stop_defrag() method. If we didn't defrag
-/// all the filters then we set the cursor so we know where to start from the next time we defrag and return a 1 to show we didn't
+/// that we have spent too much time on defragging this specific object from the should_stop_defrag() method. If we didn't defrag
+/// all the filters, then we set the cursor so we know where to start from the next time we defrag and return 1 to show we didn't
 /// finish.
 ///
 /// # Arguments
 ///
 /// * `defrag_ctx` - A raw pointer to the defragmentation context.
 /// * `_from_key` - A raw pointer to the Redis module string (unused in this function).
-/// * `value` - A mutable raw pointer to a raw pointer representing the BloomFilterType to be defragmented.
+/// * `value` - A mutable raw pointer to a raw pointer representing the BloomObject to be defragmented.
 ///
 /// # Returns
 ///
@@ -224,20 +222,20 @@ pub unsafe extern "C" fn bloom_defrag(
         return 0;
     }
 
-    // Get the cursor for the BloomFilterType otherwise start the cursor at 0
+    // Get the cursor for the BloomObject otherwise start the cursor at 0
     let defrag = Defrag::new(defrag_ctx);
     let mut cursor = defrag.get_cursor().unwrap_or(0);
 
-    // Convert pointer to BloomFilterType so we can operate on it.
-    let bloom_filter_type: &mut BloomFilterType = &mut *(*value).cast::<BloomFilterType>();
+    // Convert pointer to BloomObject so we can operate on it.
+    let bloom_object: &mut BloomObject = &mut *(*value).cast::<BloomObject>();
 
-    let num_filters = bloom_filter_type.num_filters();
-    let filters_capacity = bloom_filter_type.filters().capacity();
+    let num_filters = bloom_object.num_filters();
+    let filters_capacity = bloom_object.filters().capacity();
 
     // While we are within a timeframe decided from should_stop_defrag and not over the number of filters defrag the next filter
     while !defrag.should_stop_defrag() && cursor < num_filters as u64 {
-        // Remove the current filter, unbox it, and attempt to defragment.
-        let bloom_filter_box = bloom_filter_type.filters_mut().remove(cursor as usize);
+        // Remove the current BloomFilter, unbox it, and attempt to defragment the BloomFilter.
+        let bloom_filter_box = bloom_object.filters_mut().remove(cursor as usize);
         let bloom_filter = Box::into_raw(bloom_filter_box);
         let defrag_result = defrag.alloc(bloom_filter as *mut c_void);
         let mut defragged_filter = {
@@ -249,7 +247,7 @@ pub unsafe extern "C" fn bloom_defrag(
                 Box::from_raw(bloom_filter)
             }
         };
-        // Swap the Bloom object with a temporary one for defragmentation
+        // Swap the external crate Bloom structure with a temporary one during its defragmentation.
         let mut temporary_bloom = DEFRAG_BLOOM_FILTER
             .lock()
             .expect("We expect default to exist");
@@ -260,7 +258,7 @@ pub unsafe extern "C" fn bloom_defrag(
         // Convert the inner_bloom into the correct type and then try to defragment it
         let inner_bloom_ptr = Box::into_raw(inner_bloom);
         let defragged_inner_bloom = defrag.alloc(inner_bloom_ptr as *mut c_void);
-        // Defragment the Vec within the Bloom object using the external callback
+        // Defragment the Bit Vec within the external crate Bloom structure using the external callback
         if !defragged_inner_bloom.is_null() {
             metrics::BLOOM_DEFRAG_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
@@ -283,7 +281,7 @@ pub unsafe extern "C" fn bloom_defrag(
         }
 
         // Reinsert the defragmented filter and increment the cursor
-        bloom_filter_type
+        bloom_object
             .filters_mut()
             .insert(cursor as usize, defragged_filter);
         cursor += 1;
@@ -294,13 +292,13 @@ pub unsafe extern "C" fn bloom_defrag(
     if cursor < num_filters as u64 {
         return 1;
     }
-    // Defragment the Vec of filters itself
-    let filters_vec = mem::take(bloom_filter_type.filters_mut());
+    // Defragment the Vec of BloomFilter/s itself
+    let filters_vec = mem::take(bloom_object.filters_mut());
     let filters_ptr = Box::into_raw(filters_vec.into_boxed_slice()) as *mut c_void;
     let defragged_filters_ptr = defrag.alloc(filters_ptr);
     if !defragged_filters_ptr.is_null() {
         metrics::BLOOM_DEFRAG_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        *bloom_filter_type.filters_mut() = unsafe {
+        *bloom_object.filters_mut() = unsafe {
             Vec::from_raw_parts(
                 defragged_filters_ptr as *mut Box<BloomFilter>,
                 num_filters,
@@ -309,7 +307,7 @@ pub unsafe extern "C" fn bloom_defrag(
         };
     } else {
         metrics::BLOOM_DEFRAG_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        *bloom_filter_type.filters_mut() = unsafe {
+        *bloom_object.filters_mut() = unsafe {
             Vec::from_raw_parts(
                 filters_ptr as *mut Box<BloomFilter>,
                 num_filters,
@@ -317,7 +315,7 @@ pub unsafe extern "C" fn bloom_defrag(
             )
         };
     }
-    // Finally, attempt to defragment the BloomFilterType itself
+    // Finally, attempt to defragment the BloomObject itself
     let val = defrag.alloc(*value);
     if !val.is_null() {
         metrics::BLOOM_DEFRAG_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

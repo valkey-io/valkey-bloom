@@ -63,8 +63,8 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
     def test_too_large_bloom_obj(self):
         client = self.server.get_new_client()
         # Set the max allowed size per bloom filter per bloom object
-        assert client.execute_command('CONFIG SET bf.bloom-memory-limit-per-filter 100') == b'OK'
-        obj_exceeds_size_err = "operation results in filter allocation exceeding size limit"
+        assert client.execute_command('CONFIG SET bf.bloom-memory-usage-limit 100') == b'OK'
+        obj_exceeds_size_err = "operation exceeds bloom object memory limit"
         # Non Scaling
         # Validate that when a cmd would have resulted in a bloom object creation with the starting filter with size
         # greater than allowed limit, the cmd is rejected.
@@ -79,7 +79,7 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         # Scaling
         # Validate that when scaling would have resulted in a filter with size greater than allowed limit, the cmd
         # is rejected.
-        assert client.execute_command('CONFIG SET bf.bloom-memory-limit-per-filter 1000') == b'OK'
+        assert client.execute_command('CONFIG SET bf.bloom-memory-usage-limit 1000') == b'OK'
         cmds = [
             'BF.INSERT filter items new_item1',
             'BF.ADD filter new_item1',
@@ -350,8 +350,10 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         assert self.client.execute_command('CONFIG GET bf.bloom-fp-rate')[1] == b'0.1'
         assert self.client.execute_command('CONFIG GET bf.bloom-tightening-ratio')[1] == b'0.75'
         try:
-            assert self.client.execute_command('CONFIG SET bf.bloom-fp-rate 1.1') == b'ERR (0 < error rate range < 1)'\
-                and self.client.execute_command('CONFIG SET bf.bloom-tightening-ratio 1.75') == b'ERR (0 < error ratio range < 1)'
+            assert self.client.execute_command('CONFIG SET bf.bloom-fp-rate 1.1') == b'ERR (0 < error rate range < 1)'
         except ResponseError as e:
-            assert str(e) == f"CONFIG SET failed (possibly related to argument 'bf.bloom-fp-rate') - ERR (0 < error rate range < 1)"\
-                and f"CONFIG SET failed (possibly related to argument 'bf.bloom-tightening-ratio') - ERR (0 < error rate range < 1)"
+            assert str(e) == f"CONFIG SET failed (possibly related to argument 'bf.bloom-fp-rate') - ERR (0 < error rate range < 1)"
+        try:
+            assert self.client.execute_command('CONFIG SET bf.bloom-tightening-ratio 1.75') == b'ERR (0 < tightening ratio range < 1)'
+        except ResponseError as e:
+            assert str(e) == f"CONFIG SET failed (possibly related to argument 'bf.bloom-tightening-ratio') - ERR (0 < tightening ratio range < 1)"

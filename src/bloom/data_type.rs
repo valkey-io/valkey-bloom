@@ -1,5 +1,5 @@
 use crate::bloom::utils::BloomFilter;
-use crate::bloom::utils::BloomFilterType;
+use crate::bloom::utils::BloomObject;
 use crate::configs;
 use crate::wrapper::bloom_callback;
 use crate::wrapper::digest::Digest;
@@ -8,15 +8,16 @@ use std::os::raw::c_int;
 use valkey_module::native_types::ValkeyType;
 use valkey_module::{logging, raw};
 
-/// Used for decoding and encoding `BloomFilterType`. Currently used in AOF Rewrite.
-/// This value must increased when `BloomFilterType` struct change.
-pub const BLOOM_TYPE_VERSION: u8 = 1;
+/// Used for decoding and encoding `BloomObject`. Currently used in AOF Rewrite.
+/// This value must increased when `BloomObject` struct change.
+pub const BLOOM_OBJECT_VERSION: u8 = 1;
 
-const BLOOM_FILTER_TYPE_ENCODING_VERSION: i32 = 1;
+/// Bloom Module data type RDB encoding version.
+const BLOOM_TYPE_ENCODING_VERSION: i32 = 1;
 
-pub static BLOOM_FILTER_TYPE: ValkeyType = ValkeyType::new(
+pub static BLOOM_TYPE: ValkeyType = ValkeyType::new(
     "bloomfltr",
-    BLOOM_FILTER_TYPE_ENCODING_VERSION,
+    BLOOM_TYPE_ENCODING_VERSION,
     raw::RedisModuleTypeMethods {
         version: raw::REDISMODULE_TYPE_METHOD_VERSION as u64,
         rdb_load: Some(bloom_callback::bloom_rdb_load),
@@ -48,15 +49,15 @@ pub static BLOOM_FILTER_TYPE: ValkeyType = ValkeyType::new(
 );
 
 pub trait ValkeyDataType {
-    fn load_from_rdb(rdb: *mut raw::RedisModuleIO, encver: i32) -> Option<BloomFilterType>;
+    fn load_from_rdb(rdb: *mut raw::RedisModuleIO, encver: i32) -> Option<BloomObject>;
     fn debug_digest(&self, dig: Digest);
 }
 
-impl ValkeyDataType for BloomFilterType {
+impl ValkeyDataType for BloomObject {
     /// Callback to load and parse RDB data of a bloom item and create it.
-    fn load_from_rdb(rdb: *mut raw::RedisModuleIO, encver: i32) -> Option<BloomFilterType> {
-        if encver > BLOOM_FILTER_TYPE_ENCODING_VERSION {
-            logging::log_warning(format!("{}: Cannot load bloomfltr data type of version {} because it is higher than the loaded module's bloomfltr supported version {}", MODULE_NAME, encver, BLOOM_FILTER_TYPE_ENCODING_VERSION).as_str());
+    fn load_from_rdb(rdb: *mut raw::RedisModuleIO, encver: i32) -> Option<BloomObject> {
+        if encver > BLOOM_TYPE_ENCODING_VERSION {
+            logging::log_warning(format!("{}: Cannot load bloomfltr data type of version {} because it is higher than the loaded module's bloomfltr supported version {}", MODULE_NAME, encver, BLOOM_TYPE_ENCODING_VERSION).as_str());
             return None;
         }
         let Ok(num_filters) = raw::load_unsigned(rdb) else {
@@ -79,7 +80,8 @@ impl ValkeyDataType for BloomFilterType {
         // We start off with capacity as 1 to match the same expansion of the vector that would have occurred during bloom
         // object creation and scaling as a result of BF.* operations.
         let mut filters = Vec::with_capacity(1);
-
+        // Calculate the memory usage of the BloomFilter/s by summing up BloomFilter sizes as they are de-serialized.
+        let mut filters_memory_usage = 0;
         for i in 0..num_filters {
             let Ok(bitmap) = raw::load_string_buffer(rdb) else {
                 return None;
@@ -97,10 +99,17 @@ impl ValkeyDataType for BloomFilterType {
                         return None;
                     }
                 };
-            if !BloomFilter::validate_size(capacity as i64, new_fp_rate) {
-                logging::log_warning("Failed to restore bloom object: Contains a filter larger than the max allowed size limit.");
+            let curr_filter_size = BloomFilter::compute_size(capacity as i64, new_fp_rate);
+            let curr_object_size = BloomObject::compute_size(filters.capacity())
+                + filters_memory_usage
+                + curr_filter_size;
+            if !BloomObject::validate_size(curr_object_size) {
+                logging::log_warning(
+                    "Failed to restore bloom object: Object larger than the allowed memory limit.",
+                );
                 return None;
             }
+            filters_memory_usage += curr_filter_size;
             // Only load num_items when it's the last filter
             let num_items = if i == num_filters - 1 {
                 match raw::load_unsigned(rdb) {
@@ -118,7 +127,7 @@ impl ValkeyDataType for BloomFilterType {
             }
             filters.push(Box::new(filter));
         }
-        let item = BloomFilterType::from_existing(
+        let item = BloomObject::from_existing(
             expansion as u32,
             fp_rate,
             tightening_ratio,

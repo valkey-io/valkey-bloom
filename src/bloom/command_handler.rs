@@ -1,6 +1,6 @@
-use crate::bloom::data_type::BLOOM_FILTER_TYPE;
+use crate::bloom::data_type::BLOOM_TYPE;
 use crate::bloom::utils;
-use crate::bloom::utils::BloomFilterType;
+use crate::bloom::utils::BloomObject;
 use crate::configs;
 use crate::configs::{
     BLOOM_CAPACITY_MAX, BLOOM_CAPACITY_MIN, BLOOM_EXPANSION_MAX, BLOOM_EXPANSION_MIN,
@@ -18,7 +18,7 @@ fn handle_bloom_add(
     args: &[ValkeyString],
     argc: usize,
     item_idx: usize,
-    bf: &mut BloomFilterType,
+    bf: &mut BloomObject,
     multi: bool,
     add_succeeded: &mut bool,
     validate_size_limit: bool,
@@ -170,7 +170,7 @@ pub fn bloom_filter_add_value(
     curr_cmd_idx += 1;
     // If the filter does not exist, create one
     let filter_key = ctx.open_key_writable(filter_name);
-    let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
+    let value = match filter_key.get_value::<BloomObject>(&BLOOM_TYPE) {
         Ok(v) => v,
         Err(_) => {
             return Err(ValkeyError::WrongType);
@@ -216,7 +216,7 @@ pub fn bloom_filter_add_value(
                 true => (None, true),
                 false => (Some(configs::FIXED_SEED), false),
             };
-            let mut bloom = match BloomFilterType::new_reserved(
+            let mut bloom = match BloomObject::new_reserved(
                 fp_rate,
                 tightening_ratio,
                 capacity,
@@ -244,7 +244,7 @@ pub fn bloom_filter_add_value(
                 &mut add_succeeded,
                 validate_size_limit,
             );
-            match filter_key.set_value(&BLOOM_FILTER_TYPE, bloom) {
+            match filter_key.set_value(&BLOOM_TYPE, bloom) {
                 Ok(()) => {
                     replicate_and_notify_events(
                         ctx,
@@ -262,7 +262,7 @@ pub fn bloom_filter_add_value(
 }
 
 /// Helper function used to check whether an item (or multiple items) exists on a bloom object.
-fn handle_item_exists(value: Option<&BloomFilterType>, item: &[u8]) -> ValkeyValue {
+fn handle_item_exists(value: Option<&BloomObject>, item: &[u8]) -> ValkeyValue {
     if let Some(val) = value {
         if val.item_exists(item) {
             return ValkeyValue::Integer(1);
@@ -290,7 +290,7 @@ pub fn bloom_filter_exists(
     curr_cmd_idx += 1;
     // Parse the value to be checked whether it exists in the filter
     let filter_key = ctx.open_key(filter_name);
-    let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
+    let value = match filter_key.get_value::<BloomObject>(&BLOOM_TYPE) {
         Ok(v) => v,
         Err(_) => {
             return Err(ValkeyError::WrongType);
@@ -319,7 +319,7 @@ pub fn bloom_filter_card(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
     // Parse the filter name
     let filter_name = &input_args[curr_cmd_idx];
     let filter_key = ctx.open_key(filter_name);
-    let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
+    let value = match filter_key.get_value::<BloomObject>(&BLOOM_TYPE) {
         Ok(v) => v,
         Err(_) => {
             return Err(ValkeyError::WrongType);
@@ -389,7 +389,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
     }
     // If the filter does not exist, create one
     let filter_key = ctx.open_key_writable(filter_name);
-    let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
+    let value = match filter_key.get_value::<BloomObject>(&BLOOM_TYPE) {
         Ok(v) => v,
         Err(_) => {
             return Err(ValkeyError::WrongType);
@@ -408,7 +408,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
             let tightening_ratio = *configs::BLOOM_TIGHTENING_F64
                 .lock()
                 .expect("Unable to get a lock on tightening ratio static");
-            let bloom = match BloomFilterType::new_reserved(
+            let bloom = match BloomObject::new_reserved(
                 fp_rate,
                 tightening_ratio,
                 capacity,
@@ -427,7 +427,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
                 seed: bloom.seed(),
                 items: &[],
             };
-            match filter_key.set_value(&BLOOM_FILTER_TYPE, bloom) {
+            match filter_key.set_value(&BLOOM_TYPE, bloom) {
                 Ok(()) => {
                     replicate_and_notify_events(ctx, filter_name, false, true, replicate_args);
                     VALKEY_OK
@@ -498,10 +498,10 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                         if !(num > BLOOM_TIGHTENING_RATIO_MIN
                             && num < BLOOM_TIGHTENING_RATIO_MAX) =>
                     {
-                        return Err(ValkeyError::Str(utils::ERROR_RATIO_RANGE));
+                        return Err(ValkeyError::Str(utils::TIGHTENING_RATIO_RANGE));
                     }
                     _ => {
-                        return Err(ValkeyError::Str(utils::BAD_ERROR_RATIO));
+                        return Err(ValkeyError::Str(utils::BAD_TIGHTENING_RATIO));
                     }
                 };
             }
@@ -571,7 +571,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
     }
     // If the filter does not exist, create one
     let filter_key = ctx.open_key_writable(filter_name);
-    let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
+    let value = match filter_key.get_value::<BloomObject>(&BLOOM_TYPE) {
         Ok(v) => v,
         Err(_) => {
             return Err(ValkeyError::WrongType);
@@ -606,7 +606,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
             if nocreate {
                 return Err(ValkeyError::Str(utils::NOT_FOUND));
             }
-            let mut bloom = match BloomFilterType::new_reserved(
+            let mut bloom = match BloomObject::new_reserved(
                 fp_rate,
                 tightening_ratio,
                 capacity,
@@ -634,7 +634,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                 &mut add_succeeded,
                 !replicated_cmd,
             );
-            match filter_key.set_value(&BLOOM_FILTER_TYPE, bloom) {
+            match filter_key.set_value(&BLOOM_TYPE, bloom) {
                 Ok(()) => {
                     replicate_and_notify_events(
                         ctx,
@@ -662,7 +662,7 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
     let filter_name = &input_args[curr_cmd_idx];
     curr_cmd_idx += 1;
     let filter_key = ctx.open_key(filter_name);
-    let value = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
+    let value = match filter_key.get_value::<BloomObject>(&BLOOM_TYPE) {
         Ok(v) => v,
         Err(_) => {
             return Err(ValkeyError::WrongType);
@@ -724,7 +724,7 @@ pub fn bloom_filter_load(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
     // find filter
     let filter_key = ctx.open_key_writable(filter_name);
 
-    let filter = match filter_key.get_value::<BloomFilterType>(&BLOOM_FILTER_TYPE) {
+    let filter = match filter_key.get_value::<BloomObject>(&BLOOM_TYPE) {
         Ok(v) => v,
         Err(_) => {
             // error
@@ -740,7 +740,7 @@ pub fn bloom_filter_load(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
             // if filter not exists, create it.
             let hex = value.to_vec();
             let validate_size_limit = !ctx.get_flags().contains(ContextFlags::REPLICATED);
-            let bloom = match BloomFilterType::decode_bloom_filter(&hex, validate_size_limit) {
+            let bloom = match BloomObject::decode_object(&hex, validate_size_limit) {
                 Ok(v) => v,
                 Err(err) => {
                     return Err(ValkeyError::Str(err.as_str()));
@@ -754,7 +754,7 @@ pub fn bloom_filter_load(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
                 seed: bloom.seed(),
                 items: &input_args[idx..],
             };
-            match filter_key.set_value(&BLOOM_FILTER_TYPE, bloom) {
+            match filter_key.set_value(&BLOOM_TYPE, bloom) {
                 Ok(_) => {
                     replicate_and_notify_events(ctx, filter_name, false, true, replicate_args);
                     VALKEY_OK
