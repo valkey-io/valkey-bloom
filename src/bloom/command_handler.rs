@@ -441,15 +441,14 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
 /// Function that implements logic to handle the BF.INSERT command.
 pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     let argc = input_args.len();
-    // At the very least, we need: BF.INSERT <key> ITEMS <item>
-    if argc < 4 {
+    // At the very least, we need: BF.INSERT <key>
+    if argc < 2 {
         return Err(ValkeyError::WrongArity);
     }
     let mut idx = 1;
     // Parse the filter name
     let filter_name = &input_args[idx];
     idx += 1;
-    let replicated_cmd = ctx.get_flags().contains(ContextFlags::REPLICATED);
     let mut fp_rate = *configs::BLOOM_FP_RATE_F64
         .lock()
         .expect("Unable to get a lock on fp_rate static");
@@ -464,6 +463,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
         false => (Some(configs::FIXED_SEED), false),
     };
     let mut nocreate = false;
+    let mut items_provided = false;
     while idx < argc {
         match input_args[idx].to_string_lossy().to_uppercase().as_str() {
             "ERROR" => {
@@ -481,7 +481,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                     }
                 };
             }
-            "TIGHTENING" if replicated_cmd => {
+            "TIGHTENING" => {
                 // Note: This argument is only supported on replicated commands since primary nodes replicate bloom objects
                 // deterministically using every global bloom config/property.
                 if idx >= (argc - 1) {
@@ -520,7 +520,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                     }
                 };
             }
-            "SEED" if replicated_cmd => {
+            "SEED" => {
                 // Note: This argument is only supported on replicated commands since primary nodes replicate bloom objects
                 // deterministically using every global bloom config/property.
                 if idx >= (argc - 1) {
@@ -555,6 +555,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
             }
             "ITEMS" => {
                 idx += 1;
+                items_provided = true;
                 break;
             }
             _ => {
@@ -563,7 +564,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
         }
         idx += 1;
     }
-    if idx == argc && !replicated_cmd {
+    if idx == argc && items_provided {
         // We expect the ITEMS <item> [<item> ...] argument to be provided on the BF.INSERT command used on primary nodes.
         // For replicated commands, this is optional to allow BF.INSERT to be used to replicate bloom object creation
         // commands without any items (BF.RESERVE).
@@ -578,7 +579,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
         }
     };
     // Skip bloom filter size validation on replicated cmds.
-    let validate_size_limit = !replicated_cmd;
+    let validate_size_limit = !ctx.get_flags().contains(ContextFlags::REPLICATED);
     let mut add_succeeded = false;
     match value {
         Some(bloom) => {
@@ -589,7 +590,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                 bloom,
                 true,
                 &mut add_succeeded,
-                !replicated_cmd,
+                validate_size_limit,
             );
             let replicate_args = ReplicateArgs {
                 capacity: bloom.capacity(),
@@ -632,7 +633,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                 &mut bloom,
                 true,
                 &mut add_succeeded,
-                !replicated_cmd,
+                validate_size_limit,
             );
             match filter_key.set_value(&BLOOM_TYPE, bloom) {
                 Ok(()) => {

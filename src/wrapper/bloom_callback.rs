@@ -36,6 +36,10 @@ pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mu
     let filter_list = v.filters();
     let mut filter_list_iter = filter_list.iter().peekable();
     while let Some(filter) = filter_list_iter.next() {
+        raw::save_unsigned(rdb, filter.capacity() as u64);
+        if filter_list_iter.peek().is_none() {
+            raw::save_unsigned(rdb, filter.num_items() as u64);
+        }
         let bloom = filter.raw_bloom();
         let bitmap = bloom.as_slice();
         raw::RedisModule_SaveStringBuffer.unwrap()(
@@ -43,10 +47,6 @@ pub unsafe extern "C" fn bloom_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mu
             bitmap.as_ptr().cast::<c_char>(),
             bitmap.len(),
         );
-        raw::save_unsigned(rdb, filter.capacity() as u64);
-        if filter_list_iter.peek().is_none() {
-            raw::save_unsigned(rdb, filter.num_items() as u64);
-        }
     }
 }
 

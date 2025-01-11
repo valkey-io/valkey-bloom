@@ -83,9 +83,6 @@ impl ValkeyDataType for BloomObject {
         // Calculate the memory usage of the BloomFilter/s by summing up BloomFilter sizes as they are de-serialized.
         let mut filters_memory_usage = 0;
         for i in 0..num_filters {
-            let Ok(bitmap) = raw::load_string_buffer(rdb) else {
-                return None;
-            };
             let Ok(capacity) = raw::load_unsigned(rdb) else {
                 return None;
             };
@@ -118,6 +115,9 @@ impl ValkeyDataType for BloomObject {
                 }
             } else {
                 capacity
+            };
+            let Ok(bitmap) = raw::load_string_buffer(rdb) else {
+                return None;
             };
             let filter =
                 BloomFilter::from_existing(bitmap.as_ref(), num_items as i64, capacity as i64);

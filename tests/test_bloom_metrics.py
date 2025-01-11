@@ -73,7 +73,7 @@ class TestBloomMetrics(ValkeyBloomTestCaseBase):
 
         # Flush database so all keys should now be gone and metrics should all be at 0
         self.client.execute_command('FLUSHDB')
-        wait_for_equal(lambda: self.client.execute_command('BF.EXISTS key2 item'), 0)
+        wait_for_equal(lambda: self.client.execute_command('DBSIZE'), 0)
         self.verify_bloom_metrics(self.client.execute_command("INFO bf"), 0, 0, 0, 0, 0)
         self.verify_bloom_metrics(self.client.execute_command("INFO Modules"), 0, 0, 0, 0, 0)
 

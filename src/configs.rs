@@ -86,7 +86,7 @@ pub fn on_string_config_set(
     };
     match name {
         "bloom-fp-rate" => {
-            if !(BLOOM_FP_RATE_MIN..BLOOM_FP_RATE_MAX).contains(&value) {
+            if !(value > BLOOM_FP_RATE_MIN && value < BLOOM_FP_RATE_MAX) {
                 return Err(ValkeyError::Str(utils::ERROR_RATE_RANGE));
             }
             let mut fp_rate = BLOOM_FP_RATE_F64
@@ -96,7 +96,7 @@ pub fn on_string_config_set(
             Ok(())
         }
         "bloom-tightening-ratio" => {
-            if !(BLOOM_TIGHTENING_RATIO_MIN..BLOOM_TIGHTENING_RATIO_MAX).contains(&value) {
+            if !(value > BLOOM_TIGHTENING_RATIO_MIN && value < BLOOM_TIGHTENING_RATIO_MAX) {
                 return Err(ValkeyError::Str(utils::TIGHTENING_RATIO_RANGE));
             }
             let mut tightening = BLOOM_TIGHTENING_F64

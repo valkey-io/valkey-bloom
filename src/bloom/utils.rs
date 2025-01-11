@@ -824,7 +824,7 @@ mod tests {
         add_items_till_capacity(
             &mut bf,
             initial_capacity + 1,
-            1,
+            add_operation_idx + 1,
             &rand_prefix,
             Some(BloomError::NonScalingFilterFull),
         );
@@ -852,10 +852,13 @@ mod tests {
         // Validate that the real fp_rate is not much more than the configured fp_rate.
         fp_assert(error_count, num_operations, expected_fp_rate, fp_margin);
         // Verify restore
-        let mut restore_bf = BloomObject::create_copy_from(&bf);
-        assert_eq!(
-            restore_bf.add_item(b"new_item", true),
-            Err(BloomError::NonScalingFilterFull)
+        let restore_bf = BloomObject::create_copy_from(&bf);
+        add_items_till_capacity(
+            &mut bf,
+            initial_capacity + 1,
+            add_operation_idx + 1,
+            &rand_prefix,
+            Some(BloomError::NonScalingFilterFull),
         );
         verify_restored_items(
             &bf,

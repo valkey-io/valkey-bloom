@@ -91,15 +91,15 @@ valkey_module! {
         "bloom",
     ]
     commands: [
-        ["BF.ADD", bloom_add_command, "write fast deny-oom", 1, 1, 1, "bloom"],
-        ["BF.MADD", bloom_madd_command, "write fast deny-oom", 1, 1, 1, "bloom"],
-        ["BF.EXISTS", bloom_exists_command, "readonly fast", 1, 1, 1, "bloom"],
-        ["BF.MEXISTS", bloom_mexists_command, "readonly fast", 1, 1, 1, "bloom"],
-        ["BF.CARD", bloom_card_command, "readonly fast", 1, 1, 1, "bloom"],
-        ["BF.RESERVE", bloom_reserve_command, "write fast deny-oom", 1, 1, 1, "bloom"],
-        ["BF.INFO", bloom_info_command, "readonly fast", 1, 1, 1, "bloom"],
-        ["BF.INSERT", bloom_insert_command, "write fast deny-oom", 1, 1, 1, "bloom"],
-        ["BF.LOAD", bloom_load_command, "write fast deny-oom", 1, 1, 1, "bloom"]
+        ["BF.ADD", bloom_add_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
+        ["BF.MADD", bloom_madd_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
+        ["BF.EXISTS", bloom_exists_command, "readonly fast", 1, 1, 1, "fast read bloom"],
+        ["BF.MEXISTS", bloom_mexists_command, "readonly fast", 1, 1, 1, "fast read bloom"],
+        ["BF.CARD", bloom_card_command, "readonly fast", 1, 1, 1, "fast read bloom"],
+        ["BF.RESERVE", bloom_reserve_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
+        ["BF.INFO", bloom_info_command, "readonly fast", 1, 1, 1, "fast read bloom"],
+        ["BF.INSERT", bloom_insert_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
+        ["BF.LOAD", bloom_load_command, "write deny-oom", 1, 1, 1, "write bloom"]
     ],
     configurations: [
         i64: [
