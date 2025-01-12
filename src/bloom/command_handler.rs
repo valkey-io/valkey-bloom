@@ -565,9 +565,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
         idx += 1;
     }
     if idx == argc && items_provided {
-        // We expect the ITEMS <item> [<item> ...] argument to be provided on the BF.INSERT command used on primary nodes.
-        // For replicated commands, this is optional to allow BF.INSERT to be used to replicate bloom object creation
-        // commands without any items (BF.RESERVE).
+        // When the `ITEMS` argument is provided, we expect additional item arg/s to be provided.
         return Err(ValkeyError::WrongArity);
     }
     // If the filter does not exist, create one
