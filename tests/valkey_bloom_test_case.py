@@ -31,6 +31,7 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
         except ResponseError as e:
             assert_error_msg = f"Actual error message: '{str(e)}' is different from expected error message '{expected_err_reply}'"
             assert str(e) == expected_err_reply, assert_error_msg
+            return str(e)
 
     def verify_command_success_reply(self, client, cmd, expected_result):
         cmd_actual_result = client.execute_command(cmd)

@@ -81,9 +81,9 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         # is rejected.
         assert client.execute_command('CONFIG SET bf.bloom-memory-usage-limit 1000') == b'OK'
         cmds = [
-            'BF.INSERT filter items new_item1',
-            'BF.ADD filter new_item1',
-            'BF.MADD filter new_item1 new_item2',
+            'BF.INSERT filter ITEMS',
+            'BF.ADD filter',
+            'BF.MADD filter',
         ]
         # Fill a filter to capacity.
         assert client.execute_command('BF.RESERVE filter 0.001 100 EXPANSION 10') == b'OK'
@@ -94,12 +94,19 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         assert client.execute_command('BF.INFO filter FILTERS') == 1
         assert client.execute_command('BF.INFO filter EXPANSION') == 10
         # Validate that scale out is rejected with appropriate error.
+        new_item_idx = 0
         for cmd in cmds:
-            if "BF.ADD" in cmd:
-                self.verify_error_response(self.client, cmd, obj_exceeds_size_err)
-            else:
-                response = client.execute_command(cmd)
-                assert obj_exceeds_size_err in str(response[0])
+            response = ""
+            while obj_exceeds_size_err not in response:
+                item = f"new_item{new_item_idx}"
+                new_item_idx += 1
+                if "BF.ADD" in cmd:
+                    response = self.verify_error_response(self.client,f"{cmd} {item}", obj_exceeds_size_err)
+                else:
+                    response = str(client.execute_command(f"{cmd} {item}"))
+                if "1" in response:
+                    assert False, f"{cmd} returned a value of 1 when it should have thrown an {obj_exceeds_size_err}"
+            new_item_idx -= 1
 
     def test_large_allocation_when_below_maxmemory(self):
         two_megabytes = 2 * 1024 * 1024
