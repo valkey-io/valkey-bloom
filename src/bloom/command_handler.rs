@@ -462,6 +462,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
         true => (None, true),
         false => (Some(configs::FIXED_SEED), false),
     };
+    let mut wanted_capacity = -1;
     let mut nocreate = false;
     let mut items_provided = false;
     while idx < argc {
@@ -553,6 +554,21 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                     }
                 };
             }
+            "ATLEASTCAPACITY" => {
+                if idx >= (argc - 1) {
+                    return Err(ValkeyError::WrongArity);
+                }
+                idx += 1;
+                wanted_capacity = match input_args[idx].to_string_lossy().parse::<i64>() {
+                    Ok(num) if (BLOOM_CAPACITY_MIN..=BLOOM_CAPACITY_MAX).contains(&num) => num,
+                    Ok(0) => {
+                        return Err(ValkeyError::Str(utils::CAPACITY_LARGER_THAN_0));
+                    }
+                    _ => {
+                        return Err(ValkeyError::Str(utils::BAD_CAPACITY));
+                    }
+                };
+            }
             "ITEMS" => {
                 idx += 1;
                 items_provided = true;
@@ -567,6 +583,26 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
     if idx == argc && items_provided {
         // When the `ITEMS` argument is provided, we expect additional item arg/s to be provided.
         return Err(ValkeyError::WrongArity);
+    }
+    // Check if we have a wanted capacity and calculate if we can reach that capacity
+    if wanted_capacity > 0 {
+        if expansion == 0 {
+            return Err(ValkeyError::Str(
+                utils::NON_SCALING_AND_WANTED_CAPACITY_IS_INVALID,
+            ));
+        }
+        match utils::BloomObject::calculate_if_wanted_capacity_is_valid(
+            capacity,
+            fp_rate,
+            wanted_capacity,
+            tightening_ratio,
+            expansion,
+        ) {
+            Ok(result) => result,
+            Err(e) => {
+                return Err(e);
+            }
+        }
     }
     // If the filter does not exist, create one
     let filter_key = ctx.open_key_writable(filter_name);

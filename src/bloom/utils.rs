@@ -10,6 +10,7 @@ use bloomfilter::Bloom;
 use bloomfilter::{deserialize, serialize};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::atomic::Ordering;
+use valkey_module::ValkeyError;
 
 /// KeySpace Notification Events
 pub const ADD_EVENT: &str = "bloom.add";
@@ -32,10 +33,16 @@ pub const CAPACITY_LARGER_THAN_0: &str = "ERR (capacity should be larger than 0)
 pub const MAX_NUM_SCALING_FILTERS: &str = "ERR bloom object reached max number of filters";
 pub const UNKNOWN_ARGUMENT: &str = "ERR unknown argument received";
 pub const EXCEEDS_MAX_BLOOM_SIZE: &str = "ERR operation exceeds bloom object memory limit";
+pub const WANTED_CAPACITY_EXCEEDS_MAX_SIZE: &str =
+    "ERR Wanted capacity would go beyond bloom object memory limit";
+pub const WANTED_CAPACITY_FALSE_POSITIVE_INVALID: &str =
+    "ERR False positive degrades too much to reach wanted capacity";
 pub const KEY_EXISTS: &str = "BUSYKEY Target key name already exists.";
 pub const DECODE_BLOOM_OBJECT_FAILED: &str = "ERR bloom object decoding failed";
 pub const DECODE_UNSUPPORTED_VERSION: &str =
     "ERR bloom object decoding failed. Unsupported version";
+pub const NON_SCALING_AND_WANTED_CAPACITY_IS_INVALID: &str =
+    "ERR Specifying NONSCALING and ATLEASTCAPCITY is not allowed";
 /// Logging Error messages
 pub const ENCODE_BLOOM_OBJECT_FAILED: &str = "Failed to encode bloom object.";
 
@@ -454,6 +461,44 @@ impl BloomObject {
             }
             _ => Err(BloomError::DecodeUnsupportedVersion),
         }
+    }
+
+    pub fn calculate_if_wanted_capacity_is_valid(
+        capacity: i64,
+        fp_rate: f64,
+        wanted_capacity: i64,
+        tightening_ratio: f64,
+        expansion: u32,
+    ) -> Result<(), ValkeyError> {
+        let mut curr_capacity = capacity;
+        let mut curr_num_filters: u64 = 1;
+        let mut curr_fp_rate = fp_rate;
+        let mut filters_memory_usage = 0;
+        while curr_capacity < wanted_capacity {
+            curr_fp_rate = match BloomObject::calculate_fp_rate(
+                curr_fp_rate,
+                curr_num_filters as i32,
+                tightening_ratio,
+            ) {
+                Ok(rate) => rate,
+                Err(_) => {
+                    return Err(ValkeyError::Str(WANTED_CAPACITY_FALSE_POSITIVE_INVALID));
+                }
+            };
+            let curr_filter_size = BloomFilter::compute_size(curr_capacity, curr_fp_rate);
+            // For vectors of size < 4 the capacity of the vector is 4. However after that the capacity is always a power of two above or equal to the size
+            let curr_object_size = BloomObject::compute_size(
+                std::cmp::max(4, curr_num_filters).next_power_of_two() as usize,
+            ) + filters_memory_usage
+                + curr_filter_size;
+            if !BloomObject::validate_size(curr_object_size) {
+                return Err(ValkeyError::Str(WANTED_CAPACITY_EXCEEDS_MAX_SIZE));
+            }
+            filters_memory_usage += curr_filter_size;
+            curr_capacity *= expansion as i64;
+            curr_num_filters += 1;
+        }
+        Ok(())
     }
 }
 
