@@ -1,17 +1,11 @@
 import subprocess
 import time
-import random
 import os
 import pytest
 import re
-import struct
-import threading
-import io
-import socket
 from contextlib import contextmanager
 from functools import wraps
 from valkey import *
-from valkey.client import Pipeline
 from util.waiters import *
 
 from enum import Enum

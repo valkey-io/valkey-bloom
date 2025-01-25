@@ -86,16 +86,15 @@ impl ValkeyDataType for BloomObject {
             let Ok(capacity) = raw::load_unsigned(rdb) else {
                 return None;
             };
-            let new_fp_rate =
-                match Self::calculate_fp_rate(fp_rate, num_filters as i32, tightening_ratio) {
-                    Ok(rate) => rate,
-                    Err(_) => {
-                        logging::log_warning(
-                            "Failed to restore bloom object: Reached max number of filters",
-                        );
-                        return None;
-                    }
-                };
+            let new_fp_rate = match Self::calculate_fp_rate(fp_rate, i as i32, tightening_ratio) {
+                Ok(rate) => rate,
+                Err(_) => {
+                    logging::log_warning(
+                        "Failed to restore bloom object: False positive degrades to 0 on scale out",
+                    );
+                    return None;
+                }
+            };
             let curr_filter_size = BloomFilter::compute_size(capacity as i64, new_fp_rate);
             let curr_object_size = BloomObject::compute_size(filters.capacity())
                 + filters_memory_usage

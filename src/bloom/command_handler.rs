@@ -462,7 +462,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
         true => (None, true),
         false => (Some(configs::FIXED_SEED), false),
     };
-    let mut wanted_capacity = -1;
+    let mut validate_scale_to = None;
     let mut nocreate = false;
     let mut items_provided = false;
     while idx < argc {
@@ -554,13 +554,15 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                     }
                 };
             }
-            "ATLEASTCAPACITY" => {
+            "VALIDATESCALETO" => {
                 if idx >= (argc - 1) {
                     return Err(ValkeyError::WrongArity);
                 }
                 idx += 1;
-                wanted_capacity = match input_args[idx].to_string_lossy().parse::<i64>() {
-                    Ok(num) if (BLOOM_CAPACITY_MIN..=BLOOM_CAPACITY_MAX).contains(&num) => num,
+                validate_scale_to = match input_args[idx].to_string_lossy().parse::<i64>() {
+                    Ok(num) if (BLOOM_CAPACITY_MIN..=BLOOM_CAPACITY_MAX).contains(&num) => {
+                        Some(num)
+                    }
                     Ok(0) => {
                         return Err(ValkeyError::Str(utils::CAPACITY_LARGER_THAN_0));
                     }
@@ -584,25 +586,25 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
         // When the `ITEMS` argument is provided, we expect additional item arg/s to be provided.
         return Err(ValkeyError::WrongArity);
     }
-    // Check if we have a wanted capacity and calculate if we can reach that capacity
-    if wanted_capacity > 0 {
+    // Check if we have a wanted capacity and calculate if we can reach that capacity. Using VALIDATESCALETO and NONSCALING options together is invalid.
+    if let Some(scale_to) = validate_scale_to {
         if expansion == 0 {
             return Err(ValkeyError::Str(
-                utils::NON_SCALING_AND_WANTED_CAPACITY_IS_INVALID,
+                utils::NON_SCALING_AND_VALIDATE_SCALE_TO_IS_INVALID,
             ));
         }
-        match utils::BloomObject::calculate_if_wanted_capacity_is_valid(
+        match utils::BloomObject::calculate_max_scaled_capacity(
             capacity,
             fp_rate,
-            wanted_capacity,
+            scale_to,
             tightening_ratio,
             expansion,
         ) {
-            Ok(result) => result,
-            Err(e) => {
-                return Err(e);
+            Ok(_) => (),
+            Err(err) => {
+                return Err(ValkeyError::Str(err.as_str()));
             }
-        }
+        };
     }
     // If the filter does not exist, create one
     let filter_key = ctx.open_key_writable(filter_name);
@@ -714,11 +716,28 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
                 "SIZE" => Ok(ValkeyValue::Integer(val.memory_usage() as i64)),
                 "FILTERS" => Ok(ValkeyValue::Integer(val.num_filters() as i64)),
                 "ITEMS" => Ok(ValkeyValue::Integer(val.cardinality())),
+                "ERROR" => Ok(ValkeyValue::Float(val.fp_rate())),
                 "EXPANSION" => {
                     if val.expansion() == 0 {
                         return Ok(ValkeyValue::Null);
                     }
                     Ok(ValkeyValue::Integer(val.expansion() as i64))
+                }
+                // Only calculate and expose MAXSCALEDCAPACITY for scaling bloom objects.
+                "MAXSCALEDCAPACITY" if val.expansion() > 0 => {
+                    let max_capacity = match utils::BloomObject::calculate_max_scaled_capacity(
+                        val.starting_capacity(),
+                        val.fp_rate(),
+                        -1,
+                        val.tightening_ratio(),
+                        val.expansion(),
+                    ) {
+                        Ok(result) => result,
+                        Err(err) => {
+                            return Err(ValkeyError::Str(err.as_str()));
+                        }
+                    };
+                    Ok(ValkeyValue::Integer(max_capacity))
                 }
                 _ => Err(ValkeyError::Str(utils::INVALID_INFO_VALUE)),
             }
@@ -733,12 +752,30 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
                 ValkeyValue::Integer(val.num_filters() as i64),
                 ValkeyValue::SimpleStringStatic("Number of items inserted"),
                 ValkeyValue::Integer(val.cardinality()),
+                ValkeyValue::SimpleStringStatic("Error rate"),
+                ValkeyValue::Float(val.fp_rate()),
                 ValkeyValue::SimpleStringStatic("Expansion rate"),
             ];
             if val.expansion() == 0 {
                 result.push(ValkeyValue::Null);
             } else {
                 result.push(ValkeyValue::Integer(val.expansion() as i64));
+            }
+            if val.expansion() != 0 {
+                let max_capacity = match utils::BloomObject::calculate_max_scaled_capacity(
+                    val.starting_capacity(),
+                    val.fp_rate(),
+                    -1,
+                    val.tightening_ratio(),
+                    val.expansion(),
+                ) {
+                    Ok(result) => result,
+                    Err(err) => {
+                        return Err(ValkeyError::Str(err.as_str()));
+                    }
+                };
+                result.push(ValkeyValue::SimpleStringStatic("Max scaled capacity"));
+                result.push(ValkeyValue::Integer(max_capacity));
             }
             Ok(ValkeyValue::Array(result))
         }
