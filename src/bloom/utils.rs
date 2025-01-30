@@ -526,10 +526,14 @@ impl BloomObject {
             };
             // Check that if it scales to this number of filters that the object won't exceed the memory limit
             let curr_filter_size = BloomFilter::compute_size(curr_filter_capacity, curr_fp_rate);
-            // For vectors of size < 4 the capacity of the vector is 4. However after that the capacity is always a power of two above or equal to the size
-            let curr_object_size = BloomObject::compute_size(
-                std::cmp::max(4, curr_num_filters).next_power_of_two() as usize,
-            ) + filters_memory_usage
+            // The capacity is always a power of two above or equal to the size other than for vectors of size 1 where the capacity is 1 and for size 2 where the
+            // capacity of the vec is 4.
+            let curr_object_size = BloomObject::compute_size(if curr_num_filters == 0 {
+                1
+            } else {
+                (std::cmp::max(4, curr_num_filters + 1)).next_power_of_two()
+            } as usize)
+                + filters_memory_usage
                 + curr_filter_size;
             if !BloomObject::validate_size(curr_object_size) {
                 if validate_scale_to == -1 {
@@ -1236,5 +1240,20 @@ mod tests {
             BloomObject::decode_object(&vec, true).err(),
             Some(BloomError::ExceedsMaxBloomSize)
         );
+    }
+
+    #[test]
+    fn test_vec_capacity_matches_size_calculations() {
+        // This unit test is designed to make sure out calculations with capcity will always match the correct vec capacity
+        let mut test_v = vec![0];
+        for i in 0..5000 {
+            let x = if i == 0 {
+                1
+            } else {
+                (std::cmp::max(4, i + 1) as u32).next_power_of_two()
+            };
+            assert!(test_v.capacity() == x as usize);
+            test_v.push(i);
+        }
     }
 }
