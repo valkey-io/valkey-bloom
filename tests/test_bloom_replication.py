@@ -1,8 +1,7 @@
-import pytest
+import pytest, os
 from valkey import ResponseError
 from valkeytests.valkey_test_case import ReplicationTestCase
 from valkeytests.conftest import resource_port_tracker
-import os
 
 class TestBloomReplication(ReplicationTestCase):
 

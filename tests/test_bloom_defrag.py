@@ -1,5 +1,4 @@
 import time
-from valkeytests.valkey_test_case import ValkeyAction
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 from valkeytests.conftest import resource_port_tracker
 from util.waiters import *

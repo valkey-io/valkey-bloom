@@ -1,11 +1,8 @@
 import time
-import pytest
 from util.waiters import *
 from valkey import ResponseError
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 from valkeytests.conftest import resource_port_tracker
-import logging
-import os
 
 class TestBloomBasic(ValkeyBloomTestCaseBase):
 

@@ -51,13 +51,13 @@ fn bloom_reserve_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult
     command_handler::bloom_filter_reserve(ctx, &args)
 }
 
-/// Command handler for BF.INFO <key> [CAPACITY | SIZE | FILTERS | ITEMS | EXPANSION]
+/// Command handler for BF.INFO <key> [CAPACITY | SIZE | FILTERS | ITEMS | EXPANSION | ERROR | MAXSCALEDCAPACITY]
 fn bloom_info_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     command_handler::bloom_filter_info(ctx, &args)
 }
 
 /// Command handler for:
-/// BF.INSERT <key> [ERROR <fp_error>] [CAPACITY <capacity>] [EXPANSION <expansion>] [NOCREATE] [NONSCALING] ITEMS <item> [<item> ...]
+/// BF.INSERT <key> [ERROR <fp_error>] [CAPACITY <capacity>] [EXPANSION <expansion>] [NOCREATE] [NONSCALING] [VALIDATESCALETO <validatescaleto>] ITEMS <item> [<item> ...]
 fn bloom_insert_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     command_handler::bloom_filter_insert(ctx, &args)
 }

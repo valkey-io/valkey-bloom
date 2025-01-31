@@ -1,8 +1,5 @@
-import pytest
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 from valkeytests.conftest import resource_port_tracker
-import valkey
-import uuid
 
 class TestBloomCommand(ValkeyBloomTestCaseBase):
 

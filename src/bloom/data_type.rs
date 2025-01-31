@@ -2,9 +2,9 @@ use crate::bloom::utils::BloomFilter;
 use crate::bloom::utils::BloomObject;
 use crate::configs;
 use crate::wrapper::bloom_callback;
-use crate::wrapper::digest::Digest;
 use crate::MODULE_NAME;
 use std::os::raw::c_int;
+use valkey_module::digest::Digest;
 use valkey_module::native_types::ValkeyType;
 use valkey_module::{logging, raw};
 

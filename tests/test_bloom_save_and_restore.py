@@ -1,4 +1,3 @@
-import pytest, time
 import os
 from valkey import ResponseError
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase

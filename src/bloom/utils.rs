@@ -161,14 +161,15 @@ impl BloomObject {
             let new_filter = Box::new(BloomFilter::create_copy_from(filter));
             filters.push(new_filter);
         }
-        from_bf.bloom_object_incr_metrics_on_new_create();
-        BloomObject {
+        let new_copy = BloomObject {
             expansion: from_bf.expansion,
             fp_rate: from_bf.fp_rate,
             tightening_ratio: from_bf.tightening_ratio,
             is_seed_random: from_bf.is_seed_random,
             filters,
-        }
+        };
+        new_copy.bloom_object_incr_metrics_on_new_create();
+        new_copy
     }
 
     /// Return the total memory usage of the BloomObject and every allocation it contains.
@@ -328,10 +329,7 @@ impl BloomObject {
             // Scale out by adding a new filter with capacity bounded within the u32 range. false positive rate is also
             // bound within the range f64::MIN_POSITIVE <= x < 1.0.
             let new_fp_rate =
-                match Self::calculate_fp_rate(self.fp_rate, num_filters, self.tightening_ratio) {
-                    Ok(rate) => rate,
-                    Err(e) => return Err(e),
-                };
+                Self::calculate_fp_rate(self.fp_rate, num_filters, self.tightening_ratio)?;
             let new_capacity = match filter.capacity.checked_mul(self.expansion.into()) {
                 Some(new_capacity) => new_capacity,
                 None => {
@@ -467,13 +465,13 @@ impl BloomObject {
                     is_seed_random,
                     filters,
                 };
+                // Add overall bloom object metrics.
+                item.bloom_object_incr_metrics_on_new_create();
                 let bytes = item.memory_usage();
                 // Reject the request, if the operation will result in creation of a bloom object of size greater than what is allowed.
                 if validate_size_limit && !BloomObject::validate_size(bytes) {
                     return Err(BloomError::ExceedsMaxBloomSize);
                 }
-                // Add overall bloom object metrics.
-                item.bloom_object_incr_metrics_on_new_create();
                 Ok(item)
             }
             _ => Err(BloomError::DecodeUnsupportedVersion),
@@ -672,7 +670,7 @@ impl BloomFilter {
             + (self.bloom.len() / 8) as usize
     }
 
-    /// Caculates the number of bytes that the bloom filter will require to be allocated.
+    /// Calculates the number of bytes that the bloom filter will require to be allocated.
     pub fn compute_size(capacity: i64, fp_rate: f64) -> usize {
         std::mem::size_of::<BloomFilter>()
             + std::mem::size_of::<bloomfilter::Bloom<[u8]>>()

@@ -8,9 +8,6 @@ import fcntl
 import socket
 import os
 import tempfile
-import random
-import subprocess
-import threading
 from pathlib import Path
 
 class PortTracker(object):

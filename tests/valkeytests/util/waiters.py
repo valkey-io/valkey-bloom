@@ -14,8 +14,6 @@ on_failure: A function to call if the wait fails (default: None)
 timeout: The maximum time to wait for the function to return the expected value (default: TEST_MAX_WAIT_TIME_SECONDS)
 ignore_exception: The exception to ignore (default is None)
 """
-import contextlib
-import warnings
 from functools import wraps
 import operator
 import time
