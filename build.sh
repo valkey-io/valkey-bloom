@@ -12,8 +12,6 @@ echo "Running cargo and clippy format checks..."
 cargo fmt --check
 cargo clippy --profile release --all-targets -- -D clippy::all
 
-echo "Running cargo build release..."
-RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release
 
 echo "Running unit tests..."
 cargo test --features enable-system-alloc
@@ -28,6 +26,14 @@ if [ "$SERVER_VERSION" != "unstable" ] && [ "$SERVER_VERSION" != "8.0.0" ] ; the
   echo "ERROR: Unsupported version - $SERVER_VERSION"
   exit 1
 fi
+
+echo "Running cargo build release..."
+if [ "$SERVER_VERSION" == "8.0.0" ] ; then
+    RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release --features valkey_8_0
+else
+    RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release
+fi
+
 
 REPO_URL="https://github.com/valkey-io/valkey.git"
 BINARY_PATH="tests/.build/binaries/$SERVER_VERSION/valkey-server"
