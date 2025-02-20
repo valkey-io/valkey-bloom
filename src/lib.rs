@@ -9,12 +9,27 @@ pub mod metrics;
 pub mod wrapper;
 use crate::bloom::command_handler;
 use crate::bloom::data_type::BLOOM_TYPE;
+use crate::bloom::utils::valid_server_version;
 use valkey_module_macros::info_command_handler;
 
 pub const MODULE_NAME: &str = "bf";
 
-fn initialize(_ctx: &Context, _args: &[ValkeyString]) -> Status {
-    Status::Ok
+fn initialize(ctx: &Context, _args: &[ValkeyString]) -> Status {
+    let ver = ctx
+        .get_redis_version()
+        .expect("Unable to get server version!");
+    if !valid_server_version(ver) {
+        ctx.log_warning(
+            format!(
+                "The minimum supported Valkey server version for the valkey-bloom module is {:?}",
+                configs::BLOOM_MIN_SUPPORTED_VERSION
+            )
+            .as_str(),
+        );
+        Status::Err
+    } else {
+        Status::Ok
+    }
 }
 
 fn deinitialize(_ctx: &Context) -> Status {
