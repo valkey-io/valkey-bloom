@@ -37,6 +37,9 @@ SERVER_VERSION=unstable
 # Same as above, but uses valkey-server (8.0.0) for integration testing.
 SERVER_VERSION=8.0.0
 ./build.sh
+# Build with asan, you may need to remove the old valkey binary if you have used ./build.sh before. You can do this by deleting the `.build` folder in the `tests` folder 
+ASAN_BUILD=true
+./build.sh
 ```
 
 ## Load the Module

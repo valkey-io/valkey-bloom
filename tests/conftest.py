@@ -1,3 +1,4 @@
+import subprocess
 import pytest
 
 @pytest.fixture(params=['random-seed', 'fixed-seed'])
