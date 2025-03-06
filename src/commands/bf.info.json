@@ -1,6 +1,6 @@
 {
     "BF.INFO": {
-        "summary": "Returns information about a bloom filter",
+        "summary": "Returns usage information and properties of a specific bloom filter",
         "complexity": "O(1)",
         "group": "bloom",
         "module_since": "1.0.0",
@@ -37,16 +37,6 @@
                         "token": "FILTERS"
                     },
                     {
-                        "name": "items",
-                        "type": "pure-token",
-                        "token": "ITEMS"
-                    },
-                    {
-                        "name": "items",
-                        "type": "pure-token",
-                        "token": "ITEMS"
-                    },
-                    {
                         "name": "expansion",
                         "type": "pure-token",
                         "token": "EXPANSION"
@@ -55,6 +45,11 @@
                         "name": "error",
                         "type": "pure-token",
                         "token": "ERROR"
+                    },
+                    {
+                        "name": "tightening",
+                        "type": "pure-token",
+                        "token": "TIGHTENTING"
                     },
                     {
                         "name": "maxscaledcapacity",

@@ -1,6 +1,6 @@
 {
     "BF.RESERVE": {
-        "summary": "Creates an empty bloom filter with the specified parameters",
+        "summary": "Creates an empty bloom filter with the specified properties",
         "complexity": "O(1)",
         "group": "bloom",
         "module_since": "1.0.0",
