@@ -12,7 +12,7 @@ homepage = "https://github.com/valkey-io/valkey-bloom"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-valkey-module = { version = "0.1.4", features = ["min-valkey-compatibility-version-8-0", "min-redis-compatibility-version-7-2"]}
+valkey-module = { version = "0.1.5", features = ["min-valkey-compatibility-version-8-0", "min-redis-compatibility-version-7-2"]}
 valkey-module-macros = "0"
 linkme = "0"
 bloomfilter = { version = "3.0.1", features = ["serde"] }
@@ -38,4 +38,5 @@ debug-assertions = true
 default = ["min-valkey-compatibility-version-8-0"]
 enable-system-alloc = ["valkey-module/enable-system-alloc"]
 min-valkey-compatibility-version-8-0 = []
-valkey_8_0 = []  # Empty feature flag for Valkey 8.0
+valkey_8_0 = []  # Valkey-bloom is intended to be loaded on server versions >= Valkey 8.1 and by default it is built this way (unless this flag is provided). It is however compatible with Valkey version 8.0 if the user explicitly provides this feature flag in their cargo build command.
+use-redismodule-api = [] # We don't support this feature flag which is why it is empty. 
