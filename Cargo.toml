@@ -38,3 +38,4 @@ debug-assertions = true
 default = ["min-valkey-compatibility-version-8-0"]
 enable-system-alloc = ["valkey-module/enable-system-alloc"]
 min-valkey-compatibility-version-8-0 = []
+use-redismodule-api = [] # We don't support this feature flag which is why it is empty. 

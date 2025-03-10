@@ -10,6 +10,7 @@ use bloomfilter::Bloom;
 use bloomfilter::{deserialize, serialize};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::atomic::Ordering;
+use valkey_module::raw::Version;
 
 /// KeySpace Notification Events
 pub const ADD_EVENT: &str = "bloom.add";
@@ -708,6 +709,15 @@ impl Drop for BloomFilter {
     }
 }
 
+pub fn valid_server_version(version: Version) -> bool {
+    let server_version = &[
+        version.major.into(),
+        version.minor.into(),
+        version.patch.into(),
+    ];
+    server_version >= configs::BLOOM_MIN_SUPPORTED_VERSION
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -715,6 +725,7 @@ mod tests {
     use configs;
     use rand::{distributions::Alphanumeric, Rng};
     use rstest::rstest;
+    use valkey_module::raw::Version;
 
     /// Returns random string with specified number of characters.
     fn random_prefix(len: usize) -> String {
@@ -1253,5 +1264,45 @@ mod tests {
             assert!(test_v.capacity() == x as usize);
             test_v.push(i);
         }
+    }
+
+    #[test]
+    fn test_valid_server_version() {
+        let v1 = Version {
+            major: 8,
+            minor: 1,
+            patch: 0,
+        };
+        let v2 = Version {
+            major: 8,
+            minor: 0,
+            patch: 1,
+        };
+        let v3 = Version {
+            major: 7,
+            minor: 1,
+            patch: 0,
+        };
+        let v4 = Version {
+            major: 7,
+            minor: 0,
+            patch: 1,
+        };
+        let v5 = Version {
+            major: 8,
+            minor: 0,
+            patch: -1,
+        };
+        let v6 = Version {
+            major: 8,
+            minor: 0,
+            patch: 0,
+        };
+        assert!(valid_server_version(v1));
+        assert!(valid_server_version(v2));
+        assert!(!valid_server_version(v3));
+        assert!(!valid_server_version(v4));
+        assert!(!valid_server_version(v5));
+        assert!(valid_server_version(v6));
     }
 }
