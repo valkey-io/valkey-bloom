@@ -119,7 +119,7 @@ valkey_module! {
     configurations: [
         i64: [
             ["bloom-capacity", &*configs::BLOOM_CAPACITY, configs::BLOOM_CAPACITY_DEFAULT, configs::BLOOM_CAPACITY_MIN, configs::BLOOM_CAPACITY_MAX, ConfigurationFlags::DEFAULT, None],
-            ["bloom-expansion", &*configs::BLOOM_EXPANSION, configs::BLOOM_EXPANSION_DEFAULT, configs::BLOOM_EXPANSION_MIN as i64, configs::BLOOM_EXPANSION_MAX as i64, ConfigurationFlags::DEFAULT, None],
+            ["bloom-expansion", &*configs::BLOOM_EXPANSION, configs::BLOOM_EXPANSION_DEFAULT, 0, configs::BLOOM_EXPANSION_MAX as i64, ConfigurationFlags::DEFAULT, None],
             ["bloom-memory-usage-limit", &*configs::BLOOM_MEMORY_LIMIT_PER_OBJECT, configs::BLOOM_MEMORY_LIMIT_PER_OBJECT_DEFAULT, configs::BLOOM_MEMORY_LIMIT_PER_OBJECT_MIN, configs::BLOOM_MEMORY_LIMIT_PER_OBJECT_MAX, ConfigurationFlags::DEFAULT, None],
         ],
         string: [

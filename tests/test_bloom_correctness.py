@@ -25,6 +25,7 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
         assert info_dict[b'Size'] > 0
         assert info_dict[b'Expansion rate'] == None
         assert info_dict[b'Error rate'] == str(expected_fp_rate).encode()
+
         assert "Max scaled capacity" not in info_dict
         # Use a margin on the expected_fp_rate when asserting for correctness.
         fp_margin = 0.002
@@ -61,6 +62,7 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
         client = self.server.get_new_client()
         item_prefix = self.generate_random_string()
         expected_fp_rate = 0.001
+        expected_tightening_ratio = 0.5
         initial_capacity = 10000
         expansion = 2
         num_filters_to_scale = 5
@@ -76,6 +78,7 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
         assert info_dict[b'Size'] > 0
         assert info_dict[b'Expansion rate'] == expansion
         assert info_dict[b'Error rate'] == str(expected_fp_rate).encode()
+        assert info_dict[b'Tightening ratio'] == str(expected_tightening_ratio).encode()
         assert info_dict[b'Max scaled capacity'] == 20470000
 
         # Scale out by adding items.
@@ -96,6 +99,8 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
             assert info_dict[b'Size'] > 0
             assert info_dict[b'Expansion rate'] == expansion
             assert info_dict[b'Error rate'] == str(expected_fp_rate).encode()
+            assert info_dict[b'Tightening ratio'] == str(expected_tightening_ratio).encode()
+
             assert info_dict[b'Max scaled capacity'] == 20470000
 
         # Use a margin on the expected_fp_rate when asserting for correctness.

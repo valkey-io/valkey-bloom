@@ -716,6 +716,9 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
                 "FILTERS" => Ok(ValkeyValue::Integer(val.num_filters() as i64)),
                 "ITEMS" => Ok(ValkeyValue::Integer(val.cardinality())),
                 "ERROR" => Ok(ValkeyValue::Float(val.fp_rate())),
+                "TIGHTENING" if val.expansion() > 0 => {
+                    Ok(ValkeyValue::Float(val.tightening_ratio()))
+                }
                 "EXPANSION" => {
                     if val.expansion() == 0 {
                         return Ok(ValkeyValue::Null);
@@ -759,8 +762,9 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
                 result.push(ValkeyValue::Null);
             } else {
                 result.push(ValkeyValue::Integer(val.expansion() as i64));
-            }
-            if val.expansion() != 0 {
+                // The following fields are only relevant to scalable filters, so will only be included if expansion is not equal to 0.
+                result.push(ValkeyValue::SimpleStringStatic("Tightening ratio"));
+                result.push(ValkeyValue::Float(val.tightening_ratio()));
                 let max_capacity = match utils::BloomObject::calculate_max_scaled_capacity(
                     val.starting_capacity(),
                     val.fp_rate(),

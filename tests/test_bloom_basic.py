@@ -362,6 +362,25 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         except ResponseError as e:
             assert str(e) == f"CONFIG SET failed (possibly related to argument 'bf.bloom-tightening-ratio') - ERR (0 < tightening ratio range < 1)"
 
+    def test_bloom_config_set_changes_default_creations(self):
+        """
+        This is a test that validates the bloom configuration set logic changes the defualt creations for bloom objects
+        """     
+        assert self.client.execute_command('CONFIG SET bf.bloom-capacity 10000') == b'OK'
+        assert self.client.execute_command('CONFIG SET bf.bloom-expansion 0') == b'OK'
+        assert self.client.execute_command('CONFIG SET bf.bloom-fp-rate 0.75') == b'OK'
+        assert self.client.execute_command('CONFIG SET bf.bloom-tightening-ratio 0.4') == b'OK'
+        
+        assert self.client.execute_command("BF.ADD changed_default item") == 1
+
+        assert self.client.execute_command('BF.INFO changed_default CAPACITY') == 10000
+        assert self.client.execute_command('BF.INFO changed_default ERROR') == str(0.75).encode()
+
+
+        bf_info_full = self.client.execute_command("BF.INFO changed_default")
+        assert b'Max scaled capacity' not in bf_info_full
+        assert b'Tightening ratio' not in bf_info_full
+
     def test_bloom_dump_and_restore(self):
         """
         This is a test that validates the bloom data has same debug digest value before and after using restore command
