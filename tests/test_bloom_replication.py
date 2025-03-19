@@ -86,9 +86,9 @@ class TestBloomReplication(ReplicationTestCase):
                 self.validate_reserve_cmd_stats(1, 2, 1, 1)
 
             # cmd debug digest
-            server_digest_primary = self.client.debug_digest()
+            server_digest_primary = self.client.execute_command('DEBUG', 'DIGEST')
             assert server_digest_primary != None or 0000000000000000000000000000000000000000
-            server_digest_replica = self.client.debug_digest()
+            server_digest_replica = self.client.execute_command('DEBUG', 'DIGEST')
             assert server_digest_primary == server_digest_replica
             object_digest_primary = self.client.execute_command('DEBUG DIGEST-VALUE key')
             debug_digest_replica = self.replicas[0].client.execute_command('DEBUG DIGEST-VALUE key')
@@ -173,9 +173,9 @@ class TestBloomReplication(ReplicationTestCase):
             prefix = test_case[0]
             create_cmd = test_case[1]
             self.client.execute_command(create_cmd)
-            server_digest_primary = self.client.debug_digest()
+            server_digest_primary = self.client.execute_command('DEBUG', 'DIGEST')
             assert server_digest_primary != None or 0000000000000000000000000000000000000000
-            server_digest_replica = self.client.debug_digest()
+            server_digest_replica = self.client.execute_command('DEBUG', 'DIGEST')
             object_digest_primary = self.client.execute_command('DEBUG DIGEST-VALUE key')
             debug_digest_replica = self.replicas[0].client.execute_command('DEBUG DIGEST-VALUE key')
             assert server_digest_primary == server_digest_replica

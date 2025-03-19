@@ -85,3 +85,17 @@ def wait_for_true(func, **kwargs):
     asserts that this happens within a timeout.
     """
     _wait_for(func, **kwargs)
+
+def wait_for_false(func, **kwargs):
+    """
+    Wait for a given function to return False, and
+    asserts that this happens within a timeout.
+    """
+    _wait_for(func, expected_value=True, op=operator.ne, **kwargs)
+
+def wait_for_ne(func, expected_value, **kwargs):
+    """
+    Wait for a given function to return a value not equal to the expected_value, and
+    asserts that this happens within a timeout.
+    """
+    _wait_for(func, expected_value=expected_value, op=operator.ne, **kwargs)

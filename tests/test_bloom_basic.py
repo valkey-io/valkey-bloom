@@ -37,11 +37,11 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         mexists_result = client.execute_command('BF.MEXISTS filter item1 item2 item3 item4')
         assert len(madd_result) == 4 and len(mexists_result) == 4
         # cmd debug digest
-        server_digest = client.debug_digest()
+        server_digest = client.execute_command('DEBUG', 'DIGEST')
         assert server_digest != None or 0000000000000000000000000000000000000000
         object_digest = client.execute_command('DEBUG DIGEST-VALUE filter')
         assert client.execute_command('COPY filter new_filter') == 1
-        copied_server_digest = client.debug_digest()
+        copied_server_digest = client.execute_command('DEBUG', 'DIGEST')
         assert copied_server_digest != None or 0000000000000000000000000000000000000000
         copied_object_digest = client.execute_command('DEBUG DIGEST-VALUE filter')
         assert client.execute_command('EXISTS new_filter') == 1
@@ -112,30 +112,30 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         client = self.server.get_new_client()
         assert client.execute_command("CONFIG SET maxmemory-policy allkeys-lru") == b"OK"
         assert client.execute_command("CONFIG SET maxmemory {}".format(two_megabytes)) == b"OK"
-        used_memory = client.info_obj().used_memory()
-        maxmemory = client.info_obj().maxmemory()
+        used_memory = client.info()['used_memory']
+        maxmemory = client.info()['maxmemory']
         client.execute_command('BF.ADD filter item1')
-        new_used_memory = client.info_obj().used_memory()
+        new_used_memory = client.info()['used_memory']
         assert new_used_memory > used_memory and new_used_memory < maxmemory
         assert client.execute_command(bloom_cmd_large_allocation) == b"OK"
         assert client.execute_command('DBSIZE') < 2
         assert client.info("Stats")['evicted_keys'] > 0
-        used_memory = client.info_obj().used_memory()
+        used_memory = client.info()['used_memory']
         assert used_memory < maxmemory
         client.execute_command('FLUSHALL')
         client.execute_command('BF.ADD filter item1')
         assert client.execute_command("CONFIG SET maxmemory-policy volatile-lru") == b"OK"
         assert client.execute_command(bloom_cmd_large_allocation) == b"OK"
         assert client.execute_command('DBSIZE') == 2
-        used_memory = client.info_obj().used_memory()
+        used_memory = client.info()['used_memory']
         assert used_memory > maxmemory
 
     def test_large_allocation_when_above_maxmemory(self):
         client = self.server.get_new_client()
         assert client.execute_command("CONFIG SET maxmemory-policy allkeys-lru") == b"OK"
-        used_memory = client.info_obj().used_memory()
+        used_memory = client.info()['used_memory']
         client.execute_command('BF.ADD filter item1')
-        new_used_memory = client.info_obj().used_memory()
+        new_used_memory = client.info()['used_memory']
         assert new_used_memory > used_memory
         # Configure the server to now be over maxmemory with allkeys-lru policy. Test that allocation fails.
         assert client.execute_command("CONFIG SET maxmemory {}".format(used_memory)) == b"OK"

@@ -2,6 +2,7 @@ import subprocess
 import time
 import os
 import pytest
+import shutil
 import re
 from contextlib import contextmanager
 from functools import wraps
@@ -51,157 +52,8 @@ def expect(lhs, op, rhs):
     if not op(lhs, rhs):
         raise ExpectException(lhs, op, rhs)
 
-
-@wait()
-def wait_for_true(expr):
-    return expr
-
 class ValkeyAction(Enum):
     AOF_REWRITE = 1
-
-
-class ValkeyInfo:
-    """Contains information about a point in time of Valkey"""
-    def __init__(self, info):
-        self.info = info
-
-    def is_save_in_progress(self):
-        """Return True if there is a save in progress."""
-        return self.info['rdb_bgsave_in_progress'] == 1
-    
-    def is_aof_rewrite_in_progress(self):
-        """Return True if there is a aof rwrite in progress."""
-        return self.info['aof_rewrite_in_progress'] == 1
-
-    def num_keys(self, db=0):
-        if 'db{}'.format(db) in self.info:
-            return self.info['db{}'.format(db)]['keys']
-        return 0
-
-    def get_master_repl_offset(self):
-        return self.info['master_repl_offset']
-
-    def get_master_replid(self):
-        return self.info['master_replid']
-
-    def get_replica_repl_offset(self):
-        return self.info['slave_repl_offset']
-
-    def is_master_link_up(self):
-        """Returns True if role is slave and master_link_status is up"""
-        if self.info['role'] == 'slave' and self.info['master_link_status'] == 'up':
-            return True
-        return False
-
-    def num_replicas(self):
-        return self.info['connected_slaves']
-
-    def num_replicas_online(self):
-        count=0
-        for k,v in self.info.items():
-            if re.match('^slave[0-9]', k) and v['state'] == 'online':
-                count += 1
-        return count
-
-    def was_save_successful(self):
-        return self.info['rdb_last_bgsave_status'] == 'ok'
-
-    def was_aofrewrite_successful(self):
-        return self.info['aof_last_bgrewrite_status'] == 'ok'
-
-    def used_memory(self):
-        return self.info['used_memory']
-
-    def maxmemory(self):
-        return self.info['maxmemory']
-
-    def maxmemory_policy(self):
-        return self.info['maxmemory_policy']
-
-    def uptime_in_secs(self):
-        return self.info['uptime_in_seconds']
-
-# An extension of the StrictValkey client
-# that supports additional Valkey functionality
-class ValkeyClient(StrictValkey):
-    def set_password(self, pw):
-        """
-        Set the password for the server's connection.  Must be called after requirepass has been applied.
-        """
-        self.connection_pool.reset()
-        self.connection_pool.connection_kwargs.update({'password': pw})
-
-    def get_connection(self):
-        """
-        Obtain a raw connection from the client's connection pool.  Callers must ensure that they
-        return the connection via release_connection().
-        """
-        return self.connection_pool.get_connection(None)
-
-    def release_connection(self, connection):
-        """
-        Release a raw connection back into the pool.
-        """
-        self.connection_pool.release(connection)
-
-    @classmethod
-    def create_from_server(self, server, db=0):
-        print(("Created regular client for port {}".format(server.port)))
-        r = ValkeyClient(host='localhost', port=server.port, db=db)
-        return r
-
-    # Add a flag to shutdown so that we can avoid a save
-    def shutdown(self, flag=None):
-        """Shutdown the server.
-
-        Args:
-            flag: an optional argument to indicate whether a snapshot should be taken
-        """
-        try:
-            if flag:
-                self.execute_command('SHUTDOWN', flag)
-            else:
-                self.shutdown()
-        except ConnectionError:
-            # a ConnectionError here is expected
-            return
-        raise ValkeyError("SHUTDOWN seems to have failed.")
-
-    def bgsave(self, type=None):
-        """Perform a background save.
-
-        Args:
-            type: an optional argument to indicate the type of snapshot.
-        """
-        if type is None:
-            return self.execute_command('BGSAVE')
-        else:
-            return self.execute_command('BGSAVE', type)
-
-    def restore(self, name, ttl, value, replace=False):
-        """Create a key using the provided serialized value, previously obtained
-        using DUMP.
-        """
-        return self.execute_command('RESTORE', name, ttl, value, 'REPLACE' if replace else "")
-
-    def info_obj(self):
-        """Return a ValkeyInfo object for the current client info"""
-        return ValkeyInfo(self.info('all'))
-    
-    def info_section(self, section):
-        """Return a ValkeyInfo object for the current client info section"""
-        return ValkeyInfo(self.info(section))
-
-    def bitfield(self, name, *values):
-        """
-        Executes specified subcommands to the specified key identified by
-        the ``name`` argument. We are not doing any syntax validation of
-        the specified subcommands idenfied by ``values``
-        """
-        return self.execute_command('BITFIELD', name, *values)
-
-    def debug_digest(self):
-        return self.execute_command('DEBUG', 'DIGEST')
 
 class ValkeyServerHandle(object):
     """Handle to a valkey server process"""
@@ -221,13 +73,19 @@ class ValkeyServerHandle(object):
         self.cwd = cwd
         self.valkey_path = server_path
 
+    @classmethod
+    def create_from_server(self, server, db=0):
+        print(("Created regular client for port {}".format(server.port)))
+        r = StrictValkey(host='localhost', port=server.port, db=db)
+        return r
+    
     def set_startup_args(self, args):
         self.args.update(args)
 
     def get_new_client(self):
-        return ValkeyClient.create_from_server(self)
+        return self.create_from_server(self)
 
-    def exit(self, remove_rdb=True, remove_nodes_conf=True):
+    def exit(self, test_teardown=True, remove_nodes_conf=True):
         if self.client:
             try:
                 self.client.shutdown('nosave')
@@ -244,7 +102,10 @@ class ValkeyServerHandle(object):
             if "logfile" in self.args and os.path.exists(os.path.join(self.cwd, self.args["logfile"])):
                 os.remove(os.path.join(self.cwd, self.args["logfile"]))
 
-        if remove_rdb and "dbfilename" in self.args and os.path.exists(os.path.join(self.cwd, self.args["dbfilename"])):
+            if test_teardown and "appenddirname" in self.args and os.path.exists(os.path.join(self.cwd, self.args["appenddirname"])):
+                shutil.rmtree(os.path.join(self.cwd, self.args["appenddirname"]))
+
+        if test_teardown and "dbfilename" in self.args and os.path.exists(os.path.join(self.cwd, self.args["dbfilename"])):
             try:
                 os.remove(os.path.join(self.cwd, self.args["dbfilename"]))
             except OSError:
@@ -256,9 +117,8 @@ class ValkeyServerHandle(object):
             except OSError:
                 os.rmdir(os.path.join(self.cwd, self.args["cluster-config-file"]))
 
-    @wait()
     def _waitForServerPoll(self):
-        return self.server.poll() != None
+        wait_for_ne(lambda: self.server.poll(), None, timeout=TEST_MAX_WAIT_TIME_SECONDS)
 
     def _waitForExit(self):
         try:
@@ -277,9 +137,9 @@ class ValkeyServerHandle(object):
     def pid(self):
         return self.server.pid
 
-    @wait(timeout = 5)
+    # DO we even need this it does the same as _waitForServerPoll
     def is_down(self):
-        return self.server.poll() != None
+        wait_for_ne(lambda: self.server.poll(), None, timeout=TEST_MAX_WAIT_TIME_SECONDS)
 
     def children_pids(self):
         process = subprocess.Popen("ps --no-headers -o pid --ppid %s" % self.pid(),
@@ -293,13 +153,12 @@ class ValkeyServerHandle(object):
         return children
 
     def wait_for_replicas(self, num_of_replicas):
-        wait_for_equal(lambda: self.client.info_obj().num_replicas(), num_of_replicas, timeout=MAX_REPLICA_WAIT_TIME)
+        wait_for_equal(lambda: self.client.info()["connected_slaves"], num_of_replicas, timeout=MAX_REPLICA_WAIT_TIME)
 
-    @wait(timeout = 60) # wait upto 30 sec checking every sec
     def wait_for_ready_to_accept_connections(self):
         logfile = os.path.join(self.cwd, self.args['logfile'])
         strings = ['Ready to accept connections']
-        return verify_any_of_strings_in_file(strings, logfile)
+        wait_for_true(lambda: verify_any_of_strings_in_file(strings, logfile), timeout=TEST_MAX_WAIT_TIME_SECONDS)
 
     def verify_string_in_logfile(self, string):
         logfile = os.path.join(self.cwd, self.args['logfile'])
@@ -366,88 +225,89 @@ class ValkeyServerHandle(object):
         except:
             return False
 
-    @wait(timeout = MAX_PING_WAIT_TIME)
     def _waitForPing(self, c):
         try:
-            return c.ping()
+            wait_for_true(lambda: c.ping(), timeout=MAX_PING_WAIT_TIME)
+            return True
         except (ConnectionError, TimeoutError) as e:
             print(e)
             return False
 
-    @wait()
     def wait_for_key(self, key, value):
         if isinstance(value, str):
             value = value.encode()
-        return self.client.get(key)== value
+        wait_for_equal(lambda: self.client.get(key), value, timeout=TEST_MAX_WAIT_TIME_SECONDS)
 
     def connect(self):
-        c = ValkeyClient.create_from_server(self)
+        c = self.create_from_server(self)
         try:
             self._waitForPing(c)
         except WaitTimeout:
              raise RuntimeError("Failed to connect or ping server")
         self.client = c
 
-    def wait_for_all_replicas_online(self, num_of_replicas):
-        """Wait for n replicas to show online"""
-        wait_for_equal(lambda: self.client.info_obj().num_replicas_online(), num_of_replicas, timeout=MAX_REPLICA_WAIT_TIME)
-
-    @wait()
-    def _wait_for_save(self, client=None):
-        """Wait the default number of seconds for the save to finish"""
-        if client is None:
-            client = self.client
-        if client.info_obj().is_save_in_progress():
-            return False
-        return True
-
     def wait_for_save_done(self, client=None):
         """Wait for the save to complete, failing if it does not complete successfully in the timeout"""
         if client is None:
             client = self.client
         try:
-            self._wait_for_save(client)
+            wait_for_ne(lambda: client.info()['rdb_bgsave_in_progress'], 1, timeout=TEST_MAX_WAIT_TIME_SECONDS)
         except WaitTimeout:
             raise RuntimeError("Save failed to complete in time")
-        assert(client.info_obj().was_save_successful())
+        assert(client.info()['rdb_last_bgsave_status'] == 'ok')
 
-    def wait_for_save_in_progress(self):
-        assert(self._wait_for_save_in_progress())
-
-    @wait()
-    def _wait_for_save_in_progress(self):
-        return self.client.info_obj().is_save_in_progress()
+    def wait_for_save_in_progress(self, client=None):
+        if client is None:
+            client = self.client
+        wait_for_equal(lambda: client.info()['rdb_bgsave_in_progress'], 1, timeout=TEST_MAX_WAIT_TIME_SECONDS)
 
     def is_rdb_done_loading(self):
         rdb_load_log = "Done loading RDB"
         return self.verify_string_in_logfile(rdb_load_log) == True
 
-
-    @wait()
-    def _wait_for_action(self, action, client=None):
-        """Wait the default number of seconds for the action to finish"""
+    def num_replicas_online(self, client=None):
         if client is None:
             client = self.client
-        
-        if action == ValkeyAction.AOF_REWRITE:
-            if client.info_obj().is_aof_rewrite_in_progress():
-                return False
-        else:
-            raise RuntimeError("{} not support".format(action))
-        return True
+        count=0
+        for k,v in client.info().items():
+            if re.match('^slave[0-9]', k) and v['state'] == 'online':
+                count += 1
+        return count
+
+    def get_default_client(self, client):
+        if client is None:
+            return self.client
+        return client
+
+    def num_keys(self, db=0, client = None):
+        if client is None:
+            client = self.client
+        if f'db{db}'.format(db) in client.info('all').keys():
+            return client.info('all')['db{}'.format(db)]['keys']
+        return 0
     
+    def is_master_link_up(self, client=None):
+        if client is None:
+            client = self.client
+        """Returns True if role is slave and master_link_status is up"""
+        if client.info()['role'] == 'slave' and client.info()['master_link_status'] == 'up':
+            return True
+        return False
+
     def _action_success_flag(self, action, client):
         if action == ValkeyAction.AOF_REWRITE:
-            return client.info_obj().was_aofrewrite_successful()
+            return client.info()['aof_last_bgrewrite_status'] == 'ok'
         else:
             raise RuntimeError("{} not support".format(action))
 
     def wait_for_action_done(self, action, client=None):
-        """Wait for the some action to complete, failing if it does not complete successfully in the timeout"""
         if client is None:
             client = self.client
         try:
-            self._wait_for_action(action, client)
+            if action == ValkeyAction.AOF_REWRITE:
+                wait_for_equal(lambda: client.info()['aof_rewrite_in_progress'], 1, timeout=TEST_MAX_WAIT_TIME_SECONDS)
+            else:
+                raise RuntimeError("{} not support".format(action))
         except WaitTimeout:
             raise RuntimeError("{} failed to complete in time".format(action))
         assert(self._action_success_flag(action, client))
@@ -497,9 +357,8 @@ class ValkeyTestCaseBase:
     def doesLogfileContain(self, filename, regex):
         return self.findLogfileLine(filename, regex) != None
 
-    @wait()
     def wait_for_logfile(self, filename, regex):
-        return self.doesLogfileContain(filename, regex)
+        wait_for_true(lambda: self.doesLogfileContain(filename, regex), timeout=TEST_MAX_WAIT_TIME_SECONDS)
 
     def check_all_keys_in_valkey(self, node, dictionary):
         """ Check that all the keys in Valkey matches that in the dictionary """
@@ -514,12 +373,8 @@ class ValkeyTestCaseBase:
             num_keys_in_valkey += 1
         return num_keys_in_valkey
 
-    @wait(timeout=MAX_SYNC_WAIT)
-    def waitForReplicaToSyncUpByClient(self, client):
-        return client.info_obj().is_master_link_up()
-
     def waitForReplicaToSyncUp(self, server):
-        return self.waitForReplicaToSyncUpByClient(server.client)
+        wait_for_true(lambda: server.is_master_link_up(), timeout=MAX_SYNC_WAIT)
 
     # Wait until a client in the Valkey is executing a command
     # Used to ensure that a thread running a blocking command has started
@@ -574,7 +429,7 @@ class ValkeyTestCase(ValkeyTestCaseBase):
         self.client = self.server.start()
         self.clients = []
         for db in range(self.num_dbs):
-            self.clients.append(ValkeyClient.create_from_server(self.server, db))
+            self.clients.append(self.server.create_from_server(self.server, db))
 
     def get_valkey_handle(self):
         """Return valkey node handle. Allow child class to override the handle type"""
@@ -597,7 +452,7 @@ class ValkeyTestCase(ValkeyTestCaseBase):
         return valkey_server
     
     def wait_for_all_replicas_online(self, n):
-        self.server.wait_for_all_replicas_online(n)
+        wait_for_equal(lambda: self.server.num_replicas_online(), n, timeout=MAX_REPLICA_WAIT_TIME)
 
     def wait_for_replicas(self, n):
         self.server.wait_for_replicas(n)
@@ -627,7 +482,7 @@ class ValkeyReplica(ValkeyServerHandle):
     
     def create_client_for_dbs(self, num_dbs):
         for db in range(num_dbs):
-            self.clients.append(ValkeyClient.create_from_server(self, db))
+            self.clients.append(ValkeyServerHandle.create_from_server(self, db))
         return self.clients
 
 class ReplicationTestCase(ValkeyTestCase):
@@ -701,30 +556,14 @@ class ReplicationTestCase(ValkeyTestCase):
         self.num_replicas = 0
         del self.replicas[:]
 
-    @wait()
     def wait_for_master_link_up_all_replicas(self):
         for i in range(self.num_replicas):
-            if self.replicas[i].client.info_obj().is_master_link_up() == False:
-                return False
-        return True
+            wait_for_true(lambda: self.replicas[i].is_master_link_up(), timeout=MAX_SYNC_WAIT)
 
-    @wait()
     def wait_for_value_propagate_to_replicas(self, key, value, db=0):
         for i in range(self.num_replicas):
-            if str(value) != self.replicas[i].clients[db].get(key):
-                return False
-        return True
+            wait_for_equal(lambda: self.replicas[i].clients[db].get(key), value, timout=TEST_MAX_WAIT_TIME_SECONDS)
 
-    @wait()
     def waitForReplicaOffsetToSyncUp(self, master, replica):
-        minfo = master.client.info_obj()
-        rinfo = replica.client.info_obj()
-        if minfo.get_master_repl_offset() == rinfo.get_replica_repl_offset():
-            return True
-
-        print("MASTER: master_repl_offset({0}), REPLICA: master_repl_offset({1}), slave_repl_offset({2}), slave_read_repl_offset({3})".format(
-                minfo.info['master_repl_offset'],
-                rinfo.info['master_repl_offset'],
-                rinfo.info['slave_repl_offset'],
-                rinfo.info['slave_read_repl_offset']))
-        return False
+        minfo = master.info()['master_repl_offset']
+        wait_for_equal(lambda: replica.client.info()['slave_repl_offset'], minfo.get_master_repl_offset(), timeout=TEST_MAX_WAIT_TIME_SECONDS)

@@ -52,7 +52,7 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
             assert client.execute_command(f'BF.EXISTS {key} {value}') == 0, f"Item {key} {value} exists"
 
     def verify_server_key_count(self, client, expected_num_keys):
-        actual_num_keys = client.info_obj().num_keys()
+        actual_num_keys = self.server.num_keys()
         assert_num_key_error_msg = f"Actual key number {actual_num_keys} is different from expected key number {expected_num_keys}"
         assert actual_num_keys == expected_num_keys, assert_num_key_error_msg
 

@@ -120,7 +120,7 @@ class TestBloomMetrics(ValkeyBloomTestCaseBase):
         # Get info and metrics stats of bloomfilter before rdb load
         original_info_obj = self.client.execute_command('BF.INFO key1')
 
-        self.client.bgsave()
+        self.client.execute_command('BGSAVE')
         self.server.wait_for_save_done()
 
         # Restart, and verify metrics are correct

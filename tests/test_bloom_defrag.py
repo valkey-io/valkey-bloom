@@ -64,9 +64,9 @@ class TestBloomDefrag(ValkeyBloomTestCaseBase):
         assert float(memory_info_after_defrag.get('allocator_frag_ratio', 0)) < float(memory_info_non_defragged.get('allocator_frag_ratio', 0))
         # Check that items we added still exist in the respective bloom objects
         self.check_values_present(scale_names, num_items_inserted_per_object)
-        info_results = self.client.info_section("bf")
-        assert info_results.info['bf_bloom_defrag_hits'] + info_results.info['bf_bloom_defrag_misses'] > 0
-        self.client.bgsave()
+        info_results = self.client.info("bf")
+        assert info_results['bf_bloom_defrag_hits'] + info_results['bf_bloom_defrag_misses'] > 0
+        self.client.execute_command('BGSAVE')
         self.server.wait_for_save_done()
 
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
@@ -88,8 +88,8 @@ class TestBloomDefrag(ValkeyBloomTestCaseBase):
         assert  final_defrag_hits > initial_defrag_hits or final_defrag_misses > initial_defrag_misses, "No defragmentation occurred after RDB load"
         # Check that items we added still exist in the respective bloom objects
         self.check_values_present(scale_names, num_items_inserted_per_object)
-        info_results = self.client.info_section("bf")
-        assert info_results.info['bf_bloom_defrag_hits'] + info_results.info['bf_bloom_defrag_misses'] > 0
+        info_results = self.client.info("bf")
+        assert info_results['bf_bloom_defrag_hits'] + info_results['bf_bloom_defrag_misses'] > 0
  
     def check_values_present(self, scale_names, num_items_inserted_per_object):
         for index, scale in enumerate(scale_names[1::2]):
