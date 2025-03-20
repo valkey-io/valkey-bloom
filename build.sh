@@ -72,7 +72,19 @@ else
     exit 1
 fi
 
-export MODULE_PATH="$SCRIPT_DIR/target/release/libvalkey_bloom.so"
+os_type=$(uname)
+MODULE_EXT=".so"
+if [[ "$os_type" == "Darwin" ]]; then
+  MODULE_EXT=".dylib"
+elif [[ "$os_type" == "Linux" ]]; then
+  MODULE_EXT=".so"
+elif [[ "$os_type" == "Windows" ]]; then
+  MODULE_EXT=".dll"
+else
+  echo "Unsupported OS type: $os_type"
+  exit 1
+fi
+export MODULE_PATH="$SCRIPT_DIR/target/release/libvalkey_bloom$MODULE_EXT"
 
 echo "Running the integration tests..."
 if [ ! -z "${ASAN_BUILD}" ]; then

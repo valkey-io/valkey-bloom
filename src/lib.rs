@@ -13,6 +13,12 @@ use crate::bloom::utils::valid_server_version;
 use valkey_module_macros::info_command_handler;
 
 pub const MODULE_NAME: &str = "bf";
+pub const MODULE_VERSION: i32 = 000000;
+// The release stage is used in order to provide release status information.
+// In unstable branch the status is always "dev".
+// During release process the status will be set to rc1,rc2...rcN.
+// When the version is released the status will be "ga".
+pub const MODULE_RELEASE_STAGE: &str = "dev";
 
 fn initialize(ctx: &Context, _args: &[ValkeyString]) -> Status {
     let ver = ctx
@@ -95,7 +101,7 @@ fn info_handler(ctx: &InfoContext, _for_crash_report: bool) -> ValkeyResult<()> 
 
 valkey_module! {
     name: MODULE_NAME,
-    version: 1,
+    version: MODULE_VERSION,
     allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [
         BLOOM_TYPE,
