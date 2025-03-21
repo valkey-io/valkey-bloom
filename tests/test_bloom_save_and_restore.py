@@ -112,9 +112,8 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         rdb_file = self.server.args["dbfilename"]
 
         # Create a server without bloom-module
-        self.server_id += 1
         new_server = ValkeyServerHandle(bind_ip=self.get_bind_ip(), port=self.get_bind_port(), port_tracker=self.port_tracker,
-                                        cwd=self.testdir, server_id=self.server_id, server_path=self.server_path)
+                                        cwd=self.testdir, server_path=self.server_path)
         new_server.set_startup_args({"dbfilename": rdb_file})
         new_server.start()
         assert new_server.is_alive()

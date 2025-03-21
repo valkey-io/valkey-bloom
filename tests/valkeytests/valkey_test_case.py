@@ -60,12 +60,11 @@ class ValkeyServerHandle(object):
     
     DEFAULT_BIND_IP = "0.0.0.0"
 
-    def __init__(self, bind_ip, port, port_tracker, server_path, cwd='.', server_id=0):
+    def __init__(self, bind_ip, port, port_tracker, server_path, cwd='.'):
         self.server = None
         self.client = None
         self.port = port
         self.bind_ip = bind_ip
-        self.server_id = server_id
         self.args = {}
         self.args["port"] = self.port
         self.args["logfile"] = "logfile_{}".format(port)
@@ -392,10 +391,6 @@ class ValkeyTestCaseBase:
     def get_bind_port(self):
         return self.port_tracker.get_unused_port()
 
-    @pytest.fixture(autouse=True)
-    def server_id_fixture(self):
-        self.server_id = 0
-    
     def get_bind_ip(self, multi_ip_mode=False):
         if multi_ip_mode:
             return self.ip_tracker.get_ip_address()
@@ -414,12 +409,14 @@ class ValkeyTestCase(ValkeyTestCaseBase):
 
     def common_setup(self):
         self.maxmemory = "500MB"
+        print(dir(self))
         self.port = self.port_tracker.get_unused_port()
         self.ensureDirExists(self.testdir)
         self.server_list = []
 
 
-    def setup(self):
+    @pytest.fixture(autouse=True)
+    def setup(self, port_tracker_fixture):
         self.common_setup()
         args = self._get_valkey_args()
         self.server = self.create_server(testdir = self.testdir,  server_path=self.server_path)
@@ -442,12 +439,10 @@ class ValkeyTestCase(ValkeyTestCaseBase):
 
         if not port:
             port = self.get_bind_port()
-            
-        self.server_id += 1
         valkey_server_handle = self.get_valkey_handle()
         valkey_server = valkey_server_handle( bind_ip = bind_ip, port = port,
             port_tracker = self.port_tracker,
-            cwd = testdir, server_id = self.server_id, server_path=server_path)
+            cwd = testdir, server_path=server_path)
         self.server_list.append(valkey_server)
         return valkey_server
     
@@ -468,9 +463,9 @@ class ValkeyTestCase(ValkeyTestCaseBase):
 
 class ValkeyReplica(ValkeyServerHandle):
     def __init__(self, masterhost, masterport, bind_ip, port, port_tracker,
-                 testdir, server_id, server_path):
+                 testdir, server_path):
         super(ValkeyReplica, self).__init__(bind_ip, port, port_tracker,
-                                             server_path, testdir, server_id)
+                                             server_path, testdir)
         self.clients = []
         self.masterhost = masterhost
         self.masterport = masterport
@@ -505,10 +500,9 @@ class ReplicationTestCase(ValkeyTestCase):
         self.destroy_replicas()
 
     def _create_replica(self, masterhost, masterport, server_path):
-        self.server_id += 1
         return ValkeyReplica(masterhost, masterport,
                             self.get_bind_ip(), self.get_bind_port(),
-                            self.port_tracker, self.testdir, self.server_id, self.server_path)
+                            self.port_tracker, self.testdir, self.server_path)
 
     def create_replicas(self, num_replicas, masterhost=None, masterport=None,
                         connection_type='tcp', server_path=None):
