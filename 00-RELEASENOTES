@@ -1,14 +1,34 @@
-Hello! This file is just a placeholder, since this is the "unstable" branch
-of Valkey-Bloom, the place where all the development happens.
+Valkey Bloom 1.0.0 release notes
+========================
 
-There is no release notes for this branch, it gets forked into another branch
-every time there is a partial feature freeze in order to eventually create
-a new stable release.
+================================================================================
+Valkey Bloom 1.0.0 RC1 - Released Fri 21 Mar 2025
+================================================================================
+This is the first release candidate of valkey-bloom 1.0 that brings bloom filters as a new data type to Valkey and provides both scalable and non-scalable bloom filter variants. It is API compatible with the bloom filter command syntax used across popular Valkey client libraries.
 
-Usually "unstable" is stable enough for you to use it in development environments
-however you should never use it in production environments. You can find the
-latest stable release here:
+API and Interface changes
+=========================
+* Add the bloom filter module data type ("bloomfltr") which can handle RDB load, RDB save, free, copy, debug, defragmentation, AOF rewrite, and memory usage
+* Add the following bloom filter module commands: BF.ADD, BF.MADD, BF.EXISTS, BF.MEXISTS, BF.CARD, BF.INFO, BF.RESERVE, BF.INSERT, and BF.LOAD
+* Add deterministic replication support where a bloom object creation on a primary is replicated with the same properties to create the same bloom filter on a replica
+* Create a new bloom filter specific ACL category ("@bloom") and add this to all bloom filter module commands
+* Add two key space events: (1) item addition and (2) bloom filter creation
+* Add non-scaling and scaling support for bloom filters
+* Support configuring random seed / fixed seed mode on the newly created bloom objects
+* Add memory-usage limit per bloom object controlled through the bf.bloom-memory-usage-limit config
+* Support for BF.INSERT to allow specifying a custom seed for bloom object creation
+* Support for BF.INSERT to allow specifying a tightening ratio for bloom object creation
+* Add an INFO handler to add bloom filter module metrics around usage and module data type defragmentation
+* Add optional VALIDATESCALETO arg to BF.INSERT to allow users to validate if their bloom filter can reach the desired size through scale-outs
+* Support ERROR, TIGHTENING, and MAXSCALEDCAPACITY options in the BF.INFO command
+* Add a 8.0 feature flag (valkey_8_0) which can be used to build the module to be compatible with Valkey 8.0 servers
 
-    https://github.com/valkey-io/valkey-bloom/releases
 
-Happy hacking!
+New configurations
+===========================
+* Add support for the following configurations: bf.bloom-capacity, bf.bloom-expansion, bf.bloom-memory-usage-limit, bf.bloom-fp-rate, bf.bloom-tightening-ratio, bf.bloom-use-random-seed, and bf.bloom-defrag-enabled
+
+We appreciate the efforts of all who contributed code to this release!
+
+
+Karthik Subbarao (KarthikSubbarao), Cameron Zack (zackcam), Vanessa Tang (YueTang-Vanessa), Nihal Mehta (nnmehta), wuranxx (wuranxx)
