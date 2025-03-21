@@ -6,10 +6,8 @@ from valkeytests.conftest import resource_port_tracker
 class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
     
     def get_custom_args(self):
-        # test aof rewrite should avoid bloom filter override as rdb. use aof
-        args = super().get_custom_args()
-        args.update({'aof-use-rdb-preamble': 'no', 'appendonly': 'yes'})
-        return args
+        self.args.update({'aof-use-rdb-preamble': 'no', 'appendonly': 'yes'})
+        return self.args
 
     def test_basic_aofrewrite_and_restore(self):
         client = self.server.get_new_client()

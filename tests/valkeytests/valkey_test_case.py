@@ -69,6 +69,7 @@ class ValkeyServerHandle(object):
         self.args["port"] = self.port
         self.args["logfile"] = "logfile_{}".format(port)
         self.args["dbfilename"] = "testrdb-{}.rdb".format(port)
+        self.args["appenddirname"] = "aof-{}".format(port)
         self.cwd = cwd
         self.valkey_path = server_path
 
@@ -181,7 +182,7 @@ class ValkeyServerHandle(object):
         if self.server:
             raise RuntimeError("Server already started")
         server_args = []
-        server_args.extend([('%s/../' + self.valkey_path) % os.path.dirname(os.path.realpath(__file__))])
+        server_args.extend([self.valkey_path])
         for k, v in list(self.args.items()):
             server_args.append('--' + k.replace("_", "-"))
             args = str(v).split()
@@ -330,11 +331,6 @@ class ValkeyTestCaseBase:
         self.args = {}
         self.port_tracker = resource_port_tracker
 
-    def _get_valkey_args(self):
-        self.args.update({"maxmemory":self.maxmemory, "maxmemory-policy":"allkeys-random", "activerehashing":"yes", "databases": self.num_dbs, "repl-diskless-sync": "yes", "save": "", 'appenddirname': f'aof-{self.port}', "enable-debug-command":"yes"})
-        self.args.update(self.get_custom_args())
-        return self.args
-
     def ensureDirExists(self, dir):
         if not os.path.isdir(self.testdir):
             try:
@@ -397,55 +393,40 @@ class ValkeyTestCaseBase:
         return self.DEFAULT_BIND_IP
 
 class ValkeyTestCase(ValkeyTestCaseBase):
-    num_dbs = 5
-    num_keys = 100
-    rdb_size = 168231
-    repl_save_info_size = 83 # Bytes used for saving replication info in RDB aux fields
-    diskless_overhead = 87 # RDB overhead is 2 x 40 byte EOF marker + 7 characters ("$EOF:" + "\r\n") for the beginning of the EOF marker
-    server_path = ".build/binaries/unstable/valkey-server" #Unstable is the default server build
-
-    def set_server_version(self, new_version):
-        self.server_path = f".build/binaries/{new_version}/valkey-server"
+    server_path = "valkey-server" # The default server build is assumed that valkey-server is set
 
     def common_setup(self):
         self.maxmemory = "500MB"
-        print(dir(self))
         self.port = self.port_tracker.get_unused_port()
         self.ensureDirExists(self.testdir)
         self.server_list = []
 
-
     @pytest.fixture(autouse=True)
     def setup(self, port_tracker_fixture):
         self.common_setup()
-        args = self._get_valkey_args()
-        self.server = self.create_server(testdir = self.testdir,  server_path=self.server_path)
-        self.server.set_startup_args(args)
-        print("startup args are: ", args)
-
-        self.client = self.server.start()
-        self.clients = []
-        for db in range(self.num_dbs):
-            self.clients.append(self.server.create_from_server(self.server, db))
+        yield
 
     def get_valkey_handle(self):
         """Return valkey node handle. Allow child class to override the handle type"""
         return ValkeyServerHandle
 
     # Expose bind_ip parameter to caller to have more flexible
-    def create_server(self, testdir, bind_ip=None, port=None, server_path=server_path):
+    def create_server(self, testdir, bind_ip=None, port=None, server_path=server_path, args=""):
         if not bind_ip:
             bind_ip = self.get_bind_ip()
 
         if not port:
             port = self.get_bind_port()
         valkey_server_handle = self.get_valkey_handle()
+        self.server_path = server_path
         valkey_server = valkey_server_handle( bind_ip = bind_ip, port = port,
             port_tracker = self.port_tracker,
             cwd = testdir, server_path=server_path)
         self.server_list.append(valkey_server)
-        return valkey_server
-    
+        valkey_server.args.update(args)
+        valkey_cli = valkey_server.start()
+        return valkey_server, valkey_cli
+
     def wait_for_all_replicas_online(self, n):
         wait_for_equal(lambda: self.server.num_replicas_online(), n, timeout=MAX_REPLICA_WAIT_TIME)
 
@@ -456,10 +437,6 @@ class ValkeyTestCase(ValkeyTestCaseBase):
         if self.server:
             self.server.exit()
             self.server = None
-
-    def set_small_amount_of_keys(self):
-        for i in range(self.num_keys):
-            self.clients[0].set('key_{}'.format(i), i)
 
 class ValkeyReplica(ValkeyServerHandle):
     def __init__(self, masterhost, masterport, bind_ip, port, port_tracker,
@@ -474,11 +451,6 @@ class ValkeyReplica(ValkeyServerHandle):
     def exit(self, remove_rdb=True, remove_nodes_conf=True):
         super(ValkeyReplica, self).exit(remove_rdb, remove_nodes_conf)
         del self.clients[:]
-    
-    def create_client_for_dbs(self, num_dbs):
-        for db in range(num_dbs):
-            self.clients.append(ValkeyServerHandle.create_from_server(self, db))
-        return self.clients
 
 class ReplicationTestCase(ValkeyTestCase):
     num_replicas = 1
@@ -532,13 +504,12 @@ class ReplicationTestCase(ValkeyTestCase):
         self.replicas = []
         for _ in range(self.num_replicas):
             replica = self._create_replica(masterhost, masterport, server_path)
-            replica.set_startup_args(self._get_valkey_args())
+            replica.set_startup_args(self.args)
             self.replicas.append(replica)
 
     def start_replicas(self, wait_for_ping=True):
         for i in range(self.num_replicas):
             self.replicas[i].start(wait_for_ping=wait_for_ping)
-            self.replicas[i].create_client_for_dbs(self.num_dbs)
 
     def destroy_replicas(self):
         try:
