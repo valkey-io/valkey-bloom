@@ -4,6 +4,7 @@ from valkeytests.valkey_test_case import ValkeyTestCase
 from valkey import ResponseError
 import random
 import string
+import logging
 
 class ValkeyBloomTestCaseBase(ValkeyTestCase):
 
@@ -12,13 +13,11 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
 
     @pytest.fixture(autouse=True)
     def setup_test(self, setup):
-        args = {"maxmemory-policy":"allkeys-random", "activerehashing":"yes", "repl-diskless-sync": "yes", "save": "", "enable-debug-command":"yes", 'loadmodule': os.getenv('MODULE_PATH'),'bf.bloom-use-random-seed': self.use_random_seed}
+        args = {"enable-debug-command":"yes", 'loadmodule': os.getenv('MODULE_PATH'),'bf.bloom-use-random-seed': self.use_random_seed}
         server_path = f"{os.path.dirname(os.path.realpath(__file__))}/.build/binaries/{os.environ['SERVER_VERSION']}/valkey-server"
 
         self.server, self.client = self.create_server(testdir = self.testdir,  server_path=server_path, args=args)
-
-        print("startup args are: ", args)
-
+        logging.info("startup args are: %s", args)
 
     @pytest.fixture(autouse=True)
     def use_random_seed_fixture(self, bloom_config_parameterization):

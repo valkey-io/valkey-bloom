@@ -4,10 +4,6 @@ from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 from valkeytests.conftest import resource_port_tracker
 
 class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
-    
-    def get_custom_args(self):
-        self.args.update({'aof-use-rdb-preamble': 'no', 'appendonly': 'yes'})
-        return self.args
 
     def test_basic_aofrewrite_and_restore(self):
         client = self.server.get_new_client()

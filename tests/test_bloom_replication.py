@@ -10,7 +10,7 @@ class TestBloomReplication(ReplicationTestCase):
 
     @pytest.fixture(autouse=True)
     def setup_test(self, setup):
-        self.args = {"maxmemory-policy":"allkeys-random", "activerehashing":"yes", "repl-diskless-sync": "yes", "save": "", "enable-debug-command":"yes", 'loadmodule': os.getenv('MODULE_PATH'),'bf.bloom-use-random-seed': self.use_random_seed}
+        self.args = {"enable-debug-command":"yes", 'loadmodule': os.getenv('MODULE_PATH'),'bf.bloom-use-random-seed': self.use_random_seed}
         server_path = f"{os.path.dirname(os.path.realpath(__file__))}/.build/binaries/{os.environ['SERVER_VERSION']}/valkey-server"
 
         self.server, self.client = self.create_server(testdir = self.testdir,  server_path=server_path, args=self.args)
