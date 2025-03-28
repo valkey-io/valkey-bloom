@@ -57,6 +57,21 @@ else
     cp src/valkey-server ../binaries/$SERVER_VERSION/
 fi
 
+
+TEST_FRAMEWORK_REPO="https://github.com/valkey-io/valkey-test-framework"
+TEST_FRAMEWORK_DIR="tests/valkeytests"
+
+if [ -d "$TEST_FRAMEWORK_DIR" ]; then
+    echo "valkeytest found."
+else
+
+    echo "Cloning test framework..."
+    git clone "$TEST_FRAMEWORK_REPO"
+    mkdir -p "$TEST_FRAMEWORK_DIR"
+    mv "valkey-test-framework/src"/* "$TEST_FRAMEWORK_DIR/"
+    rm -rf valkey-test-framework
+fi
+
 REQUIREMENTS_FILE="requirements.txt"
 
 # Check if pip is available

@@ -7,6 +7,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   VALKEY_REPO_URL: https://github.com/valkey-io/valkey.git
+  TEST_FRAMEWORK_REPO: https://github.com/valkey-io/valkey-test-framework
+  TEST_FRAMEWORK_DIR: tests/valkeytests
 
 jobs:
   build-ubuntu-latest:
@@ -41,6 +43,13 @@ jobs:
         git checkout ${{ matrix.server_version }}
         make -j
         cp src/valkey-server ../binaries/${{ matrix.server_version }}/
+    - name: Set up test framework
+      run: |
+        echo "Cloning test framework..."
+        git clone ${{ env.TEST_FRAMEWORK_REPO }}
+        mkdir -p ${{ env.TEST_FRAMEWORK_DIR }}
+        mv valkey-test-framework/src/* ${{ env.TEST_FRAMEWORK_DIR }}/
+        rm -rf valkey-test-framework
     - name: Set up Python
       uses: actions/setup-python@v3
       with:
@@ -100,6 +109,13 @@ jobs:
         make distclean
         make -j SANITIZER=address SERVER_CFLAGS='-Werror' BUILD_TLS=module
         cp src/valkey-server ../binaries/${{ matrix.server_version }}/
+    - name: Set up test framework
+      run: |
+        echo "Cloning test framework..."
+        git clone ${{ env.TEST_FRAMEWORK_REPO }}
+        mkdir -p ${{ env.TEST_FRAMEWORK_DIR }}
+        mv valkey-test-framework/src/* ${{ env.TEST_FRAMEWORK_DIR }}/
+        rm -rf valkey-test-framework
     - name: Set up Python
       uses: actions/setup-python@v3
       with:
