@@ -78,8 +78,6 @@ if [[ "$os_type" == "Darwin" ]]; then
   MODULE_EXT=".dylib"
 elif [[ "$os_type" == "Linux" ]]; then
   MODULE_EXT=".so"
-elif [[ "$os_type" == "Windows" ]]; then
-  MODULE_EXT=".dll"
 else
   echo "Unsupported OS type: $os_type"
   exit 1
