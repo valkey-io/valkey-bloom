@@ -4,4 +4,3 @@ tests/.build
 __pycache__
 test-data
 .attach_pid*
-src/commands/commands
