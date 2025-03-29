@@ -22,13 +22,13 @@ if [ -z "$SERVER_VERSION" ]; then
     export SERVER_VERSION="unstable"
 fi
 
-if [ "$SERVER_VERSION" != "unstable" ] && [ "$SERVER_VERSION" != "8.0.0" ] ; then
+if [ "$SERVER_VERSION" != "unstable" ] && [ "$SERVER_VERSION" != "8.0" ] && [ "$SERVER_VERSION" != "8.1" ]; then
   echo "ERROR: Unsupported version - $SERVER_VERSION"
   exit 1
 fi
 
 echo "Running cargo build release..."
-if [ "$SERVER_VERSION" == "8.0.0" ] ; then
+if [ "$SERVER_VERSION" == "8.0" ] ; then
     RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release --features valkey_8_0
 else
     RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release
@@ -36,15 +36,15 @@ fi
 
 
 REPO_URL="https://github.com/valkey-io/valkey.git"
-BINARY_PATH="tests/.build/binaries/$SERVER_VERSION/valkey-server"
-
+BINARY_PATH="tests/build/binaries/$SERVER_VERSION/valkey-server"
+CACHED_VALKEY_PATH="tests/build/valkey"
 if [ -f "$BINARY_PATH" ] && [ -x "$BINARY_PATH" ]; then
     echo "valkey-server binary '$BINARY_PATH' found."
 else
     echo "valkey-server binary '$BINARY_PATH' not found."
-    mkdir -p "tests/.build/binaries/$SERVER_VERSION"
-    cd tests/.build
-    rm -rf valkey
+    mkdir -p "tests/build/binaries/$SERVER_VERSION"
+    rm -rf $CACHED_VALKEY_PATH
+    cd tests/build
     git clone "$REPO_URL"
     cd valkey
     git checkout "$SERVER_VERSION"
@@ -55,17 +55,18 @@ else
         make -j
     fi
     cp src/valkey-server ../binaries/$SERVER_VERSION/
+    cd $SCRIPT_DIR
+    rm -rf $CACHED_VALKEY_PATH
 fi
 
 
 TEST_FRAMEWORK_REPO="https://github.com/valkey-io/valkey-test-framework"
-TEST_FRAMEWORK_DIR="tests/valkeytests"
+TEST_FRAMEWORK_DIR="tests/build/valkeytestframework"
 
 if [ -d "$TEST_FRAMEWORK_DIR" ]; then
-    echo "valkeytest found."
+    echo "valkeytestframework found."
 else
-
-    echo "Cloning test framework..."
+    echo "Cloning valkey-test-framework..."
     git clone "$TEST_FRAMEWORK_REPO"
     mkdir -p "$TEST_FRAMEWORK_DIR"
     mv "valkey-test-framework/src"/* "$TEST_FRAMEWORK_DIR/"
@@ -128,8 +129,6 @@ if [ ! -z "${ASAN_BUILD}" ]; then
         rm test_output.tmp
         exit 1
     fi
-
-
     rm test_output.tmp
 else 
     # TEST_PATTERN can be used to run specific tests or test patterns.

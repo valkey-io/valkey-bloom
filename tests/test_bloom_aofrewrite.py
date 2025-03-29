@@ -1,7 +1,7 @@
-from util.waiters import *
-from valkeytests.valkey_test_case import ValkeyAction
+from valkeytestframework.util.waiters import *
+from valkeytestframework.valkey_test_case import ValkeyAction
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
-from valkeytests.conftest import resource_port_tracker
+from valkeytestframework.conftest import resource_port_tracker
 
 class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
 

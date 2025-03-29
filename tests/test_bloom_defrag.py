@@ -1,7 +1,7 @@
 import time
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
-from valkeytests.conftest import resource_port_tracker
-from util.waiters import *
+from valkeytestframework.conftest import resource_port_tracker
+from valkeytestframework.util.waiters import *
 import pytest
 
 @pytest.mark.skip_for_asan(reason="These tests are skipped due to not being able to set activedefrag to yes when valkey server is an ASAN build")

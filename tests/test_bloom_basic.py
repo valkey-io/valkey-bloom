@@ -1,8 +1,8 @@
 import time
-from util.waiters import *
+from valkeytestframework.util.waiters import *
 from valkey import ResponseError
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
-from valkeytests.conftest import resource_port_tracker
+from valkeytestframework.conftest import resource_port_tracker
 
 class TestBloomBasic(ValkeyBloomTestCaseBase):
 

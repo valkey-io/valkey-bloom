@@ -24,9 +24,11 @@ fn handle_bloom_add(
 ) -> Result<ValkeyValue, ValkeyError> {
     match multi {
         true => {
-            let mut result = Vec::new();
-            for item in args.iter().take(argc).skip(item_idx) {
-                match bf.add_item(item.as_slice(), validate_size_limit) {
+            let mut result = Vec::with_capacity(argc - item_idx);
+            let mut curr_cmd_idx = item_idx;
+            while curr_cmd_idx < argc {
+                let item = args[curr_cmd_idx].as_slice();
+                match bf.add_item(item, validate_size_limit) {
                     Ok(add_result) => {
                         if add_result == 1 {
                             *add_succeeded = true;
@@ -38,6 +40,7 @@ fn handle_bloom_add(
                         break;
                     }
                 };
+                curr_cmd_idx += 1;
             }
             Ok(ValkeyValue::Array(result))
         }
@@ -299,7 +302,7 @@ pub fn bloom_filter_exists(
         let item = input_args[curr_cmd_idx].as_slice();
         return Ok(handle_item_exists(value, item));
     }
-    let mut result = Vec::new();
+    let mut result = Vec::with_capacity(argc - curr_cmd_idx);
     while curr_cmd_idx < argc {
         let item = input_args[curr_cmd_idx].as_slice();
         result.push(handle_item_exists(value, item));

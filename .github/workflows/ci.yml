@@ -8,7 +8,7 @@ env:
   CARGO_TERM_COLOR: always
   VALKEY_REPO_URL: https://github.com/valkey-io/valkey.git
   TEST_FRAMEWORK_REPO: https://github.com/valkey-io/valkey-test-framework
-  TEST_FRAMEWORK_DIR: tests/valkeytests
+  TEST_FRAMEWORK_DIR: tests/build/valkeytestframework
 
 jobs:
   build-ubuntu-latest:
@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        server_version: ['unstable', '8.0.0']
+        server_version: ['unstable', '8.0', '8.1']
     steps:
     - uses: actions/checkout@v4
     - name: Set the server verison for python integeration tests
@@ -27,7 +27,7 @@ jobs:
         cargo clippy --profile release --all-targets -- -D clippy::all
     - name: Release Build
       run: |
-        if [ "${{ matrix.server_version }}" = "8.0.0" ]; then
+        if [ "${{ matrix.server_version }}" = "8.0" ]; then
           RUSTFLAGS="-D warnings" cargo build --all --all-targets --release --features valkey_8_0
         else
           RUSTFLAGS="-D warnings" cargo build --all --all-targets --release
@@ -36,8 +36,8 @@ jobs:
       run: cargo test --features enable-system-alloc
     - name: Make valkey-server binary
       run: |
-        mkdir -p "tests/.build/binaries/${{ matrix.server_version }}"
-        cd tests/.build
+        mkdir -p "tests/build/binaries/${{ matrix.server_version }}"
+        cd tests/build
         git clone "${{ env.VALKEY_REPO_URL }}"
         cd valkey
         git checkout ${{ matrix.server_version }}
@@ -81,7 +81,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        server_version: ['unstable', '8.0.0']
+        server_version: ['unstable', '8.0', '8.1']
     steps:
     - uses: actions/checkout@v4
     - name: Set the server verison for python integeration tests
@@ -92,7 +92,7 @@ jobs:
         cargo clippy --profile release --all-targets -- -D clippy::all
     - name: Release Build
       run: |
-        if [ "${{ matrix.server_version }}" = "8.0.0" ]; then
+        if [ "${{ matrix.server_version }}" = "8.0" ]; then
           RUSTFLAGS="-D warnings" cargo build --all --all-targets --release --features valkey_8_0
         else
           RUSTFLAGS="-D warnings" cargo build --all --all-targets --release
@@ -101,8 +101,8 @@ jobs:
       run: cargo test --features enable-system-alloc
     - name: Make Valkey-server binary with asan
       run: |
-        mkdir -p "tests/.build/binaries/${{ matrix.server_version }}"
-        cd tests/.build
+        mkdir -p "tests/build/binaries/${{ matrix.server_version }}"
+        cd tests/build
         git clone "${{ env.VALKEY_REPO_URL }}"
         cd valkey
         git checkout ${{ matrix.server_version }}

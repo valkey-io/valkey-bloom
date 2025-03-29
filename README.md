@@ -1,6 +1,6 @@
 # valkey-bloom
 
-Valkey-Bloom (BSD-3-Clause) is a Rust based Valkey-Module which brings a Bloom Filter (Module) data type into Valkey and supports verions >= 8.0. With this, users can create bloom filters (space efficient probabilistic data structures) to add elements, perform “check” operation to test whether an element exists, auto scale their filters, customize bloom filter properties, perform RDB Save and load operations, etc.
+Valkey-Bloom (BSD-3-Clause) is a Rust based Valkey-Module which brings a Bloom Filter (Module) data type into Valkey and supports verions >= 8.0. With this, users can create bloom filters (space efficient probabilistic data structures) to add elements, check whether elements exists, auto scale their filters, customize bloom filter properties, perform RDB Save and load operations, etc.
 
 Valkey-Bloom is built using `bloomfilter::Bloom` (https://crates.io/crates/bloomfilter which has a BSD-2-Clause license).
 
@@ -25,7 +25,10 @@ curl https://sh.rustup.rs -sSf | sh
 sudo yum install clang
 git clone https://github.com/valkey-io/valkey-bloom.git
 cd valkey-bloom
-cargo build --all --all-targets  --release
+# Building for Valkey 8.1 and above:
+cargo build --release
+# Building for Valkey 8.0 specifically:
+cargo build --release --features valkey_8_0
 valkey-server --loadmodule ./target/release/libvalkey_bloom.so
 ```
 

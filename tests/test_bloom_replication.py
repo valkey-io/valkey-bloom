@@ -1,7 +1,7 @@
 import pytest, os
 from valkey import ResponseError
-from valkeytests.valkey_test_case import ReplicationTestCase
-from valkeytests.conftest import resource_port_tracker
+from valkeytestframework.valkey_test_case import ReplicationTestCase
+from valkeytestframework.conftest import resource_port_tracker
 
 class TestBloomReplication(ReplicationTestCase):
 
@@ -11,7 +11,7 @@ class TestBloomReplication(ReplicationTestCase):
     @pytest.fixture(autouse=True)
     def setup_test(self, setup):
         self.args = {"enable-debug-command":"yes", 'loadmodule': os.getenv('MODULE_PATH'),'bf.bloom-use-random-seed': self.use_random_seed}
-        server_path = f"{os.path.dirname(os.path.realpath(__file__))}/.build/binaries/{os.environ['SERVER_VERSION']}/valkey-server"
+        server_path = f"{os.path.dirname(os.path.realpath(__file__))}/build/binaries/{os.environ['SERVER_VERSION']}/valkey-server"
 
         self.server, self.client = self.create_server(testdir = self.testdir,  server_path=server_path, args=self.args)
 
