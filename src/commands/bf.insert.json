@@ -37,7 +37,7 @@
             {
                 "token": "SEED",
                 "name": "seed",
-                "type": "uhhh seeds",
+                "type": "string",
                 "optional": true
             },
             {

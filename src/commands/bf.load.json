@@ -5,6 +5,10 @@
         "group": "bloom",
         "module_since": "1.0.0",
         "arity": 3,
+        "acl_categories": [
+            "WRITE",
+            "BLOOM"
+        ],
         "arguments": [
             {
                 "name": "key",
