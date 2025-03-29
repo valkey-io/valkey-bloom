@@ -7,6 +7,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   VALKEY_REPO_URL: https://github.com/valkey-io/valkey.git
+  TEST_FRAMEWORK_REPO: https://github.com/valkey-io/valkey-test-framework
+  TEST_FRAMEWORK_DIR: tests/valkeytests
 
 jobs:
   build-ubuntu-latest:
@@ -24,7 +26,12 @@ jobs:
         cargo fmt --check
         cargo clippy --profile release --all-targets -- -D clippy::all
     - name: Release Build
-      run: RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release
+      run: |
+        if [ "${{ matrix.server_version }}" = "8.0.0" ]; then
+          RUSTFLAGS="-D warnings" cargo build --all --all-targets --release --features valkey_8_0
+        else
+          RUSTFLAGS="-D warnings" cargo build --all --all-targets --release
+        fi
     - name: Run unit tests
       run: cargo test --features enable-system-alloc
     - name: Make valkey-server binary
@@ -36,6 +43,13 @@ jobs:
         git checkout ${{ matrix.server_version }}
         make -j
         cp src/valkey-server ../binaries/${{ matrix.server_version }}/
+    - name: Set up test framework
+      run: |
+        echo "Cloning test framework..."
+        git clone ${{ env.TEST_FRAMEWORK_REPO }}
+        mkdir -p ${{ env.TEST_FRAMEWORK_DIR }}
+        mv valkey-test-framework/src/* ${{ env.TEST_FRAMEWORK_DIR }}/
+        rm -rf valkey-test-framework
     - name: Set up Python
       uses: actions/setup-python@v3
       with:
@@ -77,7 +91,12 @@ jobs:
         cargo fmt --check
         cargo clippy --profile release --all-targets -- -D clippy::all
     - name: Release Build
-      run: RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release
+      run: |
+        if [ "${{ matrix.server_version }}" = "8.0.0" ]; then
+          RUSTFLAGS="-D warnings" cargo build --all --all-targets --release --features valkey_8_0
+        else
+          RUSTFLAGS="-D warnings" cargo build --all --all-targets --release
+        fi
     - name: Run unit tests
       run: cargo test --features enable-system-alloc
     - name: Make Valkey-server binary with asan
@@ -87,8 +106,16 @@ jobs:
         git clone "${{ env.VALKEY_REPO_URL }}"
         cd valkey
         git checkout ${{ matrix.server_version }}
+        make distclean
         make -j SANITIZER=address SERVER_CFLAGS='-Werror' BUILD_TLS=module
         cp src/valkey-server ../binaries/${{ matrix.server_version }}/
+    - name: Set up test framework
+      run: |
+        echo "Cloning test framework..."
+        git clone ${{ env.TEST_FRAMEWORK_REPO }}
+        mkdir -p ${{ env.TEST_FRAMEWORK_DIR }}
+        mv valkey-test-framework/src/* ${{ env.TEST_FRAMEWORK_DIR }}/
+        rm -rf valkey-test-framework
     - name: Set up Python
       uses: actions/setup-python@v3
       with:
@@ -100,4 +127,21 @@ jobs:
     - name: Update module path
       run: echo "MODULE_PATH=$(realpath target/release/libvalkey_bloom.so)" >> $GITHUB_ENV
     - name: Run integration tests 
-      run: python -m pytest --cache-clear -v "tests/" -m "not skip_for_asan"
+      run: |
+        python -m pytest --capture=sys --cache-clear -v "tests/" -m "not skip_for_asan" 2>&1 | tee test_output.tmp
+        
+        if grep -q "LeakSanitizer: detected memory leaks" test_output.tmp; then
+          RED='\033[0;31m'
+          echo -e "${RED}Memory leaks detected in the following tests:"
+          LEAKING_TESTS=$(grep -B 2 "LeakSanitizer: detected memory leaks" test_output.tmp | \
+                          grep -v "LeakSanitizer" | \
+                          grep ".*\.py::")
+          LEAK_COUNT=$(echo "$LEAKING_TESTS" | wc -l)        
+          echo "$LEAKING_TESTS" | while read -r line; do
+              echo "::error::Test with leak: $line"
+          done
+          echo -e "\n$LEAK_COUNT python integration tests have leaks detected in them"
+          rm test_output.tmp
+          exit 1
+        fi
+        rm test_output.tmp

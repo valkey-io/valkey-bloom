@@ -22,12 +22,14 @@ class TestBloomCommand(ValkeyBloomTestCaseBase):
         # test set up
         assert self.client.execute_command('BF.ADD key item') == 1
         assert self.client.execute_command('BF.RESERVE bf 0.01 1000') == b'OK'
-
+        assert self.client.execute_command('BF.RESERVE non_scaling_info 0.01 1000 NONSCALING') == b'OK'
         basic_error_test_cases = [
             # not found
             ('BF.INFO TEST404', 'not found'),
             # incorrect syntax and argument usage
             ('bf.info key item', 'invalid information value'),
+            ('bf.info non_scaling_info TIGHTENING', 'invalid information value'),
+            ('bf.info non_scaling_info MAXSCALEDCAPACITY', 'invalid information value'),
             ('bf.insert key CAPACITY 10000 ERROR 0.01 EXPANSION 0.99 NOCREATE NONSCALING ITEMS test1 test2 test3', 'bad expansion'),
             ('BF.INSERT KEY HELLO WORLD', 'unknown argument received'),
             ('BF.INSERT KEY error 2 ITEMS test1', '(0 < error rate range < 1)'),
@@ -123,6 +125,7 @@ class TestBloomCommand(ValkeyBloomTestCaseBase):
             ('BF.INFO TEST MAXSCALEDCAPACITY', 26214300),
             ('BF.INFO TEST_VAL_SCALE_1 ERROR', b'0.0001'),
             ('BF.INFO TEST_VAL_SCALE_2 ERROR', b'0.5'),
+            ('BF.INFO TEST TIGHTENING', b'0.5'),
             ('BF.CARD key', 3),
             ('BF.CARD hello', 5),
             ('BF.CARD TEST', 5),
@@ -148,13 +151,33 @@ class TestBloomCommand(ValkeyBloomTestCaseBase):
             self.verify_command_success_reply(self.client, cmd, expected_result)
 
         # test bf.info
-        assert self.client.execute_command('BF.RESERVE BF_INFO 0.50 2000 NONSCALING') == b'OK'
-        bf_info = self.client.execute_command('BF.INFO BF_INFO')
-        capacity_index = bf_info.index(b'Capacity') + 1
-        filter_index = bf_info.index(b'Number of filters') + 1
-        item_index = bf_info.index(b'Number of items inserted') + 1
-        expansion_index = bf_info.index(b'Expansion rate') + 1
-        assert bf_info[capacity_index] == self.client.execute_command('BF.INFO BF_INFO CAPACITY') == 2000
-        assert bf_info[filter_index] == self.client.execute_command('BF.INFO BF_INFO FILTERS') == 1
-        assert bf_info[item_index] == self.client.execute_command('BF.INFO BF_INFO ITEMS') == 0
-        assert bf_info[expansion_index] == self.client.execute_command('BF.INFO BF_INFO EXPANSION') == None
+        assert self.client.execute_command('BF.RESERVE BF_INFO_NON_SCALING 0.50 2000 NONSCALING') == b'OK'
+        assert self.client.execute_command('BF.RESERVE BF_INFO_SCALING 0.50 2000') == b'OK'
+
+        for bf_name in ['BF_INFO_NON_SCALING', 'BF_INFO_SCALING']:
+            bf_info = self.client.execute_command(f'BF.INFO {bf_name}')
+            
+            capacity_index = bf_info.index(b'Capacity') + 1
+            filter_index = bf_info.index(b'Number of filters') + 1
+            item_index = bf_info.index(b'Number of items inserted') + 1
+            error_rate_index = bf_info.index(b'Error rate') + 1
+            expansion_index = bf_info.index(b'Expansion rate') + 1
+
+            assert bf_info[capacity_index] == self.client.execute_command(f'BF.INFO {bf_name} CAPACITY') == 2000
+            assert bf_info[filter_index] == self.client.execute_command(f'BF.INFO {bf_name} FILTERS') == 1
+            assert bf_info[item_index] == self.client.execute_command(f'BF.INFO {bf_name} ITEMS') == 0
+            assert bf_info[error_rate_index] == self.client.execute_command(f'BF.INFO {bf_name} ERROR') == str(0.5).encode()
+
+            if bf_name == 'BF_INFO_SCALING':
+                assert bf_info[expansion_index] == self.client.execute_command(f'BF.INFO {bf_name} EXPANSION') == 2
+                # Check scaling specific fields
+                max_scaled_capacity_index = bf_info.index(b'Max scaled capacity') + 1
+                tightening_ratio_index = bf_info.index(b'Tightening ratio') + 1
+                assert bf_info[max_scaled_capacity_index] == self.client.execute_command(f'BF.INFO {bf_name} MAXSCALEDCAPACITY') == 32766000
+                assert bf_info[tightening_ratio_index] == self.client.execute_command(f'BF.INFO {bf_name} TIGHTENING') == str(0.5).encode()
+            else:
+                # For non-scaling, expansion should be None
+                assert bf_info[expansion_index] == self.client.execute_command(f'BF.INFO {bf_name} EXPANSION') == None
+                # Check scaling specific fields don't appear in info
+                assert b'Max scaled capacity' not in bf_info
+                assert b'Tightening ratio' not in bf_info

@@ -15,20 +15,20 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         assert bf_exists_result_1 == 1
         bf_info_result_1 = client.execute_command('BF.INFO testSave')
         assert(len(bf_info_result_1)) != 0
-        curr_item_count_1 = client.info_obj().num_keys()
+        curr_item_count_1 = self.server.num_keys(client=client)
         # cmd debug digest
-        server_digest = client.debug_digest()
+        server_digest = client.execute_command('DEBUG', 'DIGEST')
         assert server_digest != None or 0000000000000000000000000000000000000000
         object_digest = client.execute_command('DEBUG DIGEST-VALUE testSave')
 
         # save rdb, restart sever
-        client.bgsave()
+        client.execute_command('BGSAVE')
         self.server.wait_for_save_done()
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
 
         assert self.server.is_alive()
         wait_for_equal(lambda: self.server.is_rdb_done_loading(), True)
-        restored_server_digest = client.debug_digest()
+        restored_server_digest = client.execute_command('DEBUG', 'DIGEST')
         restored_object_digest = client.execute_command('DEBUG DIGEST-VALUE testSave')
         assert restored_server_digest == server_digest
         assert restored_object_digest == object_digest
@@ -36,7 +36,7 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         self.server.verify_string_in_logfile("Done loading RDB, keys loaded: 1, keys expired: 0")
 
         # verify restore results
-        curr_item_count_2 = client.info_obj().num_keys()
+        curr_item_count_2 = self.server.num_keys(client=client)
         assert curr_item_count_2 == curr_item_count_1
         bf_exists_result_2 = client.execute_command('BF.EXISTS testSave item')
         assert bf_exists_result_2 == 1
@@ -52,10 +52,10 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
             bf_add_result_1 = client.execute_command('BF.ADD ' + name + ' item')
             assert bf_add_result_1 == 1
 
-        curr_item_count_1 = client.info_obj().num_keys()
+        curr_item_count_1 = self.server.num_keys(client=client)
         assert curr_item_count_1 == count
         # save rdb, restart sever
-        client.bgsave()
+        client.execute_command('BGSAVE')
         self.server.wait_for_save_done()
 
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
@@ -65,7 +65,7 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         self.server.verify_string_in_logfile("Done loading RDB, keys loaded: 500, keys expired: 0")
 
         # verify restore results
-        curr_item_count_1 = client.info_obj().num_keys()
+        curr_item_count_1 = self.server.num_keys(client=client)
 
         assert curr_item_count_1 == count
 
@@ -88,7 +88,7 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         assert(len(bf_info_result_1)) != 0
 
         # Save rdb and try to load this on a sever. Validate module data type load fails and server does not startup.
-        client.bgsave()
+        client.execute_command('BGSAVE')
         self.server.wait_for_save_done()
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=False)
         logfile = os.path.join(self.testdir, self.server.args["logfile"])
@@ -103,18 +103,17 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         bf_client = self.server.get_new_client()
         bf_client.execute_command("BF.ADD key val")
         bf_client.execute_command("set string val")
-        assert bf_client.info_obj().num_keys() == 2
+        assert self.server.num_keys(client=bf_client) == 2
         assert bf_client.execute_command("del key") == 1
-        assert bf_client.info_obj().num_keys() == 1
+        assert self.server.num_keys(client=bf_client) == 1
         assert bf_client.get("string") == b"val"
-        bf_client.bgsave()
+        bf_client.execute_command('BGSAVE')
         self.server.wait_for_save_done()
         rdb_file = self.server.args["dbfilename"]
 
         # Create a server without bloom-module
-        self.server_id += 1
         new_server = ValkeyServerHandle(bind_ip=self.get_bind_ip(), port=self.get_bind_port(), port_tracker=self.port_tracker,
-                                        cwd=self.testdir, server_id=self.server_id, server_path=self.server_path)
+                                        cwd=self.testdir, server_path=self.server_path)
         new_server.set_startup_args({"dbfilename": rdb_file})
         new_server.start()
         assert new_server.is_alive()
@@ -129,6 +128,6 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         except ResponseError as e:
             assert "unknown command" in str(e)
 
-        assert new_client.info_obj().num_keys() == 1
+        assert self.server.num_keys(client=new_client) == 1
         assert new_client.get("string") == b"val"
         new_server.exit()

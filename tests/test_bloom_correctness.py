@@ -25,6 +25,7 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
         assert info_dict[b'Size'] > 0
         assert info_dict[b'Expansion rate'] == None
         assert info_dict[b'Error rate'] == str(expected_fp_rate).encode()
+
         assert "Max scaled capacity" not in info_dict
         # Use a margin on the expected_fp_rate when asserting for correctness.
         fp_margin = 0.002
@@ -61,6 +62,7 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
         client = self.server.get_new_client()
         item_prefix = self.generate_random_string()
         expected_fp_rate = 0.001
+        expected_tightening_ratio = 0.5
         initial_capacity = 10000
         expansion = 2
         num_filters_to_scale = 5
@@ -76,6 +78,7 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
         assert info_dict[b'Size'] > 0
         assert info_dict[b'Expansion rate'] == expansion
         assert info_dict[b'Error rate'] == str(expected_fp_rate).encode()
+        assert info_dict[b'Tightening ratio'] == str(expected_tightening_ratio).encode()
         assert info_dict[b'Max scaled capacity'] == 20470000
 
         # Scale out by adding items.
@@ -96,6 +99,8 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
             assert info_dict[b'Size'] > 0
             assert info_dict[b'Expansion rate'] == expansion
             assert info_dict[b'Error rate'] == str(expected_fp_rate).encode()
+            assert info_dict[b'Tightening ratio'] == str(expected_tightening_ratio).encode()
+
             assert info_dict[b'Max scaled capacity'] == 20470000
 
         # Use a margin on the expected_fp_rate when asserting for correctness.
@@ -135,7 +140,7 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
 
     def test_max_and_validate_scale_to_correctness(self):
         validate_scale_to_commands = [
-            ('BF.INSERT key ERROR 0.00000001 VALIDATESCALETO 13107101', "provided VALIDATESCALETO causes bloom object to exceed memory limit" ),
+            ('BF.INSERT MemLimitKey EXPANSION 25 ERROR 0.00000000000000001 VALIDATESCALETO 1627601', "provided VALIDATESCALETO causes bloom object to exceed memory limit" ),
             ('BF.INSERT key EXPANSION 1 VALIDATESCALETO 101601', "provided VALIDATESCALETO causes false positive to degrade to 0" )
         ]
         for cmd in validate_scale_to_commands:
@@ -144,12 +149,12 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
                 assert False, "Expect BF.INSERT to fail if the wanted capacity would cause an error"
             except Exception as e:
                 assert cmd[1] == str(e), f"Unexpected error message: {e}" 
-        self.client.execute_command('BF.INSERT MemLimitKey ERROR 0.00000001 VALIDATESCALETO 13107100')
+        self.client.execute_command('BF.INSERT MemLimitKey EXPANSION 25 ERROR 0.00000000000000001 VALIDATESCALETO 1627600')
         self.client.execute_command('BF.INSERT FPKey VALIDATESCALETO 101600 EXPANSION 1')
         FPKey_max_capacity = self.client.execute_command(f'BF.INFO FPKey MAXSCALEDCAPACITY')
         MemLimitKeyMaxCapacity = self.client.execute_command(f'BF.INFO MemLimitKey MAXSCALEDCAPACITY')
         self.add_items_till_capacity(self.client, "FPKey", 101600,  1, "item")
-        self.add_items_till_capacity(self.client, "MemLimitKey", 13107100,  1, "item")
+        self.add_items_till_capacity(self.client, "MemLimitKey", 1627600,  1, "item")
         key_names = [("MemLimitKey", MemLimitKeyMaxCapacity, "operation exceeds bloom object memory limit"), ("FPKey", FPKey_max_capacity, "false positive degrades to 0 on scale out")]
         for key in key_names:
             try:

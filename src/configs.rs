@@ -69,6 +69,8 @@ pub const FIXED_SEED: [u8; 32] = [
     89, 15, 245, 34, 234, 120, 17, 218, 167, 20, 216, 9, 59, 62, 123, 217, 29, 137, 138, 115, 62,
     152, 136, 135, 48, 127, 151, 205, 40, 7, 51, 131,
 ];
+/// Minimal Valkey version that supports Bloom Module
+pub const BLOOM_MIN_SUPPORTED_VERSION: &[i64; 3] = &[8, 0, 0];
 
 /// This is a config set handler for the False Positive Rate and Tightening Ratio configs.
 pub fn on_string_config_set(

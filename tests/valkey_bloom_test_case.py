@@ -4,18 +4,20 @@ from valkeytests.valkey_test_case import ValkeyTestCase
 from valkey import ResponseError
 import random
 import string
+import logging
 
 class ValkeyBloomTestCaseBase(ValkeyTestCase):
 
     # Global Parameterized Configs
     use_random_seed = 'no'
 
-    def get_custom_args(self):
-        self.set_server_version(os.environ['SERVER_VERSION'])
-        return {
-            'loadmodule': os.getenv('MODULE_PATH'),
-            'bf.bloom-use-random-seed': self.use_random_seed,
-        }
+    @pytest.fixture(autouse=True)
+    def setup_test(self, setup):
+        args = {"enable-debug-command":"yes", 'loadmodule': os.getenv('MODULE_PATH'),'bf.bloom-use-random-seed': self.use_random_seed}
+        server_path = f"{os.path.dirname(os.path.realpath(__file__))}/.build/binaries/{os.environ['SERVER_VERSION']}/valkey-server"
+
+        self.server, self.client = self.create_server(testdir = self.testdir,  server_path=server_path, args=args)
+        logging.info("startup args are: %s", args)
 
     @pytest.fixture(autouse=True)
     def use_random_seed_fixture(self, bloom_config_parameterization):
@@ -52,7 +54,7 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
             assert client.execute_command(f'BF.EXISTS {key} {value}') == 0, f"Item {key} {value} exists"
 
     def verify_server_key_count(self, client, expected_num_keys):
-        actual_num_keys = client.info_obj().num_keys()
+        actual_num_keys = self.server.num_keys()
         assert_num_key_error_msg = f"Actual key number {actual_num_keys} is different from expected key number {expected_num_keys}"
         assert actual_num_keys == expected_num_keys, assert_num_key_error_msg
 

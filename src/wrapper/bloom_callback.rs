@@ -12,13 +12,12 @@ use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
+use valkey_module::defrag::Defrag;
 use valkey_module::digest::Digest;
 use valkey_module::logging;
 use valkey_module::logging::{log_io_error, ValkeyLogLevel};
 use valkey_module::raw;
 use valkey_module::{RedisModuleDefragCtx, RedisModuleString};
-
-use super::defrag::Defrag;
 
 // Note: methods in this mod are for the bloom module data type callbacks.
 // The reason they are unsafe is because the callback methods are expected to be

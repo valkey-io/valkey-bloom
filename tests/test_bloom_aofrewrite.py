@@ -4,12 +4,6 @@ from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 from valkeytests.conftest import resource_port_tracker
 
 class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
-    
-    def get_custom_args(self):
-        # test aof rewrite should avoid bloom filter override as rdb. use aof
-        args = super().get_custom_args()
-        args.update({'aof-use-rdb-preamble': 'no', 'appendonly': 'yes'})
-        return args
 
     def test_basic_aofrewrite_and_restore(self):
         client = self.server.get_new_client()
@@ -19,9 +13,10 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         assert bf_exists_result_1 == 1
         bf_info_result_1 = client.execute_command('BF.INFO testSave')
         assert(len(bf_info_result_1)) != 0
-        curr_item_count_1 = client.info_obj().num_keys()
+        curr_item_count_1 = self.server.num_keys()
+
         # cmd debug digest
-        server_digest = client.debug_digest()
+        server_digest = client.execute_command('DEBUG', 'DIGEST')
         assert server_digest != None or 0000000000000000000000000000000000000000
         object_digest = client.execute_command('DEBUG DIGEST-VALUE testSave')
 
@@ -32,13 +27,13 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         time.sleep(1)
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
-        restored_server_digest = client.debug_digest()
+        restored_server_digest = client.execute_command('DEBUG', 'DIGEST')
         restored_object_digest = client.execute_command('DEBUG DIGEST-VALUE testSave')
         assert restored_server_digest == server_digest
         assert restored_object_digest == object_digest
 
         # verify restore results
-        curr_item_count_2 = client.info_obj().num_keys()
+        curr_item_count_2 = self.server.num_keys()
         assert curr_item_count_2 == curr_item_count_1
         bf_exists_result_2 = client.execute_command('BF.EXISTS testSave item')
         assert bf_exists_result_2 == 1
@@ -53,7 +48,7 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         self.add_items_till_capacity(self.client, "key1", 7500, 1, "item_prefix")
 
         # cmd debug digest
-        server_digest = self.client.debug_digest()
+        server_digest = self.client.execute_command('DEBUG', 'DIGEST')
         assert server_digest != None or 0000000000000000000000000000000000000000
         object_digest = self.client.execute_command('DEBUG DIGEST-VALUE key1')
 
@@ -63,7 +58,7 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         # restart server
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
-        restored_server_digest = self.client.debug_digest()
+        restored_server_digest = self.client.execute_command('DEBUG', 'DIGEST')
         restored_object_digest = self.client.execute_command('DEBUG DIGEST-VALUE key1')
         assert restored_server_digest == server_digest
         assert restored_object_digest == object_digest

@@ -9,12 +9,33 @@ pub mod metrics;
 pub mod wrapper;
 use crate::bloom::command_handler;
 use crate::bloom::data_type::BLOOM_TYPE;
+use crate::bloom::utils::valid_server_version;
 use valkey_module_macros::info_command_handler;
 
 pub const MODULE_NAME: &str = "bf";
+pub const MODULE_VERSION: i32 = 999999;
+// The release stage is used in order to provide release status information.
+// In unstable branch the status is always "dev".
+// During release process the status will be set to rc1,rc2...rcN.
+// When the version is released the status will be "ga".
+pub const MODULE_RELEASE_STAGE: &str = "dev";
 
-fn initialize(_ctx: &Context, _args: &[ValkeyString]) -> Status {
-    Status::Ok
+fn initialize(ctx: &Context, _args: &[ValkeyString]) -> Status {
+    let ver = ctx
+        .get_server_version()
+        .expect("Unable to get server version!");
+    if !valid_server_version(ver) {
+        ctx.log_warning(
+            format!(
+                "The minimum supported Valkey server version for the valkey-bloom module is {:?}",
+                configs::BLOOM_MIN_SUPPORTED_VERSION
+            )
+            .as_str(),
+        );
+        Status::Err
+    } else {
+        Status::Ok
+    }
 }
 
 fn deinitialize(_ctx: &Context) -> Status {
@@ -80,7 +101,7 @@ fn info_handler(ctx: &InfoContext, _for_crash_report: bool) -> ValkeyResult<()> 
 
 valkey_module! {
     name: MODULE_NAME,
-    version: 1,
+    version: MODULE_VERSION,
     allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [
         BLOOM_TYPE,
@@ -104,7 +125,7 @@ valkey_module! {
     configurations: [
         i64: [
             ["bloom-capacity", &*configs::BLOOM_CAPACITY, configs::BLOOM_CAPACITY_DEFAULT, configs::BLOOM_CAPACITY_MIN, configs::BLOOM_CAPACITY_MAX, ConfigurationFlags::DEFAULT, None],
-            ["bloom-expansion", &*configs::BLOOM_EXPANSION, configs::BLOOM_EXPANSION_DEFAULT, configs::BLOOM_EXPANSION_MIN as i64, configs::BLOOM_EXPANSION_MAX as i64, ConfigurationFlags::DEFAULT, None],
+            ["bloom-expansion", &*configs::BLOOM_EXPANSION, configs::BLOOM_EXPANSION_DEFAULT, 0, configs::BLOOM_EXPANSION_MAX as i64, ConfigurationFlags::DEFAULT, None],
             ["bloom-memory-usage-limit", &*configs::BLOOM_MEMORY_LIMIT_PER_OBJECT, configs::BLOOM_MEMORY_LIMIT_PER_OBJECT_DEFAULT, configs::BLOOM_MEMORY_LIMIT_PER_OBJECT_MIN, configs::BLOOM_MEMORY_LIMIT_PER_OBJECT_MAX, ConfigurationFlags::DEFAULT, None],
         ],
         string: [

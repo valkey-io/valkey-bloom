@@ -6,11 +6,10 @@ use crate::configs::{
     BLOOM_CAPACITY_MAX, BLOOM_CAPACITY_MIN, BLOOM_EXPANSION_MAX, BLOOM_EXPANSION_MIN,
     BLOOM_FP_RATE_MAX, BLOOM_FP_RATE_MIN, BLOOM_TIGHTENING_RATIO_MAX, BLOOM_TIGHTENING_RATIO_MIN,
 };
+use crate::wrapper::must_obey_client;
 use std::sync::atomic::Ordering;
-use valkey_module::ContextFlags;
 use valkey_module::NotifyEvent;
 use valkey_module::{Context, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue, VALKEY_OK};
-
 /// Helper function used to add items to a bloom object. It handles both multi item and single item add operations.
 /// It is used by any command that allows adding of items: BF.ADD, BF.MADD, and BF.INSERT.
 /// Returns the result of the item add operation on success as a ValkeyValue and a ValkeyError on failure.
@@ -177,7 +176,7 @@ pub fn bloom_filter_add_value(
         }
     };
     // Skip bloom filter size validation on replicated cmds.
-    let validate_size_limit = !ctx.get_flags().contains(ContextFlags::REPLICATED);
+    let validate_size_limit = !must_obey_client(ctx);
     let mut add_succeeded = false;
     match value {
         Some(bloom) => {
@@ -404,7 +403,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
                 false => (Some(configs::FIXED_SEED), false),
             };
             // Skip bloom filter size validation on replicated cmds.
-            let validate_size_limit = !ctx.get_flags().contains(ContextFlags::REPLICATED);
+            let validate_size_limit = !must_obey_client(ctx);
             let tightening_ratio = *configs::BLOOM_TIGHTENING_F64
                 .lock()
                 .expect("Unable to get a lock on tightening ratio static");
@@ -615,7 +614,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
         }
     };
     // Skip bloom filter size validation on replicated cmds.
-    let validate_size_limit = !ctx.get_flags().contains(ContextFlags::REPLICATED);
+    let validate_size_limit = !must_obey_client(ctx);
     let mut add_succeeded = false;
     match value {
         Some(bloom) => {
@@ -717,6 +716,9 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
                 "FILTERS" => Ok(ValkeyValue::Integer(val.num_filters() as i64)),
                 "ITEMS" => Ok(ValkeyValue::Integer(val.cardinality())),
                 "ERROR" => Ok(ValkeyValue::Float(val.fp_rate())),
+                "TIGHTENING" if val.expansion() > 0 => {
+                    Ok(ValkeyValue::Float(val.tightening_ratio()))
+                }
                 "EXPANSION" => {
                     if val.expansion() == 0 {
                         return Ok(ValkeyValue::Null);
@@ -760,8 +762,9 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
                 result.push(ValkeyValue::Null);
             } else {
                 result.push(ValkeyValue::Integer(val.expansion() as i64));
-            }
-            if val.expansion() != 0 {
+                // The following fields are only relevant to scalable filters, so will only be included if expansion is not equal to 0.
+                result.push(ValkeyValue::SimpleStringStatic("Tightening ratio"));
+                result.push(ValkeyValue::Float(val.tightening_ratio()));
                 let max_capacity = match utils::BloomObject::calculate_max_scaled_capacity(
                     val.starting_capacity(),
                     val.fp_rate(),
@@ -811,7 +814,7 @@ pub fn bloom_filter_load(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
         None => {
             // if filter not exists, create it.
             let hex = value.to_vec();
-            let validate_size_limit = !ctx.get_flags().contains(ContextFlags::REPLICATED);
+            let validate_size_limit = !must_obey_client(ctx);
             let bloom = match BloomObject::decode_object(&hex, validate_size_limit) {
                 Ok(v) => v,
                 Err(err) => {

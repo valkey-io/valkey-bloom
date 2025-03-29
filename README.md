@@ -1,10 +1,10 @@
 # valkey-bloom
 
-Valkey-Bloom (BSD-3-Clause) is a Rust Valkey-Module which brings a native and space efficient probabilistic Module data type to Valkey. With this, users can create filters (space-efficient probabilistic Module data type) to add elements, perform “check” operation to test whether an element exists, auto scale their filters, perform RDB Save and load operations, etc.
+Valkey-Bloom (BSD-3-Clause) is a Rust based Valkey-Module which brings a Bloom Filter (Module) data type into Valkey and supports verions >= 8.0. With this, users can create bloom filters (space efficient probabilistic data structures) to add elements, perform “check” operation to test whether an element exists, auto scale their filters, customize bloom filter properties, perform RDB Save and load operations, etc.
 
-Valkey-Bloom is built using bloomfilter::Bloom (https://crates.io/crates/bloomfilter which has a BSD-2-Clause license).
+Valkey-Bloom is built using `bloomfilter::Bloom` (https://crates.io/crates/bloomfilter which has a BSD-2-Clause license).
 
-It is compatible with the BloomFilter (BF.*) command APIs in Redis offerings.
+It is API compatible with the bloom filter command syntax of the official Valkey client libraries including valkey-py, valkey-java, valkey-go (as well as the equivalent Redis libraries)
 
 ## Supported commands
 ```
@@ -37,6 +37,9 @@ SERVER_VERSION=unstable
 # Same as above, but uses valkey-server (8.0.0) for integration testing.
 SERVER_VERSION=8.0.0
 ./build.sh
+# Build with asan, you may need to remove the old valkey binary if you have used ./build.sh before. You can do this by deleting the `.build` folder in the `tests` folder 
+ASAN_BUILD=true
+./build.sh
 ```
 
 ## Load the Module
@@ -61,3 +64,11 @@ valkey-server --loadmodule /path/to/libvalkey_bloom.so
 2. Execute Valkey command:
     MODULE LOAD /path/to/libvalkey_bloom.so
 ```
+## Feature Flags
+
+* valkey_8_0: valkey-bloom is intended to be loaded on server versions >= Valkey 8.1 and by default it is built this way (unless this flag is provided). It is however compatible with Valkey version 8.0 if the user explicitly provides this feature flag in their cargo build command.
+```
+cargo build --release --features valkey_8_0
+```
+
+This can also be done by specifiyng SERVER_VERSION=8.0.0 and then running `./build.sh`
