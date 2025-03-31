@@ -1,0 +1,63 @@
+{
+    "BF.INFO": {
+        "summary": "Returns usage information and properties of a specific bloom filter",
+        "complexity": "O(1)",
+        "group": "bloom",
+        "module_since": "1.0.0",
+        "arity": -2,
+        "acl_categories": [
+            "READ",
+            "FAST",
+            "BLOOM"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "sortby",
+                "type": "oneof",
+                "optional": true,
+                "arguments": [
+                    {
+                        "name": "capacity",
+                        "type": "pure-token",
+                        "token": "CAPACITY"
+                    },
+                    {
+                        "name": "size",
+                        "type": "pure-token",
+                        "token": "SIZE"
+                    },
+                    {
+                        "name": "filters",
+                        "type": "pure-token",
+                        "token": "FILTERS"
+                    },
+                    {
+                        "name": "expansion",
+                        "type": "pure-token",
+                        "token": "EXPANSION"
+                    },
+                    {
+                        "name": "error",
+                        "type": "pure-token",
+                        "token": "ERROR"
+                    },
+                    {
+                        "name": "tightening",
+                        "type": "pure-token",
+                        "token": "TIGHTENTING"
+                    },
+                    {
+                        "name": "maxscaledcapacity",
+                        "type": "pure-token",
+                        "token": "MAXSCALEDCAPACITY"
+                    }
+                ]
+            }
+        ]
+    }
+}

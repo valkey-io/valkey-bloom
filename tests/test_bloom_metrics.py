@@ -1,7 +1,7 @@
 import time
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
-from valkeytests.conftest import resource_port_tracker
-from util.waiters import *
+from valkeytestframework.conftest import resource_port_tracker
+from valkeytestframework.util.waiters import *
 
 DEFAULT_BLOOM_FILTER_SIZE = 384
 DEFAULT_BLOOM_FILTER_CAPACITY = 100
@@ -120,7 +120,7 @@ class TestBloomMetrics(ValkeyBloomTestCaseBase):
         # Get info and metrics stats of bloomfilter before rdb load
         original_info_obj = self.client.execute_command('BF.INFO key1')
 
-        self.client.bgsave()
+        self.client.execute_command('BGSAVE')
         self.server.wait_for_save_done()
 
         # Restart, and verify metrics are correct

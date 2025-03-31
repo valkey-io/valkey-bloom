@@ -1,4 +1,4 @@
-from valkeytests.conftest import resource_port_tracker
+from valkeytestframework.conftest import resource_port_tracker
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 
 class TestBloomCorrectness(ValkeyBloomTestCaseBase):
@@ -14,7 +14,8 @@ class TestBloomCorrectness(ValkeyBloomTestCaseBase):
         assert client.execute_command(f'BF.RESERVE {filter_name} {expected_fp_rate} {capacity} NONSCALING') == b"OK"
         # Add items and fill the filter to capacity.
         error_count, add_operation_idx = self.add_items_till_capacity(client, filter_name, capacity, 1, item_prefix)
-        self.add_items_till_scaling_failure(client, filter_name, add_operation_idx, item_prefix)
+        new_item_idx = self.add_items_till_nonscaling_failure(client, filter_name, add_operation_idx, item_prefix)
+        self.validate_nonscaling_failure(client, filter_name, item_prefix, new_item_idx)
         # Validate that is is filled.
         info = client.execute_command(f'BF.INFO {filter_name}')
         it = iter(info)

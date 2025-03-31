@@ -1,6 +1,6 @@
 import time
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
-from valkeytests.conftest import resource_port_tracker
+from valkeytestframework.conftest import resource_port_tracker
 
 class TestKeyEventNotifications(ValkeyBloomTestCaseBase):
     RESERVE_KEYSPACE_MESSAGE = {'type': 'pmessage', 'pattern': b'__key*__:*', 'channel': b'__keyspace@0__:intermediate_val', 'data': b'bloom.reserve'}

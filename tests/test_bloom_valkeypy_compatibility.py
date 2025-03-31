@@ -2,7 +2,7 @@ import pytest
 import valkey
 from valkey.exceptions import ValkeyError
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
-from valkeytests.conftest import resource_port_tracker
+from valkeytestframework.conftest import resource_port_tracker
 
 class TestValkeyBloomCompatibility(ValkeyBloomTestCaseBase):
     """

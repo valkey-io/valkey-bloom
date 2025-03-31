@@ -1,0 +1,24 @@
+{
+    "BF.LOAD": {
+        "summary": "Restores a bloom filter in a single operation. The command is only generated during AOF Rewrite of bloom filters",
+        "complexity": "O(N), where N is the capacity",
+        "group": "bloom",
+        "module_since": "1.0.0",
+        "arity": 3,
+        "acl_categories": [
+            "WRITE",
+            "BLOOM"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "dump",
+                "type": "string"
+            }
+        ]
+    }
+}

@@ -1,0 +1,21 @@
+{
+    "BF.CARD": {
+        "summary": "Returns the cardinality of a bloom filter",
+        "complexity": "O(1)",
+        "group": "bloom",
+        "module_since": "1.0.0",
+        "arity": 2,
+        "acl_categories": [
+            "READ",
+            "FAST",
+            "BLOOM"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            }
+        ]
+    }
+}

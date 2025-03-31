@@ -1,0 +1,25 @@
+{
+    "BF.ADD": {
+        "summary": "Add a single item to a bloom filter. The bloom filter is created if it doesn't exist",
+        "complexity": "O(N), where N is the number of hash functions used by the bloom filter.",
+        "group": "bloom",
+        "module_since": "1.0.0",
+        "arity": 3,
+        "acl_categories": [
+            "FAST",
+            "WRITE",
+            "BLOOM"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "value",
+                "type": "string"
+            }
+        ]
+    }
+}

@@ -1,0 +1,26 @@
+{
+    "BF.MEXISTS": {
+        "summary": "Determines if the bloom filter contains one or more items",
+        "complexity": "O(K * N), where N is the number of hash functions used by the bloom filter and K is the number of items",
+        "group": "bloom",
+        "module_since": "1.0.0",
+        "arity": 3,
+        "acl_categories": [
+            "READ",
+            "FAST",
+            "BLOOM"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "value",
+                "type": "string",
+                "multiple": true
+            }
+        ]
+    }
+}
