@@ -18,7 +18,7 @@ pub const MODULE_VERSION: i32 = 10000;
 // In unstable branch the status is always "dev".
 // During release process the status will be set to rc1,rc2...rcN.
 // When the version is released the status will be "ga".
-pub const MODULE_RELEASE_STAGE: &str = "rc1";
+pub const MODULE_RELEASE_STAGE: &str = "ga";
 
 fn initialize(ctx: &Context, _args: &[ValkeyString]) -> Status {
     let ver = ctx
