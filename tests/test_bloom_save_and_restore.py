@@ -112,12 +112,8 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
         rdb_file = self.server.args["dbfilename"]
 
         # Create a server without bloom-module
-        new_server = ValkeyServerHandle(bind_ip=self.get_bind_ip(), port=self.get_bind_port(), port_tracker=self.port_tracker,
-                                        cwd=self.testdir, server_path=self.server_path)
-        new_server.set_startup_args({"dbfilename": rdb_file})
-        new_server.start()
+        new_server, new_client = self.create_server(testdir=self.testdir, server_path=self.server_path, args= {"dbfilename": rdb_file})
         assert new_server.is_alive()
-        new_client = new_server.get_new_client()
         wait_for_equal(lambda: new_server.is_rdb_done_loading(), True)
 
         # Verification
@@ -130,4 +126,3 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
 
         assert self.server.num_keys(client=new_client) == 1
         assert new_client.get("string") == b"val"
-        new_server.exit()
