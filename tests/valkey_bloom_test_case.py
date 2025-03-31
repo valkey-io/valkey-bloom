@@ -71,24 +71,25 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
         random_string = ''.join(random.choice(characters) for _ in range(length))
         return random_string
 
-    def validate_scaling_failure(self, client, filter_name, item_prefix, new_item_idx):
+    def validate_nonscaling_failure(self, client, filter_name, item_prefix, new_item_idx):
         """
             Validate that the "non scaling filter is full" is returned from all item adding cmds.
         """
         non_scaling_filter_full_err = "non scaling filter is full"
-        item = f"{item_prefix}{new_item_idx}"
+        new_item = f"{item_prefix}{new_item_idx}"
         try:
-            client.execute_command(f'BF.ADD {filter_name} {item}')
+            client.execute_command(f'BF.ADD {filter_name} {new_item}')
         except Exception as e:
             assert non_scaling_filter_full_err in str(e)
-        existing_item = f"{item_prefix}1"
-        multi_add_cmds = [f'BF.MADD {filter_name} {existing_item} {item}', f'BF.INSERT {filter_name} ITEMS {existing_item} {item}']
+        existing_item = f"{item_prefix}{new_item_idx - 1}"
+        multi_add_cmds = [f'BF.MADD {filter_name} {existing_item} {new_item} {new_item}', f'BF.INSERT {filter_name} ITEMS {existing_item} {new_item} {new_item}']
         for cmd in multi_add_cmds:
             response = client.execute_command(cmd)
+            assert len(response) == 2 # We expect commands to stop at the first error.
             assert response[0] == 0
             assert non_scaling_filter_full_err == str(response[1])
 
-    def add_items_till_scaling_failure(self, client, filter_name, starting_item_idx, rand_prefix):
+    def add_items_till_nonscaling_failure(self, client, filter_name, starting_item_idx, rand_prefix):
         """
         Adds items to the provided bloom filter object (filter_name) until we get a scaling error.
         Item names will start with the provided prefix (rand_prefix) followed by a counter (starting_item_idx onwards).
@@ -97,10 +98,10 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
         try:
             while True:
                 item = f"{rand_prefix}{new_item_idx}"
-                new_item_idx += 1
                 result = client.execute_command(f'BF.ADD {filter_name} {item}')
                 if result == 1:
                     raise RuntimeError("Unexpected return value 1 from BF.ADD")
+                new_item_idx += 1
         except Exception as e:
             if "non scaling filter is full" in str(e):
                 return new_item_idx
