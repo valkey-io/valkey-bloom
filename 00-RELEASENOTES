@@ -2,6 +2,12 @@ Valkey Bloom 1.0.0 release notes
 ========================
 
 ================================================================================
+Valkey Bloom 1.0.0 GA  -  Released Tue 01 April 2025
+================================================================================
+This is the first release of valkey-bloom 1.0 that brings bloom filters as a new data type to Valkey and provides both scalable and non-scalable bloom filter variants. It is API compatible with the bloom filter command syntax used across popular Valkey client libraries (as well as the equivalent Redis libraries).
+valkey-bloom 1.0 can be built to be compatible with Valkey 8.0 and 8.1 versions.
+
+================================================================================
 Valkey Bloom 1.0.0 RC1 - Released Fri 21 Mar 2025
 ================================================================================
 This is the first release candidate of valkey-bloom 1.0 that brings bloom filters as a new data type to Valkey and provides both scalable and non-scalable bloom filter variants. It is API compatible with the bloom filter command syntax used across popular Valkey client libraries.
