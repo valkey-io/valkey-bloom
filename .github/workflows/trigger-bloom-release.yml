@@ -30,7 +30,7 @@ jobs:
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.EXTENSION_PAT }}
-          repository: ${{ github.repository_owner }}/valkey-extension
+          repository: ${{ github.repository_owner }}/valkey-extensions
           event-type: bloom-release
           client-payload: >
             {
