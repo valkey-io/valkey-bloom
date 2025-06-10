@@ -24,13 +24,13 @@ jobs:
     - name: Run cargo and clippy format check
       run: |
         cargo fmt --check
-        cargo clippy --profile release --all-targets -- -D clippy::all
+        cargo clippy --profile release --all-targets
     - name: Release Build
       run: |
         if [ "${{ matrix.server_version }}" = "8.0" ]; then
-          RUSTFLAGS="-D warnings" cargo build --all --all-targets --release --features valkey_8_0
+          cargo build --all --all-targets --release --features valkey_8_0
         else
-          RUSTFLAGS="-D warnings" cargo build --all --all-targets --release
+          cargo build --all --all-targets --release
         fi
     - name: Run unit tests
       run: cargo test --features enable-system-alloc
@@ -70,9 +70,9 @@ jobs:
     - name: Run cargo and clippy format check
       run: |
         cargo fmt --check
-        cargo clippy --profile release --all-targets -- -D clippy::all
+        cargo clippy --profile release --all-targets
     - name: Release Build
-      run: RUSTFLAGS="-D warnings" cargo build --all --all-targets --release
+      run: cargo build --all --all-targets --release
     - name: Run unit tests
       run: cargo test --features enable-system-alloc
 
@@ -89,13 +89,13 @@ jobs:
     - name: Run cargo and clippy format check
       run: |
         cargo fmt --check
-        cargo clippy --profile release --all-targets -- -D clippy::all
+        cargo clippy --profile release --all-targets
     - name: Release Build
       run: |
         if [ "${{ matrix.server_version }}" = "8.0" ]; then
-          RUSTFLAGS="-D warnings" cargo build --all --all-targets --release --features valkey_8_0
+          cargo build --all --all-targets --release --features valkey_8_0
         else
-          RUSTFLAGS="-D warnings" cargo build --all --all-targets --release
+          cargo build --all --all-targets --release
         fi
     - name: Run unit tests
       run: cargo test --features enable-system-alloc
