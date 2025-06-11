@@ -488,15 +488,15 @@ impl BloomObject {
     /// * `capacity` - The size of the initial filter in the bloom object.
     /// * `fp_rate` - the false positive rate for the bloom object
     /// * `validate_scale_to` - the capacity we check to see if it can scale to. If this method is called from BF.INFO this is set as -1 as we
-    ///                       want to check the maximum size we could scale up till
+    ///   want to check the maximum size we could scale up till
     /// * `tightening_ratio` - The tightening ratio of the object
     /// * `expansion` - The expanison rate of the object
     ///
     /// # Returns
     /// * i64 - The maximum capacity that can be reached if called from BF.INFO. If called from BF.INSERT the size it reached when it became greater than `validate_scale_to`
     /// * ValkeyError - Can return two different errors:
-    ///     VALIDATE_SCALE_TO_EXCEEDS_MAX_SIZE: When scaling to the wanted capacity would go over the bloom object memory limit
-    ///     VALIDATE_SCALE_TO_FALSE_POSITIVE_INVALID: When scaling to the wanted capacity would cause the false positive rate to reach 0
+    ///   VALIDATE_SCALE_TO_EXCEEDS_MAX_SIZE: When scaling to the wanted capacity would go over the bloom object memory limit
+    ///   VALIDATE_SCALE_TO_FALSE_POSITIVE_INVALID: When scaling to the wanted capacity would cause the false positive rate to reach 0
     pub fn calculate_max_scaled_capacity(
         capacity: i64,
         fp_rate: f64,

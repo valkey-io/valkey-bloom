@@ -43,6 +43,8 @@ SERVER_VERSION=8.0.0
 # Build with asan, you may need to remove the old valkey binary if you have used ./build.sh before. You can do this by deleting the `.build` folder in the `tests` folder 
 ASAN_BUILD=true
 ./build.sh
+# Clean build artifacts
+./build.sh clean
 ```
 
 ## Load the Module

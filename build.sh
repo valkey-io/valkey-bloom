@@ -8,6 +8,15 @@ set -e
 SCRIPT_DIR=$(pwd)
 echo "Script Directory: $SCRIPT_DIR"
 
+if [ "$1" = "clean" ]; then
+  echo "Cleaning build artifacts"
+  rm -rf target/
+  rm -rf tests/build/
+  rm -rf test-data/
+  echo "Clean completed."
+  exit 0
+fi
+
 echo "Running cargo and clippy format checks..."
 cargo fmt --check
 cargo clippy --profile release --all-targets -- -D clippy::all
