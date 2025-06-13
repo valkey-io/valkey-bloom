@@ -193,7 +193,7 @@ impl BloomObject {
             + (filters_vec_capacity * std::mem::size_of::<Box<BloomFilter>>())
     }
 
-    /// Caculates the number of bytes that the bloom object will require to be allocated.
+    /// Calculates the number of bytes that the bloom object will require to be allocated.
     /// This is used when scaling out a bloom object to check if the new
     /// size will be within the allowed size limit.
     /// Returns whether the bloom object is of a valid size or not.
@@ -202,7 +202,7 @@ impl BloomObject {
         BloomObject::validate_size(bytes)
     }
 
-    /// Caculates the number of bytes that the bloom object will require to be allocated.
+    /// Calculates the number of bytes that the bloom object will require to be allocated.
     /// This is used when creating a new bloom object to check if the size is within the allowed size limit.
     /// Returns whether the bloom object is of a valid size or not.
     fn validate_size_before_create(capacity: i64, fp_rate: f64) -> bool {
