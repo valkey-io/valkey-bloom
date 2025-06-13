@@ -19,7 +19,7 @@ jobs:
         server_version: ['unstable', '8.0', '8.1']
     steps:
     - uses: actions/checkout@v4
-    - name: Set the server verison for python integeration tests
+    - name: Set the server verison for python integration tests
       run: echo "SERVER_VERSION=${{ matrix.server_version }}" >> $GITHUB_ENV
     - name: Run cargo and clippy format check
       run: |
@@ -84,7 +84,7 @@ jobs:
         server_version: ['unstable', '8.0', '8.1']
     steps:
     - uses: actions/checkout@v4
-    - name: Set the server verison for python integeration tests
+    - name: Set the server verison for python integration tests
       run: echo "SERVER_VERSION=${{ matrix.server_version }}" >> $GITHUB_ENV
     - name: Run cargo and clippy format check
       run: |
