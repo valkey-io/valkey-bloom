@@ -273,7 +273,7 @@ impl BloomObject {
         self.expansion
     }
 
-    /// Return the false postive rate of the bloom object.
+    /// Return the false positive rate of the bloom object.
     pub fn fp_rate(&self) -> f64 {
         self.fp_rate
     }
