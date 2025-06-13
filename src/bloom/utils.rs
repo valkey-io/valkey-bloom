@@ -645,7 +645,7 @@ impl BloomFilter {
         self.bloom.seed()
     }
 
-    /// Return the numer of items in the BloomFilter.
+    /// Return the number of items in the BloomFilter.
     pub fn num_items(&self) -> i64 {
         self.num_items
     }
