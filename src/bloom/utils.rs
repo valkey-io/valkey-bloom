@@ -761,7 +761,7 @@ mod tests {
                 Ok(1) => {
                     if let Some(err) = expected_error {
                         panic!(
-                            "Expected error on the bloom object during during item add: {:?}",
+                            "Expected error on the bloom object during item add: {:?}",
                             err
                         );
                     }
