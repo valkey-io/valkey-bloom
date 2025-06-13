@@ -490,7 +490,7 @@ impl BloomObject {
     /// * `validate_scale_to` - the capacity we check to see if it can scale to. If this method is called from BF.INFO this is set as -1 as we
     ///                       want to check the maximum size we could scale up till
     /// * `tightening_ratio` - The tightening ratio of the object
-    /// * `expansion` - The expanison rate of the object
+    /// * `expansion` - The expansion rate of the object
     ///
     /// # Returns
     /// * i64 - The maximum capacity that can be reached if called from BF.INFO. If called from BF.INSERT the size it reached when it became greater than `validate_scale_to`
