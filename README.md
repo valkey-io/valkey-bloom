@@ -1,6 +1,6 @@
 # valkey-bloom
 
-Valkey-Bloom (BSD-3-Clause) is a Rust based Valkey-Module which brings a Bloom Filter (Module) data type into Valkey and supports verions >= 8.0. With this, users can create bloom filters (space efficient probabilistic data structures) to add elements, check whether elements exists, auto scale their filters, customize bloom filter properties, perform RDB Save and load operations, etc.
+Valkey-Bloom (BSD-3-Clause) is a Rust based Valkey-Module which brings a Bloom Filter (Module) data type into Valkey and supports versions >= 8.0. With this, users can create bloom filters (space efficient probabilistic data structures) to add elements, check whether elements exists, auto scale their filters, customize bloom filter properties, perform RDB Save and load operations, etc.
 
 Valkey-Bloom is built using `bloomfilter::Bloom` (https://crates.io/crates/bloomfilter which has a BSD-2-Clause license).
 
