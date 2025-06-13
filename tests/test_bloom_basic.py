@@ -364,7 +364,7 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
 
     def test_bloom_config_set_changes_default_creations(self):
         """
-        This is a test that validates the bloom configuration set logic changes the defualt creations for bloom objects
+        This is a test that validates the bloom configuration set logic changes the default creations for bloom objects
         """     
         assert self.client.execute_command('CONFIG SET bf.bloom-capacity 10000') == b'OK'
         assert self.client.execute_command('CONFIG SET bf.bloom-expansion 0') == b'OK'
