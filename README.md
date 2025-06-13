@@ -74,4 +74,4 @@ valkey-server --loadmodule /path/to/libvalkey_bloom.so
 cargo build --release --features valkey_8_0
 ```
 
-This can also be done by specifiyng SERVER_VERSION=8.0.0 and then running `./build.sh`
+This can also be done by specifying SERVER_VERSION=8.0.0 and then running `./build.sh`
