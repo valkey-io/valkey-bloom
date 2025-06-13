@@ -650,7 +650,7 @@ impl BloomFilter {
         self.num_items
     }
 
-    /// Return the capcity of the BloomFilter - number of items that can be added to it.
+    /// Return the capacity of the BloomFilter - number of items that can be added to it.
     pub fn capacity(&self) -> i64 {
         self.capacity
     }
@@ -1253,7 +1253,7 @@ mod tests {
 
     #[test]
     fn test_vec_capacity_matches_size_calculations() {
-        // This unit test is designed to make sure out calculations with capcity will always match the correct vec capacity
+        // This unit test is designed to make sure out calculations with capacity will always match the correct vec capacity
         let mut test_v = vec![0];
         for i in 0..5000 {
             let x = if i == 0 {
