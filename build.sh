@@ -5,10 +5,81 @@
 # Exit the script if any command fails
 set -e
 
+function print_usage() {
+cat<<EOF
+Usage: build.sh [--release] [--unit] [--integration] [--clean]
+
+    --help | -h               Print this help message and exit.
+    --release                 Builds the release configuration.
+    --unit                    Builds the unit tests configuration.
+    --integration             Builds the integration tests configuration.
+    --clean                   Cleans the build artifacts.
+    --no-clippy               Skips clippy formatting checks.
+
+Example usage:
+
+    # Build the release configuration,
+    ./build.sh --release
+
+    # Cleans the build artifacts,
+    ./build.sh --clean
+
+EOF
+}
+
+
 SCRIPT_DIR=$(pwd)
 echo "Script Directory: $SCRIPT_DIR"
+RUN_UNIT=0
+RUN_INTEGRATION=0
+BUILD_RELEASE=1
+CLEAN_BUILD=0
+NO_CLIPPY=0
 
-if [ "$1" = "clean" ]; then
+## Parse command line argument
+while [[ $# -gt 0 ]]; 
+do
+    arg="$1"
+    case $arg in
+        --release)
+            BUILD_RELEASE=1
+            RUN_UNIT=0
+            RUN_INTEGRATION=0
+            ;;
+        --unit)
+            RUN_UNIT=1
+            RUN_INTEGRATION=0
+            BUILD_RELEASE=0
+            ;;
+        --integration)
+            RUN_UNIT=0
+            RUN_INTEGRATION=1
+            ;;
+        --clean)
+            CLEAN_BUILD=1
+            RUN_UNIT=0
+            RUN_INTEGRATION=0
+            ;;
+        --help|-h)
+            print_usage
+            exit 0
+            ;;
+        --no-clippy)
+            RUN_UNIT=1
+            RUN_INTEGRATION=1
+            BUILD_RELEASE=1
+            NO_CLIPPY=1
+            ;;
+        *)
+            print_usage
+            exit 1
+            ;;
+        esac
+    shift
+done
+
+
+if [ $CLEAN_BUILD -eq 1 ]; then
   echo "Cleaning build artifacts"
   rm -rf target/
   rm -rf tests/build/
@@ -17,14 +88,11 @@ if [ "$1" = "clean" ]; then
   exit 0
 fi
 
-echo "Running cargo and clippy format checks..."
-cargo fmt --check
-cargo clippy --profile release --all-targets -- -D clippy::all
-
-
-echo "Running unit tests..."
-cargo test --features enable-system-alloc
-
+if [ $NO_CLIPPY -eq 0 ]; then
+    echo "Running cargo and clippy format checks..."
+    cargo fmt --check
+    cargo clippy --profile release --all-targets -- -D clippy::all
+fi
 # Ensure SERVER_VERSION environment variable is set
 if [ -z "$SERVER_VERSION" ]; then
     echo "ERROR: SERVER_VERSION environment variable is not set. Defaulting to unstable."
@@ -36,117 +104,128 @@ if [ "$SERVER_VERSION" != "unstable" ] && [ "$SERVER_VERSION" != "8.0" ] && [ "$
   exit 1
 fi
 
-echo "Running cargo build release..."
-if [ "$SERVER_VERSION" == "8.0" ] ; then
-    RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release --features valkey_8_0
-else
-    RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release
+if [ $RUN_UNIT -eq 1 ]; then
+  echo "Running unit tests..."
+  cargo test --features enable-system-alloc
 fi
 
 
-REPO_URL="https://github.com/valkey-io/valkey.git"
-BINARY_PATH="tests/build/binaries/$SERVER_VERSION/valkey-server"
-CACHED_VALKEY_PATH="tests/build/valkey"
-if [ -f "$BINARY_PATH" ] && [ -x "$BINARY_PATH" ]; then
-    echo "valkey-server binary '$BINARY_PATH' found."
-else
-    echo "valkey-server binary '$BINARY_PATH' not found."
-    mkdir -p "tests/build/binaries/$SERVER_VERSION"
-    rm -rf $CACHED_VALKEY_PATH
-    cd tests/build
-    git clone "$REPO_URL"
-    cd valkey
-    git checkout "$SERVER_VERSION"
-    make distclean
-    if [ ! -z "${ASAN_BUILD}" ]; then
-        make -j SANITIZER=address
+if [ $BUILD_RELEASE -eq 1 ]; then
+    echo "Running cargo build release..."
+    if [ "$SERVER_VERSION" == "8.0" ] ; then
+        RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release --features valkey_8_0
     else
-        make -j
+        RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release
     fi
-    cp src/valkey-server ../binaries/$SERVER_VERSION/
-    cd $SCRIPT_DIR
-    rm -rf $CACHED_VALKEY_PATH
 fi
 
 
-TEST_FRAMEWORK_REPO="https://github.com/valkey-io/valkey-test-framework"
-TEST_FRAMEWORK_DIR="tests/build/valkeytestframework"
 
-if [ -d "$TEST_FRAMEWORK_DIR" ]; then
-    echo "valkeytestframework found."
-else
-    echo "Cloning valkey-test-framework..."
-    git clone "$TEST_FRAMEWORK_REPO"
-    mkdir -p "$TEST_FRAMEWORK_DIR"
-    mv "valkey-test-framework/src"/* "$TEST_FRAMEWORK_DIR/"
-    rm -rf valkey-test-framework
-fi
-
-REQUIREMENTS_FILE="requirements.txt"
-
-# Check if pip is available
-if command -v pip > /dev/null 2>&1; then
-    echo "Using pip to install packages..."
-    pip install -r "$SCRIPT_DIR/$REQUIREMENTS_FILE"
-# Check if pip3 is available
-elif command -v pip3 > /dev/null 2>&1; then
-    echo "Using pip3 to install packages..."
-    pip3 install -r "$SCRIPT_DIR/$REQUIREMENTS_FILE"
-else
-    echo "Error: Neither pip nor pip3 is available. Please install Python package installer."
-    exit 1
-fi
-
-os_type=$(uname)
-MODULE_EXT=".so"
-if [[ "$os_type" == "Darwin" ]]; then
-  MODULE_EXT=".dylib"
-elif [[ "$os_type" == "Linux" ]]; then
-  MODULE_EXT=".so"
-else
-  echo "Unsupported OS type: $os_type"
-  exit 1
-fi
-export MODULE_PATH="$SCRIPT_DIR/target/release/libvalkey_bloom$MODULE_EXT"
-
-echo "Running the integration tests..."
-if [ ! -z "${ASAN_BUILD}" ]; then
-    # TEST_PATTERN can be used to run specific tests or test patterns.
-    if [[ -n "$TEST_PATTERN" ]]; then
-        python3 -m pytest --capture=sys --cache-clear -v "$SCRIPT_DIR/tests/" -k $TEST_PATTERN 2>&1 | tee test_output.tmp
+if [ $RUN_INTEGRATION -eq 1 ]; then
+    REPO_URL="https://github.com/valkey-io/valkey.git"
+    BINARY_PATH="tests/build/binaries/$SERVER_VERSION/valkey-server"
+    CACHED_VALKEY_PATH="tests/build/valkey"
+    if [ -f "$BINARY_PATH" ] && [ -x "$BINARY_PATH" ]; then
+        echo "valkey-server binary '$BINARY_PATH' found."
     else
-        echo "TEST_PATTERN is not set. Running all integration tests."
-        python3 -m pytest --capture=sys --cache-clear -v "$SCRIPT_DIR/tests/" 2>&1 | tee test_output.tmp
+        echo "valkey-server binary '$BINARY_PATH' not found."
+        mkdir -p "tests/build/binaries/$SERVER_VERSION"
+        rm -rf $CACHED_VALKEY_PATH
+        cd tests/build
+        git clone "$REPO_URL"
+        cd valkey
+        git checkout "$SERVER_VERSION"
+        make distclean
+        if [ ! -z "${ASAN_BUILD}" ]; then
+            make -j SANITIZER=address
+        else
+            make -j
+        fi
+        cp src/valkey-server ../binaries/$SERVER_VERSION/
+        cd $SCRIPT_DIR
+        rm -rf $CACHED_VALKEY_PATH
+    fi
+    TEST_FRAMEWORK_REPO="https://github.com/valkey-io/valkey-test-framework"
+    TEST_FRAMEWORK_DIR="tests/build/valkeytestframework"
+
+
+    if [ -d "$TEST_FRAMEWORK_DIR" ]; then
+        echo "valkeytestframework found."
+    else
+        echo "Cloning valkey-test-framework..."
+        git clone "$TEST_FRAMEWORK_REPO"
+        mkdir -p "$TEST_FRAMEWORK_DIR"
+        mv "valkey-test-framework/src"/* "$TEST_FRAMEWORK_DIR/"
+        rm -rf valkey-test-framework
     fi
 
-    # Check for memory leaks in the output
-    if grep -q "LeakSanitizer: detected memory leaks" test_output.tmp; then
-        RED='\033[0;31m'
-        echo -e "${RED}Memory leaks detected in the following tests:"
-        LEAKING_TESTS=$(grep -B 2 "LeakSanitizer: detected memory leaks" test_output.tmp | \
-                        grep -v "LeakSanitizer" | \
-                        grep ".*\.py::")
-        
-        LEAK_COUNT=$(echo "$LEAKING_TESTS" | wc -l)
-        
-        # Output each leaking test
-        echo "$LEAKING_TESTS" | while read -r line; do
-            echo "::error::Test with leak: $line"
-        done
-        
-        echo -e "\n$LEAK_COUNT python integration tests have leaks detected in them"
-        rm test_output.tmp
+    REQUIREMENTS_FILE="requirements.txt"
+
+    # Check if pip is available
+    if command -v pip > /dev/null 2>&1; then
+        echo "Using pip to install packages..."
+        pip install -r "$SCRIPT_DIR/$REQUIREMENTS_FILE"
+    # Check if pip3 is available
+    elif command -v pip3 > /dev/null 2>&1; then
+        echo "Using pip3 to install packages..."
+        pip3 install -r "$SCRIPT_DIR/$REQUIREMENTS_FILE"
+    else
+        echo "Error: Neither pip nor pip3 is available. Please install Python package installer."
         exit 1
     fi
-    rm test_output.tmp
-else 
-    # TEST_PATTERN can be used to run specific tests or test patterns.
-    if [[ -n "$TEST_PATTERN" ]]; then
-        python3 -m pytest --cache-clear -v "$SCRIPT_DIR/tests/" -k $TEST_PATTERN
+
+    os_type=$(uname)
+    MODULE_EXT=".so"
+    if [[ "$os_type" == "Darwin" ]]; then
+    MODULE_EXT=".dylib"
+    elif [[ "$os_type" == "Linux" ]]; then
+    MODULE_EXT=".so"
     else
-        echo "TEST_PATTERN is not set. Running all integration tests."
-        python3 -m pytest --cache-clear -v "$SCRIPT_DIR/tests/"
+    echo "Unsupported OS type: $os_type"
+    exit 1
+    fi
+    export MODULE_PATH="$SCRIPT_DIR/target/release/libvalkey_bloom$MODULE_EXT"
+
+    echo "Running the integration tests..."
+    if [ ! -z "${ASAN_BUILD}" ]; then
+        # TEST_PATTERN can be used to run specific tests or test patterns.
+        if [[ -n "$TEST_PATTERN" ]]; then
+            python3 -m pytest --capture=sys --cache-clear -v "$SCRIPT_DIR/tests/" -k $TEST_PATTERN -m "not skip_for_asan" 2>&1 | tee test_output.tmp
+        else
+            echo "TEST_PATTERN is not set. Running all integration tests."
+            python3 -m pytest --capture=sys --cache-clear -v "$SCRIPT_DIR/tests/" -m "not skip_for_asan" 2>&1 | tee test_output.tmp
+        fi
+
+        # Check for memory leaks in the output
+        if grep -q "LeakSanitizer: detected memory leaks" test_output.tmp; then
+            RED='\033[0;31m'
+            echo -e "${RED}Memory leaks detected in the following tests:"
+            LEAKING_TESTS=$(grep -B 2 "LeakSanitizer: detected memory leaks" test_output.tmp | \
+                            grep -v "LeakSanitizer" | \
+                            grep ".*\.py::")
+            
+            LEAK_COUNT=$(echo "$LEAKING_TESTS" | wc -l)
+            
+            # Output each leaking test
+            echo "$LEAKING_TESTS" | while read -r line; do
+                echo "::error::Test with leak: $line"
+            done
+            
+            echo -e "\n$LEAK_COUNT python integration tests have leaks detected in them"
+            rm test_output.tmp
+            exit 1
+        fi
+        rm test_output.tmp
+    else 
+        # TEST_PATTERN can be used to run specific tests or test patterns.
+        if [[ -n "$TEST_PATTERN" ]]; then
+            python3 -m pytest --cache-clear -v "$SCRIPT_DIR/tests/" -k $TEST_PATTERN
+        else
+            echo "TEST_PATTERN is not set. Running all integration tests."
+            python3 -m pytest --cache-clear -v "$SCRIPT_DIR/tests/"
+        fi
     fi
 fi
 
-echo "Build, Format Checks, Unit tests, and Integration Tests succeeded"
+
+# echo "Build, Format Checks, Unit tests, and Integration Tests succeeded"

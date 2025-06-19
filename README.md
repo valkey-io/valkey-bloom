@@ -34,17 +34,32 @@ valkey-server --loadmodule ./target/release/libvalkey_bloom.so
 
 #### Local development script to build, run format checks, run unit / integration tests, and for cargo release:
 ```
-# Builds the valkey-server (unstable) for integration testing.
+# Builds only the valkey-bloom module
 SERVER_VERSION=unstable
 ./build.sh
-# Same as above, but uses valkey-server (8.0.0) for integration testing.
+
+# Same as above, but uses valkey-server (8.0.0).
 SERVER_VERSION=8.0.0
 ./build.sh
-# Build with asan, you may need to remove the old valkey binary if you have used ./build.sh before. You can do this by deleting the `.build` folder in the `tests` folder 
+
+# To view the available arguments, use:
+./build.sh --help
+
+# Clean build artifacts
+./build.sh --clean
+
+# Build and run the unit tests
+./build.sh --unit
+
+# Run all integration tests
+./build.sh --integration
+
+# Run a unique set of integration tests
+TEST_PATTERN=<test-function-or-file> ./build.sh --integration
+
+# Build with asan, you may need to remove the old valkey binary if you have used ./build.sh before. You can do this by deleting the `.build` folder in the `tests` folder. This option can be used with any of the build script options. 
 ASAN_BUILD=true
 ./build.sh
-# Clean build artifacts
-./build.sh clean
 ```
 
 ## Load the Module
