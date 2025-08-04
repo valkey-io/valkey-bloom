@@ -13,11 +13,23 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
 
     @pytest.fixture(autouse=True)
     def setup_test(self, setup):
-        args = {"enable-debug-command":"yes", 'loadmodule': os.getenv('MODULE_PATH'),'bf.bloom-use-random-seed': self.use_random_seed}
-        server_path = f"{os.path.dirname(os.path.realpath(__file__))}/build/binaries/{os.environ['SERVER_VERSION']}/valkey-server"
-
-        self.server, self.client = self.create_server(testdir = self.testdir,  server_path=server_path, args=args)
-        logging.info("startup args are: %s", args)
+        use_external = os.environ.get("VALKEY_EXTERNAL_SERVER", "false").lower() == "true"
+        
+        if use_external:
+            # Use external server
+            external_host = os.environ.get("VALKEY_HOST", "localhost")
+            external_port = int(os.environ.get("VALKEY_PORT", "6379"))
+            self.server, self.client = self.create_server(
+                testdir=self.testdir,
+                bind_ip=external_host,
+                port=external_port,
+                external_server=True
+            )
+        else:
+            args = {"enable-debug-command":"yes", 'loadmodule': os.getenv('MODULE_PATH'),'bf.bloom-use-random-seed': self.use_random_seed}
+            server_path = f"{os.path.dirname(os.path.realpath(__file__))}/build/binaries/{os.environ['SERVER_VERSION']}/valkey-server"
+            self.server, self.client = self.create_server(testdir = self.testdir,  server_path=server_path, args=args)
+            logging.info("startup args are: %s", args)
 
     @pytest.fixture(autouse=True)
     def use_random_seed_fixture(self, bloom_config_parameterization):
