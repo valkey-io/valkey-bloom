@@ -10,8 +10,12 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         client = self.server.get_new_client()
         # Validate that the valkey-bloom module is loaded.
         module_list_data = client.execute_command('MODULE LIST')
-        module_list_count = len(module_list_data)
-        assert module_list_count == 1
+        
+        # Only check count for local servers (bundle has multiple modules)
+        use_external = os.environ.get("VALKEY_EXTERNAL_SERVER", "false").lower() == "true"
+        if not use_external:
+            module_list_count = len(module_list_data)
+            assert module_list_count == 1
         module_loaded = False
         for module in module_list_data:
             if (module[b'name'] == b'bf'):
