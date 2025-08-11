@@ -5,6 +5,8 @@ from valkey import ResponseError
 import random
 import string
 import logging
+import subprocess
+import time
 
 class ValkeyBloomTestCaseBase(ValkeyTestCase):
 
@@ -274,3 +276,26 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
                 key, value = line.split(':', 1)
                 stats_dict[key.strip()] = value.strip()
         return stats_dict
+    
+    def restart_external_server(self, server, remove_rdb=True, remove_nodes_conf=True, connect_client=True):
+        """This method will be used to restart external servers """
+        if not server.external_mode:
+            return server.restart(remove_rdb, remove_nodes_conf, connect_client)
+                
+        result = subprocess.run([
+            "docker", "ps", "--format", "{{.Names}}", 
+            "--filter", f"publish={server.port}"
+        ], capture_output=True, text=True, check=True)
+        
+        container_names = result.stdout.strip().split("\n")
+        if container_names and container_names[0]:
+            container_name = container_names[0]
+            subprocess.run(["docker", "restart", container_name], check=True)
+            time.sleep(3)
+        else:
+            raise RuntimeError(f"No Docker container found using port {server.port}")
+        
+        if connect_client:
+            server.connect()
+        
+        return server.client
