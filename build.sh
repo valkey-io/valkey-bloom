@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/bin/bash
 
 # Script to run format checks valkey-bloom module, build it and generate .so files, run unit and integration tests.
 
