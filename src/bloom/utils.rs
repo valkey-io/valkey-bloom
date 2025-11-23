@@ -806,7 +806,7 @@ mod tests {
         let mut fp_count = 0;
         let mut cardinality = bf.cardinality();
         while cardinality < capacity_needed {
-            let item = format!("{}{}", rand_prefix, new_item_idx);
+            let item = format!("{rand_prefix}{new_item_idx}");
             let result = bf.add_item(item.as_bytes(), true);
             match result {
                 Ok(0) => {
@@ -814,10 +814,7 @@ mod tests {
                 }
                 Ok(1) => {
                     if let Some(err) = expected_error {
-                        panic!(
-                            "Expected error on the bloom object during item add: {:?}",
-                            err
-                        );
+                        panic!("Expected error on the bloom object during item add: {err:?}");
                     }
                     cardinality += 1;
                 }
@@ -830,7 +827,7 @@ mod tests {
                         break;
                     }
                     None => {
-                        panic!("Unexpected error when adding items: {:?}", e);
+                        panic!("Unexpected error when adding items: {e:?}");
                     }
                 },
             };
@@ -853,7 +850,7 @@ mod tests {
     ) -> (i64, i64) {
         let mut error_count = 0;
         for i in start_idx..=end_idx {
-            let item = format!("{}{}", rand_prefix, i);
+            let item = format!("{rand_prefix}{i}");
             let result = bf.item_exists(item.as_bytes());
             if result != expected_result {
                 error_count += 1;
@@ -868,9 +865,7 @@ mod tests {
         let fp_rate_with_margin = expected_fp_rate + fp_margin;
         assert!(
             real_fp_rate < fp_rate_with_margin,
-            "The actual fp_rate, {}, is greater than the configured fp_rate with margin. {}.",
-            real_fp_rate,
-            fp_rate_with_margin
+            "The actual fp_rate, {real_fp_rate}, is greater than the configured fp_rate with margin. {fp_rate_with_margin}."
         );
     }
 
