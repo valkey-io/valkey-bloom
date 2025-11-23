@@ -54,9 +54,9 @@ fn deinitialize(_ctx: &Context) -> Status {
     flags: [ReadOnly, Fast],
     arity: 3,
     key_spec: [{
-        flags: [ReadOnly, Access],
         begin_search: Index({ index: 1 }),
         find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadOnly, Access],
     }],
 })]
 fn bloom_exists_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
@@ -72,9 +72,9 @@ fn bloom_exists_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult 
     flags: [ReadOnly, Fast],
     arity: -3,
     key_spec: [{
-        flags: [ReadOnly, Access],
         begin_search: Index({ index: 1 }),
         find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadOnly, Access],
     }],
 })]
 fn bloom_mexists_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
@@ -90,9 +90,9 @@ fn bloom_mexists_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult
     flags: [Write, DenyOOM, Fast],
     arity: 3,
     key_spec: [{
-        flags: [ReadWrite, Insert, Update],
         begin_search: Index({ index: 1 }),
         find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadWrite, Insert],
     }],
 })]
 fn bloom_add_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
@@ -108,9 +108,9 @@ fn bloom_add_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     flags: [Write, DenyOOM, Fast],
     arity: -3,
     key_spec: [{
-        flags: [ReadWrite, Insert, Update],
         begin_search: Index({ index: 1 }),
         find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadWrite, Insert],
     }],
 })]
 fn bloom_madd_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
@@ -126,9 +126,9 @@ fn bloom_madd_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     flags: [ReadOnly, Fast],
     arity: 2,
     key_spec: [{
-        flags: [ReadOnly, Access],
         begin_search: Index({ index: 1 }),
         find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadOnly, Access],
     }],
 })]
 fn bloom_card_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
@@ -144,9 +144,9 @@ fn bloom_card_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     flags: [Write, DenyOOM, Fast],
     arity: -4,
     key_spec: [{
-        flags: [ReadWrite, Insert],
         begin_search: Index({ index: 1 }),
         find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadWrite, Insert],
     }],
 })]
 fn bloom_reserve_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
@@ -162,9 +162,9 @@ fn bloom_reserve_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult
     flags: [ReadOnly, Fast],
     arity: -2,
     key_spec: [{
-        flags: [ReadOnly, Access],
         begin_search: Index({ index: 1 }),
         find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadOnly, Access],
     }],
 })]
 fn bloom_info_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
@@ -181,9 +181,9 @@ fn bloom_info_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     flags: [Write, DenyOOM, Fast],
     arity: -2,
     key_spec: [{
-        flags: [ReadWrite, Insert, Update],
         begin_search: Index({ index: 1 }),
         find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadWrite, Insert],
     }],
 })]
 fn bloom_insert_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
@@ -200,9 +200,9 @@ fn bloom_insert_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult 
     flags: [Write, DenyOOM],
     arity: 3,
     key_spec: [{
-        flags: [ReadWrite, Insert],
         begin_search: Index({ index: 1 }),
         find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadWrite, Insert],
     }],
 })]
 fn bloom_load_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
@@ -231,17 +231,7 @@ valkey_module! {
     acl_categories: [
         "bloom",
     ]
-    commands: [
-        ["BF.ADD", bloom_add_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
-        ["BF.MADD", bloom_madd_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
-        ["BF.EXISTS", bloom_exists_command, "readonly fast", 1, 1, 1, "fast read bloom"],
-        ["BF.MEXISTS", bloom_mexists_command, "readonly fast", 1, 1, 1, "fast read bloom"],
-        ["BF.CARD", bloom_card_command, "readonly fast", 1, 1, 1, "fast read bloom"],
-        ["BF.RESERVE", bloom_reserve_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
-        ["BF.INFO", bloom_info_command, "readonly fast", 1, 1, 1, "fast read bloom"],
-        ["BF.INSERT", bloom_insert_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
-        ["BF.LOAD", bloom_load_command, "write deny-oom", 1, 1, 1, "write bloom"]
-    ],
+    commands: [],
     configurations: [
         i64: [
             ["bloom-capacity", &*configs::BLOOM_CAPACITY, configs::BLOOM_CAPACITY_DEFAULT, configs::BLOOM_CAPACITY_MIN, configs::BLOOM_CAPACITY_MAX, ConfigurationFlags::DEFAULT, None],
