@@ -99,9 +99,9 @@ fi
 
 os_type=$(uname)
 MODULE_EXT=".so"
-if [[ "$os_type" == "Darwin" ]]; then
+if [ "$os_type" = "Darwin" ]; then
   MODULE_EXT=".dylib"
-elif [[ "$os_type" == "Linux" ]]; then
+elif [ "$os_type" = "Linux" ]; then
   MODULE_EXT=".so"
 else
   echo "Unsupported OS type: $os_type"
@@ -112,7 +112,7 @@ export MODULE_PATH="$SCRIPT_DIR/target/release/libvalkey_bloom$MODULE_EXT"
 echo "Running the integration tests..."
 if [ ! -z "${ASAN_BUILD}" ]; then
     # TEST_PATTERN can be used to run specific tests or test patterns.
-    if [[ -n "$TEST_PATTERN" ]]; then
+    if [ -n "$TEST_PATTERN" ]; then
         python3 -m pytest --capture=sys --cache-clear -v "$SCRIPT_DIR/tests/" -k $TEST_PATTERN 2>&1 | tee test_output.tmp
     else
         echo "TEST_PATTERN is not set. Running all integration tests."
@@ -141,7 +141,7 @@ if [ ! -z "${ASAN_BUILD}" ]; then
     rm test_output.tmp
 else 
     # TEST_PATTERN can be used to run specific tests or test patterns.
-    if [[ -n "$TEST_PATTERN" ]]; then
+    if [ -n "$TEST_PATTERN" ]; then
         python3 -m pytest --cache-clear -v "$SCRIPT_DIR/tests/" -k $TEST_PATTERN
     else
         echo "TEST_PATTERN is not set. Running all integration tests."
