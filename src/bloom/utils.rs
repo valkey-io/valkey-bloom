@@ -813,7 +813,7 @@ mod tests {
         let real_fp_rate = error_count as f64 / num_operations as f64;
         let fp_rate_with_margin = expected_fp_rate + fp_margin;
         assert!(
-            real_fp_rate < fp_rate_with_margin,
+            real_fp_rate <= fp_rate_with_margin,
             "The actual fp_rate, {}, is greater than the configured fp_rate with margin. {}.",
             real_fp_rate,
             fp_rate_with_margin
