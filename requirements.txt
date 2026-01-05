@@ -1,2 +1,2 @@
 valkey
-pytest==6
+pytest==7.4.3
