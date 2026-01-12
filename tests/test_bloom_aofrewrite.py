@@ -7,6 +7,10 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
 
     def test_basic_aofrewrite_and_restore(self):
         client = self.server.get_new_client()
+        # Enable AOF before adding data
+        client.config_set('appendonly', 'yes')
+        # Wait for any initial AOF rewrite to complete
+        wait_for_equal(lambda: client.info('persistence')['aof_rewrite_in_progress'], 0, timeout=30)
         bf_add_result_1 = client.execute_command('BF.ADD testSave item')
         assert bf_add_result_1 == 1
         bf_exists_result_1 = client.execute_command('BF.EXISTS testSave item')
@@ -25,6 +29,8 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         self.server.wait_for_action_done(ValkeyAction.AOF_REWRITE)
         # Keep the server running for 1 second more to have a larger uptime.
         time.sleep(1)
+        # Add appendonly to server args so it loads AOF on restart
+        self.server.args['appendonly'] = 'yes'
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
         restored_server_digest = client.execute_command('DEBUG', 'DIGEST')
@@ -42,6 +48,10 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         client.execute_command('DEL testSave')
 
     def test_aofrewrite_bloomfilter_metrics(self):
+        # Enable AOF before adding data
+        self.client.config_set('appendonly', 'yes')
+        # Wait for any initial AOF rewrite to complete
+        wait_for_equal(lambda: self.client.info('persistence')['aof_rewrite_in_progress'], 0, timeout=30)
         # Create scaled bloom filter and add 7500 items to trigger a scale out.
         self.client.execute_command('BF.RESERVE key1 0.001 7000')
         info_obj = self.client.execute_command('BF.INFO key1')
@@ -56,6 +66,8 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         self.client.bgrewriteaof()
         self.server.wait_for_action_done(ValkeyAction.AOF_REWRITE)
         # restart server
+        # Add appendonly to server args so it loads AOF on restart
+        self.server.args['appendonly'] = 'yes'
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
         restored_server_digest = self.client.execute_command('DEBUG', 'DIGEST')
