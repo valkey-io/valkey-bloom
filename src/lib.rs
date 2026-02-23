@@ -10,6 +10,7 @@ pub mod wrapper;
 use crate::bloom::command_handler;
 use crate::bloom::data_type::BLOOM_TYPE;
 use crate::bloom::utils::valid_server_version;
+use valkey_module::ModuleOptions;
 use valkey_module_macros::info_command_handler;
 
 pub const MODULE_NAME: &str = "bf";
@@ -21,6 +22,7 @@ pub const MODULE_VERSION: i32 = 999999;
 pub const MODULE_RELEASE_STAGE: &str = "dev";
 
 fn initialize(ctx: &Context, _args: &[ValkeyString]) -> Status {
+    ctx.set_module_options(ModuleOptions::HANDLE_IO_ERRORS);
     let ver = ctx
         .get_server_version()
         .expect("Unable to get server version!");
