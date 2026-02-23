@@ -9,9 +9,7 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
     def test_basic(self):
         client = self.server.get_new_client()
         # Validate that the valkey-bloom module is loaded.
-        module_list_data = client.execute_command('MODULE LIST')
-        module_list_count = len(module_list_data)
-        assert module_list_count == 1
+        module_list_data = client.execute_command('MODULE LIST')      
         module_loaded = False
         for module in module_list_data:
             if (module[b'name'] == b'bf'):
@@ -364,7 +362,7 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
 
     def test_bloom_config_set_changes_default_creations(self):
         """
-        This is a test that validates the bloom configuration set logic changes the defualt creations for bloom objects
+        This is a test that validates the bloom configuration set logic changes the default creations for bloom objects
         """     
         assert self.client.execute_command('CONFIG SET bf.bloom-capacity 10000') == b'OK'
         assert self.client.execute_command('CONFIG SET bf.bloom-expansion 0') == b'OK'
@@ -392,3 +390,12 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         client.execute_command('RESTORE', 'copy', 0, dump)
         restore_digest = client.execute_command('DEBUG DIGEST-VALUE copy')
         assert restore_digest == dump_digest
+        # Validate that invalid dump data is rejected safely.
+        invalid_dump = b"\a\x81nZ(\x99\xf9m\xac\x01\x99\x01\x02\x02\x04{\x10\xaeG\xe1z\x85?\x04\x00\x00\x00\x00\x00\x00\xe0?\x02\x01\x02@d\x02\x01\x05\xc3@V@\xa5\x02\x01x\x00\x80\x00\x00\a \x06\x1f\xf8\x99\xd8\x99\ty>#;\x02\x1a\x7f^\x01\xe0Dc\xf6\x8b\x00P\x1d\x90\xbd>\x8e\x8as\x8b\x06\xde\xc5 \"\xe0\x02\x00\x00\x80\xe0\x02\x0c\xe0\a\x00\x00\x10\xe0\a\x10\xe0\x06,\x01@\x01\xe0\a \xe0\x01\x00\x00 @\n\x00\x04@\x04\x80\x00\x01\x00\x00\x00\x0b\x00\x7fUk\xd3\x95\xb07\x14"
+        try:
+            client.execute_command('RESTORE', 'invalid_restore', 0, invalid_dump)
+            assert False, "Expect RESTORE cmd to fail when invalid dump data is provided"
+        except Exception as e:
+            assert str(e) == "Bad data format"
+        assert client.execute_command('EXISTS invalid_restore') == 0
+

@@ -5,6 +5,8 @@ from valkey import ResponseError
 import random
 import string
 import logging
+import subprocess
+import time
 
 class ValkeyBloomTestCaseBase(ValkeyTestCase):
 
@@ -13,11 +15,23 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
 
     @pytest.fixture(autouse=True)
     def setup_test(self, setup):
-        args = {"enable-debug-command":"yes", 'loadmodule': os.getenv('MODULE_PATH'),'bf.bloom-use-random-seed': self.use_random_seed}
-        server_path = f"{os.path.dirname(os.path.realpath(__file__))}/build/binaries/{os.environ['SERVER_VERSION']}/valkey-server"
-
-        self.server, self.client = self.create_server(testdir = self.testdir,  server_path=server_path, args=args)
-        logging.info("startup args are: %s", args)
+        use_external = os.environ.get("VALKEY_EXTERNAL_SERVER", "false").lower() == "true"
+        
+        if use_external:
+            # Use external server
+            external_host = os.environ.get("VALKEY_HOST", "localhost")
+            external_port = int(os.environ.get("VALKEY_PORT", "6379"))
+            self.server, self.client = self.create_server(
+                testdir=self.testdir,
+                bind_ip=external_host,
+                port=external_port,
+                external_server=True
+            )
+        else:
+            args = {"enable-debug-command":"yes", 'loadmodule': os.getenv('MODULE_PATH'),'bf.bloom-use-random-seed': self.use_random_seed}
+            server_path = f"{os.path.dirname(os.path.realpath(__file__))}/build/binaries/{os.environ['SERVER_VERSION']}/valkey-server"
+            self.server, self.client = self.create_server(testdir = self.testdir,  server_path=server_path, args=args)
+            logging.info("startup args are: %s", args)
 
     @pytest.fixture(autouse=True)
     def use_random_seed_fixture(self, bloom_config_parameterization):
@@ -262,3 +276,26 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
                 key, value = line.split(':', 1)
                 stats_dict[key.strip()] = value.strip()
         return stats_dict
+    
+    def restart_external_server(self, server, remove_rdb=True, remove_nodes_conf=True, connect_client=True):
+        """This method will be used to restart external servers """
+        if not server.external_mode:
+            return server.restart(remove_rdb, remove_nodes_conf, connect_client)
+                
+        result = subprocess.run([
+            "docker", "ps", "--format", "{{.Names}}", 
+            "--filter", f"publish={server.port}"
+        ], capture_output=True, text=True, check=True)
+        
+        container_names = result.stdout.strip().split("\n")
+        if container_names and container_names[0]:
+            container_name = container_names[0]
+            subprocess.run(["docker", "restart", container_name], check=True)
+            time.sleep(3)
+        else:
+            raise RuntimeError(f"No Docker container found using port {server.port}")
+        
+        if connect_client:
+            server.connect()
+        
+        return server.client

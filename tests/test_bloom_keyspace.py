@@ -42,7 +42,7 @@ class TestKeyEventNotifications(ValkeyBloomTestCaseBase):
                     messages.append(message)    
                 count = count + 1
             if timeout < time.time():
-                assert False, f"The number of expected messages failed tor eturn in time, messages received so far {messages}"
+                assert False, f"The number of expected messages failed to return in time, messages received so far {messages}"
         return messages
     
     def test_keyspace_bloom_commands(self):

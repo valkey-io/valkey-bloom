@@ -193,7 +193,7 @@ impl BloomObject {
             + (filters_vec_capacity * std::mem::size_of::<Box<BloomFilter>>())
     }
 
-    /// Caculates the number of bytes that the bloom object will require to be allocated.
+    /// Calculates the number of bytes that the bloom object will require to be allocated.
     /// This is used when scaling out a bloom object to check if the new
     /// size will be within the allowed size limit.
     /// Returns whether the bloom object is of a valid size or not.
@@ -202,7 +202,7 @@ impl BloomObject {
         BloomObject::validate_size(bytes)
     }
 
-    /// Caculates the number of bytes that the bloom object will require to be allocated.
+    /// Calculates the number of bytes that the bloom object will require to be allocated.
     /// This is used when creating a new bloom object to check if the size is within the allowed size limit.
     /// Returns whether the bloom object is of a valid size or not.
     fn validate_size_before_create(capacity: i64, fp_rate: f64) -> bool {
@@ -273,7 +273,7 @@ impl BloomObject {
         self.expansion
     }
 
-    /// Return the false postive rate of the bloom object.
+    /// Return the false positive rate of the bloom object.
     pub fn fp_rate(&self) -> f64 {
         self.fp_rate
     }
@@ -490,7 +490,7 @@ impl BloomObject {
     /// * `validate_scale_to` - the capacity we check to see if it can scale to. If this method is called from BF.INFO this is set as -1 as we
     ///   want to check the maximum size we could scale up till
     /// * `tightening_ratio` - The tightening ratio of the object
-    /// * `expansion` - The expanison rate of the object
+    /// * `expansion` - The expansion rate of the object
     ///
     /// # Returns
     /// * i64 - The maximum capacity that can be reached if called from BF.INFO. If called from BF.INSERT the size it reached when it became greater than `validate_scale_to`
@@ -645,12 +645,12 @@ impl BloomFilter {
         self.bloom.seed()
     }
 
-    /// Return the numer of items in the BloomFilter.
+    /// Return the number of items in the BloomFilter.
     pub fn num_items(&self) -> i64 {
         self.num_items
     }
 
-    /// Return the capcity of the BloomFilter - number of items that can be added to it.
+    /// Return the capacity of the BloomFilter - number of items that can be added to it.
     pub fn capacity(&self) -> i64 {
         self.capacity
     }
@@ -761,7 +761,7 @@ mod tests {
                 Ok(1) => {
                     if let Some(err) = expected_error {
                         panic!(
-                            "Expected error on the bloom object during during item add: {:?}",
+                            "Expected error on the bloom object during item add: {:?}",
                             err
                         );
                     }
@@ -1253,7 +1253,7 @@ mod tests {
 
     #[test]
     fn test_vec_capacity_matches_size_calculations() {
-        // This unit test is designed to make sure out calculations with capcity will always match the correct vec capacity
+        // This unit test is designed to make sure out calculations with capacity will always match the correct vec capacity
         let mut test_v = vec![0];
         for i in 0..5000 {
             let x = if i == 0 {

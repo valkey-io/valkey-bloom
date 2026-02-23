@@ -28,7 +28,7 @@ pub const BLOOM_TIGHTENING_RATIO_MAX: f64 = 1.0;
 
 pub const BLOOM_USE_RANDOM_SEED_DEFAULT: bool = true;
 
-pub const BLOOM_DEFRAG_DEAFULT: bool = true;
+pub const BLOOM_DEFRAG_DEFAULT: bool = true;
 
 // Max Memory usage allowed overall within a bloom object (128MB).
 // Beyond this threshold, a bloom object is classified as large.
@@ -43,7 +43,7 @@ lazy_static! {
     pub static ref BLOOM_MEMORY_LIMIT_PER_OBJECT: AtomicI64 =
         AtomicI64::new(BLOOM_MEMORY_LIMIT_PER_OBJECT_DEFAULT);
     pub static ref BLOOM_USE_RANDOM_SEED: AtomicBool = AtomicBool::default();
-    pub static ref BLOOM_DEFRAG: AtomicBool = AtomicBool::new(BLOOM_DEFRAG_DEAFULT);
+    pub static ref BLOOM_DEFRAG: AtomicBool = AtomicBool::new(BLOOM_DEFRAG_DEFAULT);
     pub static ref BLOOM_FP_RATE_F64: Mutex<f64> = Mutex::new(
         BLOOM_FP_RATE_DEFAULT
             .parse::<f64>()

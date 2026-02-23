@@ -19,7 +19,7 @@ class TestBloomACLCategory(ValkeyBloomTestCaseBase):
         client = self.server.get_new_client()
         # Get a list of all commands with the acl category bloom
         list_of_bloom_commands = client.execute_command("COMMAND LIST FILTERBY ACLCAT bloom")
-        # Create users with differnt acl permissions
+        # Create users with different acl permissions
         client.execute_command("ACL SETUSER nonbloomuser1 on >bloom_pass -@bloom")
         client.execute_command("ACL SETUSER nonbloomuser2 on >bloom_pass -@all")
         client.execute_command("ACL SETUSER bloomuser1 on >bloom_pass ~* &* +@all ")

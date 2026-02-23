@@ -1,6 +1,6 @@
 # valkey-bloom
 
-Valkey-Bloom (BSD-3-Clause) is a Rust based Valkey-Module which brings a Bloom Filter (Module) data type into Valkey and supports verions >= 8.0. With this, users can create bloom filters (space efficient probabilistic data structures) to add elements, check whether elements exists, auto scale their filters, customize bloom filter properties, perform RDB Save and load operations, etc.
+Valkey-Bloom (BSD-3-Clause) is a Rust based Valkey-Module which brings a Bloom Filter (Module) data type into Valkey and supports versions >= 8.0. With this, users can create bloom filters (space efficient probabilistic data structures) to add elements, check whether elements exists, auto scale their filters, customize bloom filter properties, perform RDB Save and load operations, etc.
 
 Valkey-Bloom is built using `bloomfilter::Bloom` (https://crates.io/crates/bloomfilter which has a BSD-2-Clause license).
 
@@ -37,12 +37,14 @@ valkey-server --loadmodule ./target/release/libvalkey_bloom.so
 # Builds the valkey-server (unstable) for integration testing.
 SERVER_VERSION=unstable
 ./build.sh
-# Same as above, but uses valkey-server (8.0.0) for integration testing.
-SERVER_VERSION=8.0.0
+# Same as above, but uses valkey-server (8.0) for integration testing.
+SERVER_VERSION=8.0
 ./build.sh
 # Build with asan, you may need to remove the old valkey binary if you have used ./build.sh before. You can do this by deleting the `.build` folder in the `tests` folder 
 ASAN_BUILD=true
 ./build.sh
+# Clean build artifacts
+./build.sh clean
 ```
 
 ## Load the Module
@@ -74,4 +76,4 @@ valkey-server --loadmodule /path/to/libvalkey_bloom.so
 cargo build --release --features valkey_8_0
 ```
 
-This can also be done by specifiyng SERVER_VERSION=8.0.0 and then running `./build.sh`
+This can also be done by specifying SERVER_VERSION=8.0 and then running `./build.sh`
