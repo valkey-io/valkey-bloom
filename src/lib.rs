@@ -14,7 +14,7 @@ use valkey_module::ModuleOptions;
 use valkey_module_macros::info_command_handler;
 
 pub const MODULE_NAME: &str = "bf";
-pub const MODULE_VERSION: i32 = 10000;
+pub const MODULE_VERSION: i32 = 10001;
 // The release stage is used in order to provide release status information.
 // In unstable branch the status is always "dev".
 // During release process the status will be set to rc1,rc2...rcN.

@@ -1,7 +1,7 @@
 [package]
 name = "valkey-bloom"
 authors = ["Karthik Subbarao"]
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 license = "BSD-3-Clause"
 repository = "https://github.com/valkey-io/valkey-bloom"
