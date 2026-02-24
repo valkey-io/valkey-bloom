@@ -22,7 +22,7 @@ pub fn must_obey_client(ctx: &Context) -> bool {
 
     #[cfg(feature = "valkey_8_0")]
     {
-        // On Valkey 8.0, fallback to checking for replicated flag in the GetContextFlags API as a best effort.
+        // On Valkey 8.0, fall back to checking for replicated flag in the GetContextFlags API as a best effort.
         ctx.get_flags()
             .contains(valkey_module::ContextFlags::REPLICATED)
     }

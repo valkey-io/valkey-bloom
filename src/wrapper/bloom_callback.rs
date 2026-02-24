@@ -187,7 +187,7 @@ fn external_vec_defrag(vec: Vec<u8>) -> Vec<u8> {
 /// contains a vec of BloomFilter structs. Each BloomFilter contains a Bloom structure implemented in an external Rust crate.
 /// Finally, each of these external Bloom structures contains a Vec (bit vector).
 ///
-/// The order of defragmention is as follows (1 to 3 is in a loop for the number of filters):
+/// The order of defragmentation is as follows (1 to 3 is in a loop for the number of filters):
 /// 1. BloomFilter structures within the top level BloomObject structure
 /// 2. External Bloom structures within each BloomFilter
 /// 3. Vec (Bit vector) within each external Bloom structure

@@ -57,7 +57,7 @@ impl ValkeyDataType for BloomObject {
     /// Callback to load and parse RDB data of a bloom item and create it.
     fn load_from_rdb(rdb: *mut raw::RedisModuleIO, encver: i32) -> Option<BloomObject> {
         if encver > BLOOM_TYPE_ENCODING_VERSION {
-            logging::log_warning(format!("{}: Cannot load bloomfltr data type of version {} because it is higher than the loaded module's bloomfltr supported version {}", MODULE_NAME, encver, BLOOM_TYPE_ENCODING_VERSION).as_str());
+            logging::log_warning(format!("{}: Cannot load bloomfltr data type of version {} because it is greater than the loaded module's bloomfltr supported version {}", MODULE_NAME, encver, BLOOM_TYPE_ENCODING_VERSION).as_str());
             return None;
         }
         let Ok(num_filters) = raw::load_unsigned(rdb) else {

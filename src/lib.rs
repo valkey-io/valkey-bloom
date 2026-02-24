@@ -10,10 +10,11 @@ pub mod wrapper;
 use crate::bloom::command_handler;
 use crate::bloom::data_type::BLOOM_TYPE;
 use crate::bloom::utils::valid_server_version;
+use valkey_module::ModuleOptions;
 use valkey_module_macros::info_command_handler;
 
 pub const MODULE_NAME: &str = "bf";
-pub const MODULE_VERSION: i32 = 10000;
+pub const MODULE_VERSION: i32 = 10001;
 // The release stage is used in order to provide release status information.
 // In unstable branch the status is always "dev".
 // During release process the status will be set to rc1,rc2...rcN.
@@ -21,6 +22,7 @@ pub const MODULE_VERSION: i32 = 10000;
 pub const MODULE_RELEASE_STAGE: &str = "ga";
 
 fn initialize(ctx: &Context, _args: &[ValkeyString]) -> Status {
+    ctx.set_module_options(ModuleOptions::HANDLE_IO_ERRORS);
     let ver = ctx
         .get_server_version()
         .expect("Unable to get server version!");
@@ -134,7 +136,7 @@ valkey_module! {
         ],
         bool: [
             ["bloom-use-random-seed", &*configs::BLOOM_USE_RANDOM_SEED, configs::BLOOM_USE_RANDOM_SEED_DEFAULT, ConfigurationFlags::DEFAULT, None],
-            ["bloom-defrag-enabled", &*configs::BLOOM_DEFRAG, configs::BLOOM_DEFRAG_DEAFULT,  ConfigurationFlags::DEFAULT, None],
+            ["bloom-defrag-enabled", &*configs::BLOOM_DEFRAG, configs::BLOOM_DEFRAG_DEFAULT,  ConfigurationFlags::DEFAULT, None],
         ],
         enum: [
         ],

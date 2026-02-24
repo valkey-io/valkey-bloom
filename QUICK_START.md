@@ -4,9 +4,9 @@ Follow these steps to set up, build, and run the Valkey server with the valkey-b
 
 ## Step 1: Install Valkey and valkey-bloom
 
-1. Build Valkey from source by following the instructions [here](https://github.com/valkey-io/valkey?tab=readme-ov-file#building-valkey-using-makefile). Make sure to use Valkey version 8.0 or above.
+1. Follow the [instructions to build Valkey from source](https://github.com/valkey-io/valkey?tab=readme-ov-file#building-valkey-using-makefile). Make sure to use Valkey version 8.0 or above.
 
-2. Build the valkey-bloom module from source by following the instructions [here](https://github.com/valkey-io/valkey-bloom/blob/unstable/README.md#build-instructions).
+2. Follow the [instructions to build the valkey-bloom module from source](https://github.com/valkey-io/valkey-bloom/blob/unstable/README.md#build-instructions).
 
 ## Step 2: Run the Valkey Server with valkey-bloom
 

@@ -10,10 +10,33 @@ class TestBloomReplication(ReplicationTestCase):
 
     @pytest.fixture(autouse=True)
     def setup_test(self, setup):
-        self.args = {"enable-debug-command":"yes", 'loadmodule': os.getenv('MODULE_PATH'),'bf.bloom-use-random-seed': self.use_random_seed}
-        server_path = f"{os.path.dirname(os.path.realpath(__file__))}/build/binaries/{os.environ['SERVER_VERSION']}/valkey-server"
-
-        self.server, self.client = self.create_server(testdir = self.testdir,  server_path=server_path, args=self.args)
+        use_external = os.environ.get("VALKEY_EXTERNAL_SERVER", "false").lower() == "true"
+        
+        if use_external:
+            master_host = os.environ.get("VALKEY_HOST", "localhost")
+            master_port = int(os.environ.get("VALKEY_PORT", "6379"))
+            self.server, self.client = self.create_server(
+                testdir=self.testdir,
+                bind_ip=master_host,
+                port=master_port,
+                external_server=True
+            )
+            
+            replica_host = os.environ.get("VALKEY_REPLICA_HOST", "localhost")
+            replica_port = int(os.environ.get("VALKEY_REPLICA_PORT", "6380"))
+            replica_server, replica_client = self.create_server(
+                testdir=self.testdir,
+                bind_ip=replica_host,
+                port=replica_port,
+                external_server=True
+            )
+            
+            self.replicas = [replica_server]
+            self.num_replicas = 1
+        else:
+            self.args = {"enable-debug-command":"yes", 'loadmodule': os.getenv('MODULE_PATH'),'bf.bloom-use-random-seed': self.use_random_seed}
+            server_path = f"{os.path.dirname(os.path.realpath(__file__))}/build/binaries/{os.environ['SERVER_VERSION']}/valkey-server"
+            self.server, self.client = self.create_server(testdir = self.testdir,  server_path=server_path, args=self.args)
 
     @pytest.fixture(autouse=True)
     def use_random_seed_fixture(self, bloom_config_parameterization):
@@ -41,7 +64,12 @@ class TestBloomReplication(ReplicationTestCase):
         assert replica_cmd_stats['cmdstat_BF.INSERT']["calls"] == replica_insert_count and replica_cmd_stats['cmdstat_BF.ADD']["calls"] == replica_add_count
 
     def test_replication_behavior(self):
-        self.setup_replication(num_replicas=1)
+        use_external = os.environ.get("VALKEY_EXTERNAL_SERVER", "false").lower() == "true"
+        if use_external:
+            self.wait_for_primary_link_up_all_replicas()
+        else:
+            self.setup_replication(num_replicas=1)
+
         # Test replication for write commands.
         bloom_write_cmds = [
             ('BF.ADD', 'BF.ADD key item', 'BF.ADD key item1', 1),
@@ -155,7 +183,12 @@ class TestBloomReplication(ReplicationTestCase):
             assert ('cmdstat_' + prefix) not in self.replicas[0].client.info("Commandstats")
 
     def test_deterministic_replication(self):
-        self.setup_replication(num_replicas=1)
+        use_external = os.environ.get("VALKEY_EXTERNAL_SERVER", "false").lower() == "true"
+        if use_external:
+            self.wait_for_primary_link_up_all_replicas()
+        else:
+            self.setup_replication(num_replicas=1)
+
         # Set non default global properties (config) on the primary node. Any bloom creation on the primary should be
         # replicated with the properties below.
         assert self.client.execute_command('CONFIG SET bf.bloom-capacity 1000') == b'OK'
