@@ -95,12 +95,20 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
             while obj_exceeds_size_err not in response:
                 item = f"new_item{new_item_idx}"
                 new_item_idx += 1
-                if "BF.ADD" in cmd:
-                    response = self.verify_error_response(self.client,f"{cmd} {item}", obj_exceeds_size_err)
-                else:
-                    response = str(client.execute_command(f"{cmd} {item}"))
-                if "1" in response:
-                    assert False, f"{cmd} returned a value of 1 when it should have thrown an {obj_exceeds_size_err}"
+                try:
+                    result = client.execute_command(f"{cmd} {item}")
+                    # Check if any item was actually added (value of 1).
+                    if isinstance(result, int):
+                        returned_one = result == 1
+                    elif isinstance(result, (list, tuple)):
+                        returned_one = any(element == 1 for element in result)
+                    else:
+                        returned_one = False
+                    if returned_one:
+                        assert False, f"{cmd} returned a value of 1 when it should have thrown an {obj_exceeds_size_err}"
+                    response = str(result)
+                except ResponseError as e:
+                    response = str(e)
             new_item_idx -= 1
 
     def test_large_allocation_when_below_maxmemory(self):

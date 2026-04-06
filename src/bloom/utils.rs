@@ -303,6 +303,55 @@ impl BloomObject {
         &mut self.filters
     }
 
+    /// Check whether the bloom object can accommodate `count` new item additions without hitting
+    /// errors that are not gated by validate_size_limit (i.e., errors that would also fire on
+    /// replicas and cause them to crash). Specifically:
+    /// - NonScalingFilterFull: nonscaling filter has no room
+    /// - MaxNumScalingFilters: too many sub-filters
+    /// - FalsePositiveReachesZero / BadCapacity: scale-out arithmetic failures
+    ///
+    /// ExceedsMaxBloomSize is intentionally NOT checked here because it is already gated by
+    /// validate_size_limit and skipped on replicas.
+    pub fn validate_add_items(&self, count: i64) -> Result<(), BloomError> {
+        if count == 0 {
+            return Ok(());
+        }
+        let last_filter = match self.filters.last() {
+            Some(f) => f,
+            None => return Ok(()),
+        };
+        let remaining_in_current = last_filter.capacity - last_filter.num_items;
+        if remaining_in_current >= count {
+            // All new items fit in the current filter.
+            return Ok(());
+        }
+        // Some items will need scale-out.
+        if self.expansion == 0 {
+            return Err(BloomError::NonScalingFilterFull);
+        }
+        // For scaling filters, simulate the scale-out chain to verify we won't hit
+        // MaxNumScalingFilters or arithmetic errors.
+        let mut items_remaining = count - remaining_in_current;
+        let mut num_filters = self.filters.len() as i32;
+        let mut prev_capacity = last_filter.capacity;
+        while items_remaining > 0 {
+            if num_filters == configs::BLOOM_NUM_FILTERS_PER_OBJECT_LIMIT_MAX {
+                return Err(BloomError::MaxNumScalingFilters);
+            }
+            let _new_fp_rate =
+                Self::calculate_fp_rate(self.fp_rate, num_filters, self.tightening_ratio)?;
+            let new_capacity = match prev_capacity.checked_mul(self.expansion.into()) {
+                Some(c) if c > 0 => c,
+                _ => return Err(BloomError::BadCapacity),
+            };
+            let consumed = std::cmp::min(items_remaining, new_capacity);
+            items_remaining -= consumed;
+            prev_capacity = new_capacity;
+            num_filters += 1;
+        }
+        Ok(())
+    }
+
     /// Add an item to the BloomObject structure.
     /// If scaling is enabled, this can result in a new sub filter creation.
     pub fn add_item(&mut self, item: &[u8], validate_size_limit: bool) -> Result<i64, BloomError> {

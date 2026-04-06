@@ -88,20 +88,24 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
     def validate_nonscaling_failure(self, client, filter_name, item_prefix, new_item_idx):
         """
             Validate that the "non scaling filter is full" is returned from all item adding cmds.
+            BF.ADD returns a top-level error. BF.MADD and BF.INSERT also return a top-level error
+            because the command is rejected atomically before any items are added.
         """
         non_scaling_filter_full_err = "non scaling filter is full"
         new_item = f"{item_prefix}{new_item_idx}"
         try:
             client.execute_command(f'BF.ADD {filter_name} {new_item}')
-        except Exception as e:
+            assert False, "BF.ADD should have raised an error"
+        except ResponseError as e:
             assert non_scaling_filter_full_err in str(e)
         existing_item = f"{item_prefix}{new_item_idx - 1}"
         multi_add_cmds = [f'BF.MADD {filter_name} {existing_item} {new_item} {new_item}', f'BF.INSERT {filter_name} ITEMS {existing_item} {new_item} {new_item}']
         for cmd in multi_add_cmds:
-            response = client.execute_command(cmd)
-            assert len(response) == 2 # We expect commands to stop at the first error.
-            assert response[0] == 0
-            assert non_scaling_filter_full_err == str(response[1])
+            try:
+                client.execute_command(cmd)
+                assert False, f"{cmd} should have raised an error"
+            except ResponseError as e:
+                assert non_scaling_filter_full_err in str(e)
 
     def add_items_till_nonscaling_failure(self, client, filter_name, starting_item_idx, rand_prefix):
         """

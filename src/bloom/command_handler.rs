@@ -13,6 +13,11 @@ use valkey_module::{Context, ValkeyError, ValkeyResult, ValkeyString, ValkeyValu
 /// Helper function used to add items to a bloom object. It handles both multi item and single item add operations.
 /// It is used by any command that allows adding of items: BF.ADD, BF.MADD, and BF.INSERT.
 /// Returns the result of the item add operation on success as a ValkeyValue and a ValkeyError on failure.
+///
+/// For multi-item operations, the function validates upfront that all new items can be added
+/// without error (e.g. NonScalingFilterFull). If validation fails, the entire command is rejected
+/// before any items are added. This ensures atomicity and prevents partial-success replication
+/// that would cause replicas to crash.
 fn handle_bloom_add(
     args: &[ValkeyString],
     argc: usize,
@@ -24,6 +29,24 @@ fn handle_bloom_add(
 ) -> Result<ValkeyValue, ValkeyError> {
     match multi {
         true => {
+            // Count how many unique items are genuinely new (not already in the filter).
+            // Duplicates within the same command are only counted once since the first
+            // occurrence will be added and subsequent ones will return 0 (already exists).
+            let mut new_item_count: i64 = 0;
+            let mut seen: std::collections::HashSet<&[u8]> =
+                std::collections::HashSet::with_capacity(argc - item_idx);
+            for arg in args.iter().take(argc).skip(item_idx) {
+                let item = arg.as_slice();
+                if seen.insert(item) && !bf.item_exists(item) {
+                    new_item_count += 1;
+                }
+            }
+            // Validate that all new items can be added without error.
+            // If this fails, the entire command is rejected — no partial adds.
+            if let Err(err) = bf.validate_add_items(new_item_count) {
+                return Err(ValkeyError::Str(err.as_str()));
+            }
+            // All items are guaranteed to succeed. Add them.
             let mut result = Vec::with_capacity(argc - item_idx);
             let mut curr_cmd_idx = item_idx;
             while curr_cmd_idx < argc {
@@ -36,8 +59,8 @@ fn handle_bloom_add(
                         result.push(ValkeyValue::Integer(add_result));
                     }
                     Err(err) => {
-                        result.push(ValkeyValue::StaticError(err.as_str()));
-                        break;
+                        // This should not happen after validation, but handle defensively.
+                        return Err(ValkeyError::Str(err.as_str()));
                     }
                 };
                 curr_cmd_idx += 1;
@@ -71,7 +94,9 @@ struct ReplicateArgs<'a> {
 /// There are two main cases for replication:
 /// - RESERVE operation: This is any bloom object creation which will be replicated with the exact properties of the
 ///   primary node using BF.INSERT.
-/// - ADD operation: This is the case where only items were added to a bloom object. Here, the command is replicated verbatim.
+/// - ADD operation: This is the case where only items were added to a bloom object. Here, the command is replicated
+///   using only the items that were successfully added. This avoids replicating items that triggered errors
+///   (e.g. NonScalingFilterFull), which would cause the replica to generate error replies to its primary.
 ///
 /// With this, replication becomes deterministic.
 /// For keyspace events, we publish an event for both the RESERVE and ADD scenarios depending on if either or both of the

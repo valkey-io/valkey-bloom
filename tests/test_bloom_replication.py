@@ -192,20 +192,14 @@ class TestBloomReplication(ReplicationTestCase):
             items.append(item)
         return items
 
-    @pytest.mark.xfail(reason="BF.MADD partial-success replication causes replica to send error reply to primary")
     def test_madd_nonscaling_filter_full_replication(self):
         """
-        Reproduce the replica panic from BUG.md.
+        Verify that BF.MADD on a nearly-full nonscaling filter rejects the
+        entire command when any item would overflow, rather than partially
+        succeeding and replicating a command that crashes the replica.
 
-        When BF.MADD partially succeeds on a nearly-full nonscaling filter
-        (some items added, then "non scaling filter is full"), the command is
-        replicated verbatim. On the replica the already-added items are
-        skipped but the overflow item hits the same error, causing the replica
-        to call VM_ReplyWithError back to its primary.
-
-        Setting propagation-error-behavior to "panic" on the replica makes
-        the server crash (as it would in production) when this happens.
-        Once the module is fixed the replica must stay alive.
+        The command must fail atomically on the primary — no items added,
+        no replication, replica stays healthy.
         """
         use_external = os.environ.get("VALKEY_EXTERNAL_SERVER", "false").lower() == "true"
         if use_external:
@@ -216,8 +210,6 @@ class TestBloomReplication(ReplicationTestCase):
         capacity = 10
         key = "bf_nonscaling"
 
-        # Enable the panic-on-error behaviour so the replica crashes exactly
-        # like the BUG.md stack trace instead of silently swallowing the error.
         self.replicas[0].client.execute_command(
             "CONFIG SET propagation-error-behavior panic"
         )
@@ -235,32 +227,30 @@ class TestBloomReplication(ReplicationTestCase):
         self.waitForReplicaToSyncUp(self.replicas[0])
         assert self.client.execute_command(f"BF.INFO {key} ITEMS") == capacity - 1
 
-        # Pick two genuinely new items (no false positives).
         last_item, overflow_item = self._find_new_items(key, 2, start_offset=idx + 1000)
 
-        # Partial success: first item fills the last slot, second overflows.
-        result = self.client.execute_command(f"BF.MADD {key} {last_item} {overflow_item}")
-        assert result[0] == 1, f"Expected first item to be added, got {result[0]}"
-        assert "non scaling filter is full" in str(result[1])
+        # BF.MADD with two new items but only 1 slot left.
+        # The entire command must be rejected — no partial success.
+        try:
+            self.client.execute_command(f"BF.MADD {key} {last_item} {overflow_item}")
+            assert False, "BF.MADD should have failed entirely"
+        except ResponseError as e:
+            assert "non scaling filter is full" in str(e)
 
-        # The replica must survive replication of the partial-success command.
-        # Today this fails: the replica crashes because it sends an error reply
-        # to its primary, which violates the replication protocol.
+        # No items should have been added on the primary.
+        assert self.client.execute_command(f"BF.INFO {key} ITEMS") == capacity - 1
+        assert self.client.execute_command(f"BF.EXISTS {key} {last_item}") == 0
+
+        # Replica must be alive and consistent.
         self.waitForReplicaToSyncUp(self.replicas[0])
         assert self.replicas[0].client.ping()
+        assert self.replicas[0].client.execute_command(f"BF.INFO {key} ITEMS") == capacity - 1
 
-        # Data should be consistent: the successfully added item must exist.
-        assert self.replicas[0].client.execute_command(f"BF.EXISTS {key} {last_item}") == 1
-        assert self.client.execute_command(f"BF.INFO {key} ITEMS") == capacity
-        assert self.replicas[0].client.execute_command(f"BF.INFO {key} ITEMS") == capacity
-
-    @pytest.mark.xfail(reason="BF.INSERT partial-success replication causes replica to send error reply to primary")
     def test_insert_nonscaling_filter_full_replication(self):
         """
         Same scenario as test_madd_nonscaling_filter_full_replication but
-        triggered via BF.INSERT.  BF.INSERT with ITEMS uses the same
-        handle_bloom_add(multi=true) code path, so it has the identical
-        partial-success replication bug.
+        triggered via BF.INSERT. The entire command must be rejected
+        atomically when any item would overflow a nonscaling filter.
         """
         use_external = os.environ.get("VALKEY_EXTERNAL_SERVER", "false").lower() == "true"
         if use_external:
@@ -289,15 +279,19 @@ class TestBloomReplication(ReplicationTestCase):
 
         last_item, overflow_item = self._find_new_items(key, 2, start_offset=idx + 1000)
 
-        result = self.client.execute_command(
-            f"BF.INSERT {key} NOCREATE ITEMS {last_item} {overflow_item}"
-        )
-        assert result[0] == 1, f"Expected first item to be added, got {result[0]}"
+        try:
+            self.client.execute_command(
+                f"BF.INSERT {key} NOCREATE ITEMS {last_item} {overflow_item}"
+            )
+            assert False, "BF.INSERT should have failed entirely"
+        except ResponseError as e:
+            assert "non scaling filter is full" in str(e)
+
+        assert self.client.execute_command(f"BF.INFO {key} ITEMS") == capacity - 1
 
         self.waitForReplicaToSyncUp(self.replicas[0])
         assert self.replicas[0].client.ping()
-
-        assert self.replicas[0].client.execute_command(f"BF.EXISTS {key} {last_item}") == 1
+        assert self.replicas[0].client.execute_command(f"BF.INFO {key} ITEMS") == capacity - 1
 
     def test_deterministic_replication(self):
         use_external = os.environ.get("VALKEY_EXTERNAL_SERVER", "false").lower() == "true"
