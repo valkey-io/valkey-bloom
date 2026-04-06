@@ -32,8 +32,9 @@ class TestBloomDefrag(ValkeyBloomTestCaseBase):
         # Insert data
         for index, scale in enumerate(scale_names):
             self.client.execute_command(f'bf.reserve {scale} 0.001 {initial_capacity} EXPANSION 2')
+            # Use the key name as item prefix so each filter gets a unique digest
             # The new_add_operation_idx means all numbers from 1 to it should all return 1 when called with bf.exists
-            _, new_add_operation_idx = self.add_items_till_capacity(self.client, scale, 100,  1, "")
+            _, new_add_operation_idx = self.add_items_till_capacity(self.client, scale, 100,  1, f"{scale}_")
             # We delete every other object so only need to keep the ones with a odd index
             if index % 2 == 1:
                 num_items_inserted_per_object.append(new_add_operation_idx)
@@ -41,6 +42,9 @@ class TestBloomDefrag(ValkeyBloomTestCaseBase):
         # Delete every other item to create fragmentation
         for scale in scale_names[::2]:
             self.client.execute_command(f'DEL {scale}')
+
+        remaining_keys = scale_names[1::2]
+        digests_before_defrag = {scale: self.client.execute_command(f'DEBUG DIGEST-VALUE {scale}') for scale in remaining_keys}
         # Add a wait due to lazy delete where if we call info to early we wont get the correct memory info
         time.sleep(5)
 
@@ -64,6 +68,8 @@ class TestBloomDefrag(ValkeyBloomTestCaseBase):
         assert float(memory_info_after_defrag.get('allocator_frag_ratio', 0)) < float(memory_info_non_defragged.get('allocator_frag_ratio', 0))
         # Check that items we added still exist in the respective bloom objects
         self.check_values_present(scale_names, num_items_inserted_per_object)
+        digests_after_defrag = {scale: self.client.execute_command(f'DEBUG DIGEST-VALUE {scale}') for scale in remaining_keys}
+        assert digests_before_defrag == digests_after_defrag, "Digest mismatch after defrag"
         info_results = self.client.info("bf")
         assert info_results['bf_bloom_defrag_hits'] + info_results['bf_bloom_defrag_misses'] > 0
         self.client.execute_command('BGSAVE')
@@ -88,17 +94,19 @@ class TestBloomDefrag(ValkeyBloomTestCaseBase):
         assert  final_defrag_hits > initial_defrag_hits or final_defrag_misses > initial_defrag_misses, "No defragmentation occurred after RDB load"
         # Check that items we added still exist in the respective bloom objects
         self.check_values_present(scale_names, num_items_inserted_per_object)
+        digests_after_rdb_load = {scale: self.client.execute_command(f'DEBUG DIGEST-VALUE {scale}') for scale in remaining_keys}
+        assert digests_before_defrag == digests_after_rdb_load, "Digest mismatch after RDB load and defrag"
         info_results = self.client.info("bf")
         assert info_results['bf_bloom_defrag_hits'] + info_results['bf_bloom_defrag_misses'] > 0
  
     def check_values_present(self, scale_names, num_items_inserted_per_object):
         for index, scale in enumerate(scale_names[1::2]):
-            # Create a list of numbers of 1 to number of items inserted into the current bloomfilter
+            # Create a list of items using the same prefix used during insertion
             num_items = num_items_inserted_per_object[index]
-            items = list(range(1, num_items + 1))
+            items = [f'{scale}_{i}' for i in range(1, num_items + 1)]
             
-            # Perform a mexists for all the numbers 1 to num_items
-            command = f'bf.mexists {scale} ' + ' '.join(map(str, items))
+            # Perform a mexists for all the items
+            command = f'bf.mexists {scale} ' + ' '.join(items)
             results = self.client.execute_command(command)
             # All items should be present so we compare with an array of length num items where all items are 1
             expected_results = [1] * num_items
