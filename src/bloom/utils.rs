@@ -304,61 +304,53 @@ impl BloomObject {
     }
 
     /// Check whether the bloom object can accommodate `count` new item additions without hitting
-    /// errors that are not gated by validate_size_limit (i.e., errors that would also fire on
-    /// replicas and cause them to crash). Specifically:
-    /// - NonScalingFilterFull: nonscaling filter has no room
-    /// - MaxNumScalingFilters: too many sub-filters
-    /// - FalsePositiveReachesZero / BadCapacity: scale-out arithmetic failures
+    /// errors that would also fire on replicas and cause them to crash (e.g., NonScalingFilterFull,
+    /// exceeding memory limits, false positive degradation, or capacity overflow).
     ///
-    /// ExceedsMaxBloomSize is intentionally NOT checked here because it is already gated by
-    /// validate_size_limit and skipped on replicas.
+    /// This reuses `calculate_max_scaled_capacity` to simulate scale-out with memory usage checks.
     pub fn validate_add_items(&self, count: i64) -> Result<(), BloomError> {
         if count == 0 {
             return Ok(());
         }
-        let last_filter = match self.filters.last() {
-            Some(f) => f,
-            None => return Ok(()),
-        };
-        let remaining_in_current = last_filter.capacity - last_filter.num_items;
-        if remaining_in_current >= count {
-            // All new items fit in the current filter.
+        let remaining = self.capacity() - self.cardinality();
+        if remaining >= count {
             return Ok(());
         }
-        // Some items will need scale-out.
         if self.expansion == 0 {
             return Err(BloomError::NonScalingFilterFull);
         }
-        // For scaling filters, simulate the scale-out chain to verify we won't hit
-        // MaxNumScalingFilters or arithmetic errors.
-        let mut items_remaining = count - remaining_in_current;
-        let mut num_filters = self.filters.len() as i32;
-        let mut prev_capacity = last_filter.capacity;
-        while items_remaining > 0 {
-            if num_filters == configs::BLOOM_NUM_FILTERS_PER_OBJECT_LIMIT_MAX {
-                return Err(BloomError::MaxNumScalingFilters);
-            }
-            let _new_fp_rate =
-                Self::calculate_fp_rate(self.fp_rate, num_filters, self.tightening_ratio)?;
-            let new_capacity = match prev_capacity.checked_mul(self.expansion.into()) {
-                Some(c) if c > 0 => c,
-                _ => return Err(BloomError::BadCapacity),
-            };
-            let consumed = std::cmp::min(items_remaining, new_capacity);
-            items_remaining -= consumed;
-            prev_capacity = new_capacity;
-            num_filters += 1;
-        }
+        let needed_total = self.cardinality() + count;
+        Self::calculate_max_scaled_capacity(
+            self.starting_capacity(),
+            self.fp_rate,
+            needed_total,
+            self.tightening_ratio,
+            self.expansion,
+        )
+        .map_err(|e| match e {
+            BloomError::ValidateScaleToExceedsMaxSize => BloomError::ExceedsMaxBloomSize,
+            BloomError::ValidateScaleToFalsePositiveInvalid => BloomError::FalsePositiveReachesZero,
+            other => other,
+        })?;
         Ok(())
     }
 
     /// Add an item to the BloomObject structure.
     /// If scaling is enabled, this can result in a new sub filter creation.
     pub fn add_item(&mut self, item: &[u8], validate_size_limit: bool) -> Result<i64, BloomError> {
-        // Check if item exists already.
         if self.item_exists(item) {
             return Ok(0);
         }
+        self.add_item_unchecked(item, validate_size_limit)
+    }
+
+    /// Add an item without checking if it already exists. The caller must ensure the item is new.
+    /// If scaling is enabled, this can result in a new sub filter creation.
+    pub fn add_item_unchecked(
+        &mut self,
+        item: &[u8],
+        validate_size_limit: bool,
+    ) -> Result<i64, BloomError> {
         let num_filters = self.filters.len() as i32;
         if let Some(filter) = self.filters.last_mut() {
             if filter.num_items < filter.capacity {
