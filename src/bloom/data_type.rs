@@ -77,6 +77,11 @@ impl ValkeyDataType for BloomObject {
             return None;
         };
         let is_seed_random = is_seed_random_u64 == 1;
+        // Validate num_filters to prevent crashes from corrupt RDB data
+        if num_filters == 0 {
+            logging::log_warning("Failed to restore bloom object: num_filters must be at least 1");
+            return None;
+        }
         // We start off with capacity as 1 to match the same expansion of the vector that would have occurred during bloom
         // object creation and scaling as a result of BF.* operations.
         let mut filters = Vec::with_capacity(1);
@@ -86,6 +91,11 @@ impl ValkeyDataType for BloomObject {
             let Ok(capacity) = raw::load_unsigned(rdb) else {
                 return None;
             };
+            // Validate capacity to prevent crashes from corrupt RDB data
+            if capacity == 0 {
+                logging::log_warning("Failed to restore bloom object: capacity must be at least 1");
+                return None;
+            }
             let new_fp_rate = match Self::calculate_fp_rate(fp_rate, i as i32, tightening_ratio) {
                 Ok(rate) => rate,
                 Err(_) => {
@@ -115,6 +125,13 @@ impl ValkeyDataType for BloomObject {
             } else {
                 capacity
             };
+            // Validate num_items to prevent crashes from corrupt RDB data
+            if num_items > capacity {
+                logging::log_warning(
+                    "Failed to restore bloom object: num_items cannot exceed capacity",
+                );
+                return None;
+            }
             let Ok(bitmap) = raw::load_string_buffer(rdb) else {
                 return None;
             };
