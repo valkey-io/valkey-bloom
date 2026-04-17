@@ -182,6 +182,117 @@ class TestBloomReplication(ReplicationTestCase):
             assert primary_cmd_stats["failed_calls"] == 1
             assert ('cmdstat_' + prefix) not in self.replicas[0].client.info("Commandstats")
 
+    def _find_new_items(self, key, count, start_offset=1000):
+        """Find items that don't false-positive on the given bloom filter."""
+        items = []
+        for i in range(count):
+            item = f"newitem_{start_offset + i}"
+            while self.client.execute_command(f"BF.EXISTS {key} {item}") == 1:
+                item = item + "x"
+            items.append(item)
+        return items
+
+    def test_madd_nonscaling_filter_full_replication(self):
+        """
+        Verify that BF.MADD on a nearly-full nonscaling filter rejects the
+        entire command when any item would overflow, rather than partially
+        succeeding and replicating a command that crashes the replica.
+
+        The command must fail atomically on the primary — no items added,
+        no replication, replica stays healthy.
+        """
+        use_external = os.environ.get("VALKEY_EXTERNAL_SERVER", "false").lower() == "true"
+        if use_external:
+            self.wait_for_primary_link_up_all_replicas()
+        else:
+            self.setup_replication(num_replicas=1)
+
+        capacity = 10
+        key = "bf_nonscaling"
+
+        self.replicas[0].client.execute_command(
+            "CONFIG SET propagation-error-behavior panic"
+        )
+
+        # Create nonscaling filter and fill to capacity - 1.
+        self.client.execute_command(f"BF.RESERVE {key} 0.01 {capacity} NONSCALING")
+        self.waitForReplicaToSyncUp(self.replicas[0])
+
+        idx = 0
+        added = 0
+        while added < capacity - 1:
+            if self.client.execute_command(f"BF.ADD {key} fillitem{idx}") == 1:
+                added += 1
+            idx += 1
+        self.waitForReplicaToSyncUp(self.replicas[0])
+        assert self.client.execute_command(f"BF.INFO {key} ITEMS") == capacity - 1
+
+        last_item, overflow_item = self._find_new_items(key, 2, start_offset=idx + 1000)
+
+        # BF.MADD with two new items but only 1 slot left.
+        # The entire command must be rejected — no partial success.
+        try:
+            self.client.execute_command(f"BF.MADD {key} {last_item} {overflow_item}")
+            assert False, "BF.MADD should have failed entirely"
+        except ResponseError as e:
+            assert "non scaling filter is full" in str(e)
+
+        # No items should have been added on the primary.
+        assert self.client.execute_command(f"BF.INFO {key} ITEMS") == capacity - 1
+        assert self.client.execute_command(f"BF.EXISTS {key} {last_item}") == 0
+
+        # Replica must be alive and consistent.
+        self.waitForReplicaToSyncUp(self.replicas[0])
+        assert self.replicas[0].client.ping()
+        assert self.replicas[0].client.execute_command(f"BF.INFO {key} ITEMS") == capacity - 1
+
+    def test_insert_nonscaling_filter_full_replication(self):
+        """
+        Same scenario as test_madd_nonscaling_filter_full_replication but
+        triggered via BF.INSERT. The entire command must be rejected
+        atomically when any item would overflow a nonscaling filter.
+        """
+        use_external = os.environ.get("VALKEY_EXTERNAL_SERVER", "false").lower() == "true"
+        if use_external:
+            self.wait_for_primary_link_up_all_replicas()
+        else:
+            self.setup_replication(num_replicas=1)
+
+        capacity = 10
+        key = "bf_insert_nonscaling"
+
+        self.replicas[0].client.execute_command(
+            "CONFIG SET propagation-error-behavior panic"
+        )
+
+        self.client.execute_command(f"BF.RESERVE {key} 0.01 {capacity} NONSCALING")
+        self.waitForReplicaToSyncUp(self.replicas[0])
+
+        idx = 0
+        added = 0
+        while added < capacity - 1:
+            if self.client.execute_command(f"BF.ADD {key} fitem{idx}") == 1:
+                added += 1
+            idx += 1
+        self.waitForReplicaToSyncUp(self.replicas[0])
+        assert self.client.execute_command(f"BF.INFO {key} ITEMS") == capacity - 1
+
+        last_item, overflow_item = self._find_new_items(key, 2, start_offset=idx + 1000)
+
+        try:
+            self.client.execute_command(
+                f"BF.INSERT {key} NOCREATE ITEMS {last_item} {overflow_item}"
+            )
+            assert False, "BF.INSERT should have failed entirely"
+        except ResponseError as e:
+            assert "non scaling filter is full" in str(e)
+
+        assert self.client.execute_command(f"BF.INFO {key} ITEMS") == capacity - 1
+
+        self.waitForReplicaToSyncUp(self.replicas[0])
+        assert self.replicas[0].client.ping()
+        assert self.replicas[0].client.execute_command(f"BF.INFO {key} ITEMS") == capacity - 1
+
     def test_deterministic_replication(self):
         use_external = os.environ.get("VALKEY_EXTERNAL_SERVER", "false").lower() == "true"
         if use_external:
