@@ -472,15 +472,17 @@ impl BloomObject {
                         if values.4.is_empty() {
                             return Err(BloomError::DecodeBloomFilterFailed);
                         }
-                        // Add individual bloom filter metrics.
+                        // Validate capacity and num_items to prevent crashes
                         for filter in &values.4 {
-                            // Validate capacity and num_items to prevent crashes
                             if filter.capacity <= 0 {
                                 return Err(BloomError::BadCapacity);
                             }
                             if filter.num_items > filter.capacity {
                                 return Err(BloomError::DecodeBloomFilterFailed);
                             }
+                        }
+                        // Add individual bloom filter metrics.
+                        for filter in &values.4 {
                             metrics::BLOOM_NUM_ITEMS_ACROSS_OBJECTS.fetch_add(
                                 filter.num_items as u64,
                                 std::sync::atomic::Ordering::Relaxed,
