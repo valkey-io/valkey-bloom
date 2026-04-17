@@ -1,6 +1,9 @@
 use crate::bloom::utils::BloomFilter;
 use crate::bloom::utils::BloomObject;
 use crate::configs;
+use crate::configs::{
+    BLOOM_FP_RATE_MAX, BLOOM_FP_RATE_MIN, BLOOM_TIGHTENING_RATIO_MAX, BLOOM_TIGHTENING_RATIO_MIN,
+};
 use crate::wrapper::bloom_callback;
 use crate::MODULE_NAME;
 use std::os::raw::c_int;
@@ -69,10 +72,21 @@ impl ValkeyDataType for BloomObject {
         let Ok(fp_rate) = raw::load_double(rdb) else {
             return None;
         };
-
+        if !(fp_rate > BLOOM_FP_RATE_MIN && fp_rate < BLOOM_FP_RATE_MAX) {
+            logging::log_warning(
+                "Failed to restore bloom object: false positive rate out of range",
+            );
+            return None;
+        }
         let Ok(tightening_ratio) = raw::load_double(rdb) else {
             return None;
         };
+        if !(tightening_ratio > BLOOM_TIGHTENING_RATIO_MIN
+            && tightening_ratio < BLOOM_TIGHTENING_RATIO_MAX)
+        {
+            logging::log_warning("Failed to restore bloom object: tightening ratio out of range");
+            return None;
+        }
         let Ok(is_seed_random_u64) = raw::load_unsigned(rdb) else {
             return None;
         };
