@@ -167,15 +167,15 @@ lazy_static! {
 fn external_vec_defrag(vec: Vec<u8>) -> Vec<u8> {
     let defrag = Defrag::new(core::ptr::null_mut());
     let len = vec.len();
-    let capacity = vec.capacity();
+    // into_boxed_slice will remove any excess capacity which means we need to recreate the Vec with the correct capacity of len
     let vec_ptr = Box::into_raw(vec.into_boxed_slice()) as *mut c_void;
     let defragged_filters_ptr = unsafe { defrag.alloc(vec_ptr) };
     if !defragged_filters_ptr.is_null() {
         metrics::BLOOM_DEFRAG_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        unsafe { Vec::from_raw_parts(defragged_filters_ptr as *mut u8, len, capacity) }
+        unsafe { Vec::from_raw_parts(defragged_filters_ptr as *mut u8, len, len) }
     } else {
         metrics::BLOOM_DEFRAG_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        unsafe { Vec::from_raw_parts(vec_ptr as *mut u8, len, capacity) }
+        unsafe { Vec::from_raw_parts(vec_ptr as *mut u8, len, len) }
     }
 }
 
@@ -229,7 +229,6 @@ pub unsafe extern "C" fn bloom_defrag(
     let bloom_object: &mut BloomObject = &mut *(*value).cast::<BloomObject>();
 
     let num_filters = bloom_object.num_filters();
-    let filters_capacity = bloom_object.filters().capacity();
 
     // While we are within a timeframe decided from should_stop_defrag and not over the number of filters defrag the next filter
     while !defrag.should_stop_defrag() && cursor < num_filters as u64 {
@@ -293,6 +292,7 @@ pub unsafe extern "C" fn bloom_defrag(
     }
     // Defragment the Vec of BloomFilter/s itself
     let filters_vec = mem::take(bloom_object.filters_mut());
+    // into_boxed_slice will remove any excess capacity which means we need to recreate the Vec with the correct capacity of len
     let filters_ptr = Box::into_raw(filters_vec.into_boxed_slice()) as *mut c_void;
     let defragged_filters_ptr = defrag.alloc(filters_ptr);
     if !defragged_filters_ptr.is_null() {
@@ -301,16 +301,16 @@ pub unsafe extern "C" fn bloom_defrag(
             Vec::from_raw_parts(
                 defragged_filters_ptr as *mut Box<BloomFilter>,
                 num_filters,
-                filters_capacity,
+                num_filters,
             )
         };
     } else {
-        metrics::BLOOM_DEFRAG_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        metrics::BLOOM_DEFRAG_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         *bloom_object.filters_mut() = unsafe {
             Vec::from_raw_parts(
                 filters_ptr as *mut Box<BloomFilter>,
                 num_filters,
-                filters_capacity,
+                num_filters,
             )
         };
     }
