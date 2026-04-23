@@ -481,14 +481,6 @@ impl BloomObject {
                                 return Err(BloomError::DecodeBloomFilterFailed);
                             }
                         }
-                        // Add individual bloom filter metrics.
-                        for filter in &values.4 {
-                            metrics::BLOOM_NUM_ITEMS_ACROSS_OBJECTS.fetch_add(
-                                filter.num_items as u64,
-                                std::sync::atomic::Ordering::Relaxed,
-                            );
-                            filter.bloom_filter_incr_metrics_on_new_create();
-                        }
                         // Expansion ratio can range from 0 to BLOOM_EXPANSION_MAX as we internally set this to 0
                         // in case of non scaling filters.
                         if !(0..=BLOOM_EXPANSION_MAX).contains(&values.0) {
@@ -506,6 +498,14 @@ impl BloomObject {
                             >= configs::BLOOM_NUM_FILTERS_PER_OBJECT_LIMIT_MAX as usize
                         {
                             return Err(BloomError::MaxNumScalingFilters);
+                        }
+                        // Add individual bloom filter metrics.
+                        for filter in &values.4 {
+                            metrics::BLOOM_NUM_ITEMS_ACROSS_OBJECTS.fetch_add(
+                                filter.num_items as u64,
+                                std::sync::atomic::Ordering::Relaxed,
+                            );
+                            filter.bloom_filter_incr_metrics_on_new_create();
                         }
                         values
                     }
