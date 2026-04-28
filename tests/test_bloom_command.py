@@ -24,7 +24,7 @@ class TestBloomCommand(ValkeyBloomTestCaseBase):
             command_info = self.client.execute_command('COMMAND', 'INFO', command)
             spec = command_info.get(command)
             assert spec is not None, f"No command info returned for {command}"
-            key_specs = spec.get('key_specs')
+            key_specs = spec.get('key_specifications')
             assert key_specs, f"Key specs missing for {command}"
             assert len(key_specs) >= 1, f"Expected at least one key spec for {command}"
 
