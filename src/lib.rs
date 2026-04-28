@@ -22,6 +22,26 @@ pub const MODULE_VERSION: i32 = 999999;
 // When the version is released the status will be "ga".
 pub const MODULE_RELEASE_STAGE: &str = "dev";
 
+fn set_command_acl_categories(ctx: &Context) {
+    use std::ffi::CString;
+    let commands_acl: &[(&str, &str)] = &[
+        ("BF.ADD", "fast write bloom"),
+        ("BF.MADD", "fast write bloom"),
+        ("BF.EXISTS", "fast read bloom"),
+        ("BF.MEXISTS", "fast read bloom"),
+        ("BF.CARD", "fast read bloom"),
+        ("BF.RESERVE", "fast write bloom"),
+        ("BF.INFO", "fast read bloom"),
+        ("BF.INSERT", "fast write bloom"),
+        ("BF.LOAD", "write bloom"),
+    ];
+    for (cmd_name, acl_cats) in commands_acl {
+        let cmd_cstring = CString::new(*cmd_name).expect("valid CString");
+        let acl_cstring = CString::new(*acl_cats).expect("valid CString");
+        ctx.set_acl_category(cmd_cstring.as_ptr(), acl_cstring.as_ptr());
+    }
+}
+
 fn initialize(ctx: &Context, _args: &[ValkeyString]) -> Status {
     ctx.set_module_options(ModuleOptions::HANDLE_IO_ERRORS);
     let ver = ctx
@@ -37,6 +57,7 @@ fn initialize(ctx: &Context, _args: &[ValkeyString]) -> Status {
         );
         Status::Err
     } else {
+        set_command_acl_categories(ctx);
         Status::Ok
     }
 }
