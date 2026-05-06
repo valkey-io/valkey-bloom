@@ -19,8 +19,6 @@ class TestCuckooACLCategory(ValkeyBloomTestCaseBase):
             'CF.INSERT',
             'CF.INSERTNX',
             'CF.RESERVE',
-            'CF.SCANDUMP',
-            'CF.LOADCHUNK',
         ]
 
         # Check each command's ACL categories
@@ -70,9 +68,9 @@ class TestCuckooACLCategory(ValkeyBloomTestCaseBase):
         """Test that commands are properly categorized as read or write"""
         client = self.server.get_new_client()
 
-        read_commands = ['CF.EXISTS', 'CF.MEXISTS', 'CF.COUNT', 'CF.INFO', 'CF.SCANDUMP']
+        read_commands = ['CF.EXISTS', 'CF.MEXISTS', 'CF.COUNT', 'CF.INFO']
         write_commands = ['CF.ADD', 'CF.ADDNX', 'CF.DEL', 'CF.INSERT',
-                         'CF.INSERTNX', 'CF.RESERVE', 'CF.LOADCHUNK']
+                         'CF.INSERTNX', 'CF.RESERVE', 'CF.LOAD']
 
         # Create filter for testing
         client.execute_command('CF.RESERVE testfilter 100')
@@ -86,15 +84,10 @@ class TestCuckooACLCategory(ValkeyBloomTestCaseBase):
         """Test that potentially dangerous commands are properly marked"""
         client = self.server.get_new_client()
 
-        # CF.LOADCHUNK could be considered dangerous as it loads external data
-        # It should be in appropriate ACL categories for security
-
+        # CF.LOAD loads external data and should be in appropriate ACL categories
         try:
-            result = client.execute_command('COMMAND INFO CF.LOADCHUNK')
+            result = client.execute_command('COMMAND INFO CF.LOAD')
             if result and len(result) > 0:
-                command_info = result[0]
-                # Check that it's marked appropriately
-                # Exact assertion depends on security categorization
                 assert result is not None
         except:
             pass

@@ -16,7 +16,6 @@ lazy_static! {
     pub static ref CUCKOO_OBJECT_TOTAL_MEMORY_BYTES: AtomicUsize = AtomicUsize::new(0);
     pub static ref CUCKOO_NUM_FILTERS_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
     pub static ref CUCKOO_NUM_ITEMS_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
-    pub static ref CUCKOO_NUM_DELETES_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
     pub static ref CUCKOO_CAPACITY_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
     pub static ref CUCKOO_DEFRAG_HITS: AtomicU64 = AtomicU64::new(0);
     pub static ref CUCKOO_DEFRAG_MISSES: AtomicU64 = AtomicU64::new(0);
@@ -91,12 +90,6 @@ pub fn cuckoo_info_handler(ctx: &InfoContext) -> ValkeyResult<()> {
         .field(
             "cuckoo_num_items_across_objects",
             CUCKOO_NUM_ITEMS_ACROSS_OBJECTS
-                .load(Ordering::Relaxed)
-                .to_string(),
-        )?
-        .field(
-            "cuckoo_num_deletes_across_objects",
-            CUCKOO_NUM_DELETES_ACROSS_OBJECTS
                 .load(Ordering::Relaxed)
                 .to_string(),
         )?

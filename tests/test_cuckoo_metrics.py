@@ -17,7 +17,6 @@ class TestCuckooMetrics(ValkeyBloomTestCaseBase):
             'cuckoo_total_memory_bytes',
             'cuckoo_num_filters_across_objects',
             'cuckoo_num_items_across_objects',
-            'cuckoo_num_deletes_across_objects',
             'cuckoo_capacity_across_objects',
         ]
 

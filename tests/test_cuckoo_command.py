@@ -224,36 +224,16 @@ class TestCuckooCommand(ValkeyBloomTestCaseBase):
         with pytest.raises(ResponseError):
             client.execute_command('CF.INFO')
 
-    def test_cf_scandump_loadchunk_commands(self):
-        """Test CF.SCANDUMP and CF.LOADCHUNK commands"""
+    def test_cf_load_command(self):
+        """Test CF.LOAD command (used for AOF rewrite and persistence)"""
         client = self.server.get_new_client()
 
-        # Create filter and add items
-        assert client.execute_command('CF.RESERVE source 100') == b'OK'
-        for i in range(10):
-            client.execute_command(f'CF.ADD source item{i}')
-
-        # Dump the filter
-        chunks = []
-        iter_val = 0
-        while True:
-            result = client.execute_command(f'CF.SCANDUMP source {iter_val}')
-            assert len(result) == 2
-            iter_val = result[0]
-            data = result[1]
-
-            if iter_val == 0:
-                break
-
-            chunks.append((iter_val, data))
-
-        # Load into new filter
-        for iter_val, data in chunks:
-            client.execute_command('CF.LOADCHUNK dest', iter_val, data)
-
-        # Verify items exist in destination
-        for i in range(10):
-            assert client.execute_command(f'CF.EXISTS dest item{i}') == 1
+        # CF.LOAD requires serialized data from AOF rewrite; basic arity check
+        import pytest
+        with pytest.raises(Exception):
+            client.execute_command('CF.LOAD')
+        with pytest.raises(Exception):
+            client.execute_command('CF.LOAD key data extra')
 
     def test_argument_validation(self):
         """Test that commands properly validate arguments"""

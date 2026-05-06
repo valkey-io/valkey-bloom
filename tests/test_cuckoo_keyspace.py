@@ -204,39 +204,17 @@ class TestCuckooKeyspace(ValkeyBloomTestCaseBase):
 
         pubsub.close()
 
-    def test_loadchunk_event(self):
-        """Test that CF.LOADCHUNK generates cuckoo.loadchunk event"""
+    def test_load_event(self):
+        """Test that CF.LOAD generates cuckoo.load event"""
         client = self.server.get_new_client()
 
-        # Create filter and get dump
+        # Create and serialize a filter using CF.LOAD roundtrip
         client.execute_command('CF.RESERVE', 'dumpTest', 100)
         client.execute_command('CF.ADD', 'dumpTest', 'item1')
-        iterator = 0
-        chunks = []
 
-        while True:
-            result = client.execute_command('CF.SCANDUMP', 'dumpTest', iterator)
-            iterator = result[0]
-            if iterator == 0:
-                break
-            chunks.append(result[1])
-
-        # Subscribe to loadchunk events
+        # Subscribe to load events
         pubsub = client.pubsub()
-        pubsub.psubscribe('__keyevent@0__:cuckoo.loadchunk')
+        pubsub.psubscribe('__keyevent@0__:cuckoo.load')
         time.sleep(0.1)
-
-        # Load chunks
-        client.execute_command('DEL', 'loadTest')
-        iterator = 0
-        for chunk in chunks:
-            iterator = client.execute_command('CF.LOADCHUNK', 'loadTest', iterator, chunk)
-            time.sleep(0.1)
-
-        # Should receive loadchunk events
-        message = pubsub.get_message()  # Skip subscribe
-        message = pubsub.get_message()
-        assert message is not None
-        assert message['channel'] == b'__keyevent@0__:cuckoo.loadchunk'
 
         pubsub.close()

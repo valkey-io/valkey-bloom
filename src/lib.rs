@@ -146,16 +146,6 @@ fn cuckoo_info_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     cuckoo_handler::cuckoo_filter_info(ctx, args)
 }
 
-/// Command handler for CF.SCANDUMP <key> <iterator>
-fn cuckoo_scandump_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
-    cuckoo_handler::cuckoo_filter_scandump(ctx, args)
-}
-
-/// Command handler for CF.LOADCHUNK <key> <iterator> <data>
-fn cuckoo_loadchunk_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
-    cuckoo_handler::cuckoo_filter_loadchunk(ctx, args)
-}
-
 /// Command handler for CF.LOAD <key> <data>
 fn cuckoo_load_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     cuckoo_handler::cuckoo_filter_load(ctx, args)
@@ -209,8 +199,6 @@ valkey_module! {
         ["CF.INSERT", cuckoo_insert_command, "write fast deny-oom", 1, 1, 1, "fast write cuckoo"],
         ["CF.INSERTNX", cuckoo_insertnx_command, "write fast deny-oom", 1, 1, 1, "fast write cuckoo"],
         ["CF.RESERVE", cuckoo_reserve_command, "write fast deny-oom", 1, 1, 1, "fast write cuckoo"],
-        ["CF.SCANDUMP", cuckoo_scandump_command, "readonly", 1, 1, 1, "read cuckoo"],
-        ["CF.LOADCHUNK", cuckoo_loadchunk_command, "write deny-oom", 1, 1, 1, "write cuckoo"],
         ["CF.LOAD", cuckoo_load_command, "write deny-oom", 1, 1, 1, "write cuckoo"]
     ],
     configurations: [

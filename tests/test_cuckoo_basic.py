@@ -21,7 +21,7 @@ class TestCuckooBasic(ValkeyBloomTestCaseBase):
         command_cmd_result = client.execute_command('COMMAND')
         cf_cmds = ["CF.ADD", "CF.EXISTS", "CF.DEL", "CF.COUNT", "CF.MEXISTS",
                    "CF.INFO", "CF.RESERVE", "CF.INSERT", "CF.ADDNX", "CF.INSERTNX",
-                   "CF.SCANDUMP", "CF.LOADCHUNK"]
+                   "CF.LOAD"]
         assert all(item in command_cmd_result for item in cf_cmds)
 
         # Basic cuckoo filter create, item add and item exists validation.

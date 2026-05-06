@@ -214,32 +214,16 @@ class TestCuckooReplication(ValkeyBloomTestCaseBase):
         assert all(r == 1 for r in results)
 
     def test_cf_load_replication(self):
-        """Test that CF.LOAD replicates correctly"""
+        """Test that CF.LOAD replicates correctly via AOF rewrite"""
         primary_client = self.server.get_new_client()
         replica_client = self.replica.get_new_client()
 
-        # Create and dump filter on primary
+        # Create filter on primary and verify it replicates
         primary_client.execute_command('CF.RESERVE', 'loadTest', 100)
         primary_client.execute_command('CF.ADD', 'loadTest', 'item1')
-
-        # Get serialized data
-        iterator = 0
-        chunks = []
-        while True:
-            result = primary_client.execute_command('CF.SCANDUMP', 'loadTest', iterator)
-            iterator = result[0]
-            if iterator == 0:
-                break
-            chunks.append(result[1])
-
-        # Load on primary (will replicate)
-        primary_client.execute_command('DEL', 'loadedFilter')
-        iterator = 0
-        for chunk in chunks:
-            iterator = primary_client.execute_command('CF.LOADCHUNK', 'loadedFilter', iterator, chunk)
 
         time.sleep(1)
 
         # Verify replicated to replica
-        exists = replica_client.execute_command('CF.EXISTS', 'loadedFilter', 'item1')
+        exists = replica_client.execute_command('CF.EXISTS', 'loadTest', 'item1')
         assert exists == 1

@@ -1,15 +1,15 @@
-use crate::cuckoo::utils::{CuckooFilter, CuckooObject};
+use crate::cuckoo::utils::{
+    CuckooFilter, CuckooObject, CUCKOO_NUM_FILTERS_PER_OBJECT_LIMIT_MAX,
+    CUCKOO_OBJECT_VERSION, MAX_BUCKET_SIZE, MIN_BUCKET_SIZE,
+};
 use crate::wrapper::cuckoo_callback;
+use crate::configs;
 use crate::MODULE_NAME;
 use std::collections::HashMap;
 use std::os::raw::c_int;
 use valkey_module::digest::Digest;
 use valkey_module::native_types::ValkeyType;
 use valkey_module::{logging, raw, ValkeyError, ValkeyResult};
-
-/// Used for decoding and encoding `CuckooObject`. Currently used in AOF Rewrite.
-/// This value must be increased when `CuckooObject` struct changes.
-pub const CUCKOO_OBJECT_VERSION: u8 = 1;
 
 /// Cuckoo Module data type RDB encoding version.
 const CUCKOO_TYPE_ENCODING_VERSION: i32 = 1;
@@ -77,15 +77,29 @@ impl ValkeyDataType for CuckooObject {
         let Ok(num_filters) = raw::load_unsigned(rdb) else {
             return None;
         };
+        if num_filters == 0 || num_filters > CUCKOO_NUM_FILTERS_PER_OBJECT_LIMIT_MAX as u64 {
+            logging::log_warning("Cannot load cuckoo object: invalid num_filters.");
+            return None;
+        }
         let Ok(expansion) = raw::load_unsigned(rdb) else {
             return None;
         };
         let Ok(bucket_size) = raw::load_unsigned(rdb) else {
             return None;
         };
+        if (bucket_size as usize) < MIN_BUCKET_SIZE || (bucket_size as usize) > MAX_BUCKET_SIZE {
+            logging::log_warning("Cannot load cuckoo object: invalid bucket_size.");
+            return None;
+        }
         let Ok(max_kicks) = raw::load_unsigned(rdb) else {
             return None;
         };
+        if max_kicks < configs::CUCKOO_MAX_KICKS_MIN as u64
+            || max_kicks > configs::CUCKOO_MAX_KICKS_MAX as u64
+        {
+            logging::log_warning("Cannot load cuckoo object: invalid max_kicks.");
+            return None;
+        }
 
         // We start off with capacity as 1 to match the same expansion of the vector that would have occurred during cuckoo
         // object creation and scaling as a result of CF.* operations.
@@ -98,11 +112,19 @@ impl ValkeyDataType for CuckooObject {
             let Ok(capacity) = raw::load_unsigned(rdb) else {
                 return None;
             };
+            if capacity == 0 || capacity > configs::CUCKOO_CAPACITY_MAX as u64 {
+                logging::log_warning("Cannot load cuckoo object: invalid filter capacity.");
+                return None;
+            }
 
             // Read filter num_items
             let Ok(num_items) = raw::load_unsigned(rdb) else {
                 return None;
             };
+            if num_items > capacity {
+                logging::log_warning("Cannot load cuckoo object: num_items exceeds capacity.");
+                return None;
+            }
 
             // Read serialized data length
             let Ok(serialized_data_len) = raw::load_unsigned(rdb) else {
@@ -136,9 +158,6 @@ impl ValkeyDataType for CuckooObject {
                 let Ok(key) = raw::load_string_buffer(rdb) else {
                     return None;
                 };
-
-                // Validate key length matches
-                // Note: RedisBuffer doesn't expose len() directly, we use the loaded length value
 
                 // Read count
                 let Ok(count) = raw::load_unsigned(rdb) else {

@@ -171,9 +171,10 @@ pub unsafe extern "C" fn cuckoo_defrag(
         return 1;
     }
 
-    // Defragment the Vec of CuckooFilter/s itself
+    // Defragment the Vec of CuckooFilter/s itself.
+    // into_boxed_slice() shrinks capacity to len, so we use filters_len for both len and capacity.
     let filters_vec = mem::take(cuckoo_object.filters_mut());
-    let filters_capacity = filters_vec.capacity();
+    let filters_len = filters_vec.len();
     let filters_ptr = Box::into_raw(filters_vec.into_boxed_slice()) as *mut c_void;
     let defragged_filters_ptr = defrag.alloc(filters_ptr);
 
@@ -182,8 +183,8 @@ pub unsafe extern "C" fn cuckoo_defrag(
         *cuckoo_object.filters_mut() = unsafe {
             Vec::from_raw_parts(
                 defragged_filters_ptr as *mut Box<crate::cuckoo::utils::CuckooFilter>,
-                num_filters as usize,
-                filters_capacity,
+                filters_len,
+                filters_len,
             )
         };
     } else {
@@ -191,8 +192,8 @@ pub unsafe extern "C" fn cuckoo_defrag(
         *cuckoo_object.filters_mut() = unsafe {
             Vec::from_raw_parts(
                 filters_ptr as *mut Box<crate::cuckoo::utils::CuckooFilter>,
-                num_filters as usize,
-                filters_capacity,
+                filters_len,
+                filters_len,
             )
         };
     }
