@@ -4,8 +4,8 @@ use valkey_module::{
     ValkeyString,
 };
 pub mod bloom;
-pub mod cuckoo;
 pub mod configs;
+pub mod cuckoo;
 pub mod metrics;
 pub mod wrapper;
 use crate::bloom::command_handler;

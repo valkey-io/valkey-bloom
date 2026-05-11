@@ -1,5 +1,6 @@
 use crate::configs;
 use cuckoofilter::CuckooFilter as ExternalCuckooFilter;
+use cuckoofilter::ExportedCuckooFilter;
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
@@ -121,7 +122,7 @@ impl CuckooObject {
         if capacity <= 0 {
             return Err(CuckooError::BadCapacity);
         }
-        if bucket_size < MIN_BUCKET_SIZE || bucket_size > MAX_BUCKET_SIZE {
+        if !(MIN_BUCKET_SIZE..=MAX_BUCKET_SIZE).contains(&bucket_size) {
             return Err(CuckooError::BadBucketSize);
         }
         if validate_size_limit && !CuckooObject::validate_size_before_create(capacity, bucket_size)
@@ -181,27 +182,21 @@ impl CuckooObject {
     }
 
     /// Add an item to the CuckooObject, with auto-scaling if enabled
-    pub fn add_item(
-        &mut self,
-        item: &[u8],
-        validate_size_limit: bool,
-    ) -> Result<i64, CuckooError> {
+    pub fn add_item(&mut self, item: &[u8], validate_size_limit: bool) -> Result<i64, CuckooError> {
         let num_filters = self.filters.len() as i32;
         if let Some(filter) = self.filters.last_mut() {
             match filter.add(item) {
                 Ok(true) => {
                     use crate::metrics;
                     metrics::CUCKOO_NUM_ITEMS_ACROSS_OBJECTS.fetch_add(1, Ordering::Relaxed);
-                    return Ok(1);
+                    Ok(1)
                 }
-                Ok(false) => {
-                    return Ok(1);
-                }
+                Ok(false) => Ok(1), // duplicate: occurrence_map updated, fingerprint unchanged
                 Err(CuckooError::FilterFull) => {
                     if self.expansion == 0 {
                         return Err(CuckooError::NonScalingFilterFull);
                     }
-                    if num_filters >= CUCKOO_NUM_FILTERS_PER_OBJECT_LIMIT_MAX {
+                    if num_filters == CUCKOO_NUM_FILTERS_PER_OBJECT_LIMIT_MAX {
                         return Err(CuckooError::MaxNumScalingFilters);
                     }
 
@@ -217,8 +212,11 @@ impl CuckooObject {
                     }
 
                     let memory_usage_before = self.cuckoo_object_memory_usage();
-                    let mut new_filter =
-                        Box::new(CuckooFilter::new(new_capacity, self.bucket_size, self.max_kicks));
+                    let mut new_filter = Box::new(CuckooFilter::new(
+                        new_capacity,
+                        self.bucket_size,
+                        self.max_kicks,
+                    ));
 
                     match new_filter.add(item) {
                         Ok(_) => {
@@ -230,7 +228,8 @@ impl CuckooObject {
                                 memory_usage_after - memory_usage_before,
                                 Ordering::Relaxed,
                             );
-                            metrics::CUCKOO_NUM_ITEMS_ACROSS_OBJECTS.fetch_add(1, Ordering::Relaxed);
+                            metrics::CUCKOO_NUM_ITEMS_ACROSS_OBJECTS
+                                .fetch_add(1, Ordering::Relaxed);
                             Ok(1)
                         }
                         Err(e) => Err(e),
@@ -381,10 +380,8 @@ impl CuckooObject {
                     Ok(values) => {
                         use crate::metrics;
                         for filter in &values.3 {
-                            metrics::CUCKOO_NUM_ITEMS_ACROSS_OBJECTS.fetch_add(
-                                filter.num_items as u64,
-                                Ordering::Relaxed,
-                            );
+                            metrics::CUCKOO_NUM_ITEMS_ACROSS_OBJECTS
+                                .fetch_add(filter.num_items as u64, Ordering::Relaxed);
                             filter.cuckoo_filter_incr_metrics_on_new_create();
                         }
 
@@ -402,12 +399,16 @@ impl CuckooObject {
                     }
                 };
 
-                let item = CuckooObject {
+                let mut item = CuckooObject {
                     expansion,
                     bucket_size,
                     max_kicks,
                     filters,
                 };
+                // The filter field is skipped during deserialization; rebuild it from occurrence_map.
+                for filter in item.filters.iter_mut() {
+                    filter.rebuild_filter_from_occurrence_map();
+                }
 
                 item.cuckoo_object_incr_metrics_on_new_create();
 
@@ -425,18 +426,14 @@ impl CuckooObject {
     fn cuckoo_object_incr_metrics_on_new_create(&self) {
         use crate::metrics;
         metrics::CUCKOO_NUM_OBJECTS.fetch_add(1, Ordering::Relaxed);
-        metrics::CUCKOO_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
-            self.cuckoo_object_memory_usage(),
-            Ordering::Relaxed,
-        );
+        metrics::CUCKOO_OBJECT_TOTAL_MEMORY_BYTES
+            .fetch_add(self.cuckoo_object_memory_usage(), Ordering::Relaxed);
     }
 
     fn cuckoo_object_decr_metrics_on_drop(&self) {
         use crate::metrics;
-        metrics::CUCKOO_OBJECT_TOTAL_MEMORY_BYTES.fetch_sub(
-            self.cuckoo_object_memory_usage(),
-            Ordering::Relaxed,
-        );
+        metrics::CUCKOO_OBJECT_TOTAL_MEMORY_BYTES
+            .fetch_sub(self.cuckoo_object_memory_usage(), Ordering::Relaxed);
         metrics::CUCKOO_NUM_OBJECTS.fetch_sub(1, Ordering::Relaxed);
     }
 }
@@ -456,7 +453,6 @@ pub struct CuckooFilter {
     capacity: i64,
     num_items: i64,
     bucket_size: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
     serialized_data: Option<Vec<u8>>,
 }
 
@@ -484,12 +480,25 @@ impl CuckooFilter {
         occurrence_map: HashMap<Vec<u8>, u32>,
         serialized_data: Vec<u8>,
     ) -> CuckooFilter {
-        let mut filter = ExternalCuckooFilter::with_capacity(capacity as usize);
-
-        // Rebuild the filter by re-adding each unique item from the occurrence_map
-        for key in occurrence_map.keys() {
-            let _ = filter.add(key.as_slice());
-        }
+        // Try to restore the exact filter state from serialized bucket data.
+        // Format: [values_len: 8 bytes LE][filter_len: 8 bytes LE][values...]
+        let filter = if serialized_data.len() >= 16 {
+            let values_len =
+                u64::from_le_bytes(serialized_data[0..8].try_into().unwrap_or([0; 8])) as usize;
+            let filter_length =
+                u64::from_le_bytes(serialized_data[8..16].try_into().unwrap_or([0; 8])) as usize;
+            if serialized_data.len() == 16 + values_len {
+                let values = serialized_data[16..].to_vec();
+                ExternalCuckooFilter::from(ExportedCuckooFilter {
+                    values,
+                    length: filter_length,
+                })
+            } else {
+                Self::rebuild_filter_from_map(capacity as usize, &occurrence_map)
+            }
+        } else {
+            Self::rebuild_filter_from_map(capacity as usize, &occurrence_map)
+        };
 
         let cf = CuckooFilter {
             filter,
@@ -504,11 +513,28 @@ impl CuckooFilter {
         cf
     }
 
+    fn rebuild_filter_from_map(
+        capacity: usize,
+        occurrence_map: &HashMap<Vec<u8>, u32>,
+    ) -> ExternalCuckooFilter<DefaultHasher> {
+        let mut filter = ExternalCuckooFilter::with_capacity(capacity);
+        for key in occurrence_map.keys() {
+            let _ = filter.add(key.as_slice());
+        }
+        filter
+    }
+
     /// Returns Ok(true) if added as a new item, Ok(false) if it already existed
     pub fn add(&mut self, item: &[u8]) -> Result<bool, CuckooError> {
         if self.filter.contains(item) {
             *self.occurrence_map.entry(item.to_vec()).or_insert(0) += 1;
             return Ok(false);
+        }
+
+        // Scale at user-specified capacity to prevent the underlying cuckoo filter
+        // from reaching its physical limit where it drops existing fingerprints.
+        if self.num_items >= self.capacity {
+            return Err(CuckooError::FilterFull);
         }
 
         if self.filter.add(item).is_ok() {
@@ -526,17 +552,16 @@ impl CuckooFilter {
 
     /// Returns Ok(true) if deleted, Ok(false) if not found
     pub fn delete(&mut self, item: &[u8]) -> Result<bool, CuckooError> {
-        if self.filter.delete(item) {
-            self.num_items -= 1;
-
-            if let Some(count) = self.occurrence_map.get_mut(item) {
-                if *count > 1 {
-                    *count -= 1;
-                } else {
-                    self.occurrence_map.remove(item);
+        if let Some(count) = self.occurrence_map.get_mut(item) {
+            if *count > 1 {
+                *count -= 1;
+                // Fingerprint stays in filter; only the occurrence count decrements
+            } else {
+                self.occurrence_map.remove(item);
+                if self.filter.delete(item) {
+                    self.num_items -= 1;
                 }
             }
-
             Ok(true)
         } else {
             Ok(false)
@@ -561,14 +586,22 @@ impl CuckooFilter {
     }
 
     pub fn create_copy_from(from: &CuckooFilter) -> CuckooFilter {
+        let mut filter = ExternalCuckooFilter::with_capacity(from.capacity as usize);
+        for key in from.occurrence_map.keys() {
+            let _ = filter.add(key.as_slice());
+        }
         CuckooFilter {
-            filter: ExternalCuckooFilter::with_capacity(from.capacity as usize),
+            filter,
             occurrence_map: from.occurrence_map.clone(),
             capacity: from.capacity,
             num_items: from.num_items,
             bucket_size: from.bucket_size,
             serialized_data: from.serialized_data.clone(),
         }
+    }
+
+    pub fn rebuild_filter_from_occurrence_map(&mut self) {
+        self.filter = Self::rebuild_filter_from_map(self.capacity as usize, &self.occurrence_map);
     }
 
     pub fn capacity(&self) -> i64 {
@@ -588,11 +621,14 @@ impl CuckooFilter {
     }
 
     pub fn get_serialized_data(&self) -> Vec<u8> {
-        if let Some(ref data) = self.serialized_data {
-            data.clone()
-        } else {
-            Vec::new()
-        }
+        // Export the current filter bucket state so RDB restore is exact.
+        // Format: [values_len: 8 bytes LE][filter_len: 8 bytes LE][values...]
+        let exported = self.filter.export();
+        let mut bytes = Vec::with_capacity(16 + exported.values.len());
+        bytes.extend_from_slice(&(exported.values.len() as u64).to_le_bytes());
+        bytes.extend_from_slice(&(exported.length as u64).to_le_bytes());
+        bytes.extend_from_slice(&exported.values);
+        bytes
     }
 
     fn cuckoo_filter_incr_metrics_on_new_create(&self) {
@@ -600,8 +636,7 @@ impl CuckooFilter {
         metrics::CUCKOO_NUM_FILTERS_ACROSS_OBJECTS.fetch_add(1, Ordering::Relaxed);
         metrics::CUCKOO_OBJECT_TOTAL_MEMORY_BYTES
             .fetch_add(self.number_of_bytes(), Ordering::Relaxed);
-        metrics::CUCKOO_CAPACITY_ACROSS_OBJECTS
-            .fetch_add(self.capacity as u64, Ordering::Relaxed);
+        metrics::CUCKOO_CAPACITY_ACROSS_OBJECTS.fetch_add(self.capacity as u64, Ordering::Relaxed);
     }
 }
 
@@ -613,8 +648,7 @@ impl Drop for CuckooFilter {
             .fetch_sub(self.number_of_bytes(), Ordering::Relaxed);
         metrics::CUCKOO_NUM_ITEMS_ACROSS_OBJECTS
             .fetch_sub(self.num_items as u64, Ordering::Relaxed);
-        metrics::CUCKOO_CAPACITY_ACROSS_OBJECTS
-            .fetch_sub(self.capacity as u64, Ordering::Relaxed);
+        metrics::CUCKOO_CAPACITY_ACROSS_OBJECTS.fetch_sub(self.capacity as u64, Ordering::Relaxed);
     }
 }
 
@@ -630,18 +664,26 @@ mod tests {
         let mut cf = CuckooFilter::new(1000, DEFAULT_BUCKET_SIZE, DEFAULT_MAX_KICKS);
 
         let item = b"test_item";
-        assert_eq!(cf.add(item).unwrap(), true);
+        assert!(cf.add(item).unwrap());
         assert_eq!(cf.num_items(), 1);
 
         assert!(cf.contains(item));
 
-        assert_eq!(cf.add(item).unwrap(), false);
+        // Duplicate: occurrence_map incremented, no new fingerprint (returns false)
+        assert!(!cf.add(item).unwrap());
+        assert_eq!(cf.num_items(), 1); // fingerprint count unchanged
 
-        assert_eq!(cf.delete(item).unwrap(), true);
+        // First delete: occurrence_map 2→1, fingerprint stays
+        assert!(cf.delete(item).unwrap());
+        assert_eq!(cf.num_items(), 1);
+        assert!(cf.contains(item));
+
+        // Second delete: last occurrence, fingerprint removed
+        assert!(cf.delete(item).unwrap());
         assert_eq!(cf.num_items(), 0);
         assert!(!cf.contains(item));
 
-        assert_eq!(cf.delete(item).unwrap(), false);
+        assert!(!cf.delete(item).unwrap());
     }
 
     #[test]
@@ -656,8 +698,16 @@ mod tests {
         assert_eq!(co.num_items(), 1);
         assert!(co.item_exists(item));
 
-        assert_eq!(co.add_item(item, false).unwrap(), 0);
+        // Duplicate add: returns 1, fingerprint count unchanged
+        assert_eq!(co.add_item(item, false).unwrap(), 1);
+        assert_eq!(co.num_items(), 1);
 
+        // First delete: occurrence_map 2→1, item still exists
+        assert_eq!(co.delete_item(item).unwrap(), 1);
+        assert_eq!(co.num_items(), 1);
+        assert!(co.item_exists(item));
+
+        // Second delete: last occurrence removed, fingerprint gone
         assert_eq!(co.delete_item(item).unwrap(), 1);
         assert_eq!(co.num_items(), 0);
         assert!(!co.item_exists(item));
@@ -665,9 +715,8 @@ mod tests {
 
     #[test]
     fn test_cuckoo_object_capacity_and_memory() {
-        let co =
-            CuckooObject::new_reserved(1000, DEFAULT_BUCKET_SIZE, DEFAULT_MAX_KICKS, 2, false)
-                .unwrap();
+        let co = CuckooObject::new_reserved(1000, DEFAULT_BUCKET_SIZE, DEFAULT_MAX_KICKS, 2, false)
+            .unwrap();
 
         assert_eq!(co.capacity(), 1000);
         assert_eq!(co.num_filters(), 1);
@@ -714,7 +763,8 @@ mod tests {
 
     #[test]
     fn test_bad_capacity() {
-        let result = CuckooObject::new_reserved(0, DEFAULT_BUCKET_SIZE, DEFAULT_MAX_KICKS, 0, false);
+        let result =
+            CuckooObject::new_reserved(0, DEFAULT_BUCKET_SIZE, DEFAULT_MAX_KICKS, 0, false);
         assert_eq!(result.err(), Some(CuckooError::BadCapacity));
 
         let result =

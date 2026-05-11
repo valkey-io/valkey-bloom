@@ -1,7 +1,7 @@
+use crate::configs;
 use crate::cuckoo;
 use crate::cuckoo::data_type::ValkeyDataType;
 use crate::cuckoo::utils::CuckooObject;
-use crate::configs;
 use crate::metrics;
 use std::ffi::CString;
 use std::mem;
@@ -159,7 +159,9 @@ pub unsafe extern "C" fn cuckoo_defrag(
         };
 
         // Reinsert the defragmented filter and increment the cursor
-        cuckoo_object.filters_mut().insert(cursor as usize, _defragged_filter);
+        cuckoo_object
+            .filters_mut()
+            .insert(cursor as usize, _defragged_filter);
         cursor += 1;
     }
 

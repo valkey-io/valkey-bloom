@@ -1,39 +1,39 @@
+use crate::configs;
 use crate::cuckoo::data_type::CUCKOO_TYPE;
 use crate::cuckoo::utils::{
-    CuckooObject, ADD_EVENT, BAD_CAPACITY, BAD_BUCKET_SIZE, BAD_EXPANSION,
-    BAD_MAX_ITERATIONS, BUCKET_SIZE_ARG_REQUIRED, CAPACITY_ARG_REQUIRED,
-    CAPACITY_MUST_BE_LARGER_THAN_ZERO, CAPACITY_OUT_OF_RANGE, BUCKET_SIZE_OUT_OF_RANGE,
-    MAX_KICKS_OUT_OF_RANGE, MAX_ITERATIONS_ARG_REQUIRED, EXPANSION_ARG_REQUIRED,
-    ITEMS_KEYWORD_REQUIRED, UNKNOWN_OPTION_OR_MISSING_ITEMS, UNKNOWN_OPTION,
-    NO_ITEMS_SPECIFIED, NOT_FOUND, ITEM_EXISTS, FAILED_TO_SET_FILTER,
-    CREATE_EVENT, RESERVE_EVENT, DEL_EVENT, INSERT_EVENT, LOAD_EVENT,
+    CuckooObject, ADD_EVENT, BAD_BUCKET_SIZE, BAD_CAPACITY, BAD_EXPANSION, BAD_MAX_ITERATIONS,
+    BUCKET_SIZE_ARG_REQUIRED, BUCKET_SIZE_OUT_OF_RANGE, CAPACITY_ARG_REQUIRED,
+    CAPACITY_MUST_BE_LARGER_THAN_ZERO, CAPACITY_OUT_OF_RANGE, CREATE_EVENT, DEL_EVENT,
+    EXPANSION_ARG_REQUIRED, FAILED_TO_SET_FILTER, INSERT_EVENT, ITEMS_KEYWORD_REQUIRED,
+    ITEM_EXISTS, LOAD_EVENT, MAX_ITERATIONS_ARG_REQUIRED, MAX_KICKS_OUT_OF_RANGE, NOT_FOUND,
+    NO_ITEMS_SPECIFIED, RESERVE_EVENT, UNKNOWN_OPTION, UNKNOWN_OPTION_OR_MISSING_ITEMS,
 };
-use crate::configs;
 use crate::wrapper::must_obey_client;
 use std::sync::atomic::Ordering;
-use valkey_module::{Context, NotifyEvent, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue, VALKEY_OK};
+use valkey_module::{
+    Context, NotifyEvent, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue, VALKEY_OK,
+};
 
 fn validate_capacity(capacity: i64) -> Result<(), ValkeyError> {
     if capacity == 0 {
         return Err(ValkeyError::Str(CAPACITY_MUST_BE_LARGER_THAN_ZERO));
     }
-    if capacity < configs::CUCKOO_CAPACITY_MIN || capacity > configs::CUCKOO_CAPACITY_MAX {
+    // CUCKOO_CAPACITY_MAX == i64::MAX, so only the lower bound matters
+    if capacity < configs::CUCKOO_CAPACITY_MIN {
         return Err(ValkeyError::Str(CAPACITY_OUT_OF_RANGE));
     }
     Ok(())
 }
 
 fn validate_bucket_size(bucket_size: i64) -> Result<(), ValkeyError> {
-    if bucket_size < configs::CUCKOO_BUCKET_SIZE_MIN
-        || bucket_size > configs::CUCKOO_BUCKET_SIZE_MAX
-    {
+    if !(configs::CUCKOO_BUCKET_SIZE_MIN..=configs::CUCKOO_BUCKET_SIZE_MAX).contains(&bucket_size) {
         return Err(ValkeyError::Str(BUCKET_SIZE_OUT_OF_RANGE));
     }
     Ok(())
 }
 
 fn validate_max_kicks(max_kicks: i64) -> Result<(), ValkeyError> {
-    if max_kicks < configs::CUCKOO_MAX_KICKS_MIN || max_kicks > configs::CUCKOO_MAX_KICKS_MAX {
+    if !(configs::CUCKOO_MAX_KICKS_MIN..=configs::CUCKOO_MAX_KICKS_MAX).contains(&max_kicks) {
         return Err(ValkeyError::Str(MAX_KICKS_OUT_OF_RANGE));
     }
     Ok(())
@@ -303,11 +303,7 @@ fn handle_cuckoo_addnx(
 }
 
 /// Implements CF.ADDNX and CF.MADDNX commands.
-pub fn cuckoo_filter_addnx(
-    ctx: &Context,
-    args: Vec<ValkeyString>,
-    multi: bool,
-) -> ValkeyResult {
+pub fn cuckoo_filter_addnx(ctx: &Context, args: Vec<ValkeyString>, multi: bool) -> ValkeyResult {
     let argc = args.len();
     if (!multi && argc != 3) || argc < 3 {
         return Err(ValkeyError::WrongArity);
@@ -411,7 +407,7 @@ pub fn cuckoo_filter_delete(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyRes
             }
             Err(err) => Err(ValkeyError::Str(err.as_str())),
         },
-        None => Ok(ValkeyValue::Integer(0)),
+        None => Err(ValkeyError::Str(NOT_FOUND)),
     }
 }
 
@@ -448,11 +444,7 @@ fn handle_item_exists(value: Option<&CuckooObject>, item: &[u8]) -> ValkeyValue 
 }
 
 /// Implements CF.EXISTS and CF.MEXISTS commands.
-pub fn cuckoo_filter_exists(
-    ctx: &Context,
-    args: Vec<ValkeyString>,
-    multi: bool,
-) -> ValkeyResult {
+pub fn cuckoo_filter_exists(ctx: &Context, args: Vec<ValkeyString>, multi: bool) -> ValkeyResult {
     let argc = args.len();
     if (!multi && argc != 3) || argc < 3 {
         return Err(ValkeyError::WrongArity);
@@ -483,11 +475,7 @@ pub fn cuckoo_filter_exists(
 }
 
 /// Implements CF.INSERT and CF.INSERTNX commands.
-pub fn cuckoo_filter_insert(
-    ctx: &Context,
-    args: Vec<ValkeyString>,
-    nx_mode: bool,
-) -> ValkeyResult {
+pub fn cuckoo_filter_insert(ctx: &Context, args: Vec<ValkeyString>, nx_mode: bool) -> ValkeyResult {
     let argc = args.len();
     if argc < 4 {
         return Err(ValkeyError::WrongArity);
@@ -724,29 +712,35 @@ pub fn cuckoo_filter_info(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResul
 
     match value {
         Some(cuckoo) => {
-            let mut result = Vec::new();
-
-            result.push(ValkeyValue::SimpleStringStatic("Size"));
-            result.push(ValkeyValue::Integer(cuckoo.memory_usage() as i64));
-
-            result.push(ValkeyValue::SimpleStringStatic("Number of buckets"));
-            result.push(ValkeyValue::Integer(cuckoo.num_filters() as i64));
-
-            result.push(ValkeyValue::SimpleStringStatic("Number of items inserted"));
-            result.push(ValkeyValue::Integer(cuckoo.num_items()));
-
-            result.push(ValkeyValue::SimpleStringStatic("Number of filters"));
-            result.push(ValkeyValue::Integer(cuckoo.num_filters() as i64));
-
-            result.push(ValkeyValue::SimpleStringStatic("Bucket size"));
-            result.push(ValkeyValue::Integer(cuckoo.bucket_size() as i64));
-
-            result.push(ValkeyValue::SimpleStringStatic("Max iterations"));
-            result.push(ValkeyValue::Integer(cuckoo.max_kicks() as i64));
-
-            result.push(ValkeyValue::SimpleStringStatic("Expansion rate"));
-            result.push(ValkeyValue::Integer(cuckoo.expansion() as i64));
-
+            if argc == 3 {
+                let field_name = args[2].to_string_lossy().to_uppercase();
+                return match field_name.as_str() {
+                    "SIZE" => Ok(ValkeyValue::Integer(cuckoo.memory_usage() as i64)),
+                    "NUMBER OF BUCKETS" => Ok(ValkeyValue::Integer(cuckoo.num_filters() as i64)),
+                    "NUMBER OF ITEMS INSERTED" => Ok(ValkeyValue::Integer(cuckoo.num_items())),
+                    "NUMBER OF FILTERS" => Ok(ValkeyValue::Integer(cuckoo.num_filters() as i64)),
+                    "BUCKET SIZE" => Ok(ValkeyValue::Integer(cuckoo.bucket_size() as i64)),
+                    "MAX ITERATIONS" => Ok(ValkeyValue::Integer(cuckoo.max_kicks() as i64)),
+                    "EXPANSION RATE" => Ok(ValkeyValue::Integer(cuckoo.expansion() as i64)),
+                    _ => Err(ValkeyError::Str(UNKNOWN_OPTION)),
+                };
+            }
+            let result = vec![
+                ValkeyValue::SimpleStringStatic("Size"),
+                ValkeyValue::Integer(cuckoo.memory_usage() as i64),
+                ValkeyValue::SimpleStringStatic("Number of buckets"),
+                ValkeyValue::Integer(cuckoo.num_filters() as i64),
+                ValkeyValue::SimpleStringStatic("Number of items inserted"),
+                ValkeyValue::Integer(cuckoo.num_items()),
+                ValkeyValue::SimpleStringStatic("Number of filters"),
+                ValkeyValue::Integer(cuckoo.num_filters() as i64),
+                ValkeyValue::SimpleStringStatic("Bucket size"),
+                ValkeyValue::Integer(cuckoo.bucket_size() as i64),
+                ValkeyValue::SimpleStringStatic("Max iterations"),
+                ValkeyValue::Integer(cuckoo.max_kicks() as i64),
+                ValkeyValue::SimpleStringStatic("Expansion rate"),
+                ValkeyValue::Integer(cuckoo.expansion() as i64),
+            ];
             Ok(ValkeyValue::Array(result))
         }
         None => Err(ValkeyError::Str(NOT_FOUND)),

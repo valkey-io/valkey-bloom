@@ -95,7 +95,7 @@ class TestCuckooBasic(ValkeyBloomTestCaseBase):
     def test_too_large_cuckoo_obj(self):
         client = self.server.get_new_client()
         # Set the max allowed size per cuckoo filter per cuckoo object
-        assert client.execute_command('CONFIG SET cuckoo-memory-usage-limit 1000') == b'OK'
+        assert client.execute_command('CONFIG SET bf.cuckoo-memory-usage-limit 1000') == b'OK'
         obj_exceeds_size_err = "operation exceeds cuckoo object memory limit"
 
         # Non Scaling

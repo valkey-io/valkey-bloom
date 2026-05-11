@@ -18,10 +18,9 @@ class TestCuckooDefrag(ValkeyBloomTestCaseBase):
         client = self.server.get_new_client()
 
         info = client.info('modules')
-        module_info = info.get('bf', {})
 
-        assert 'cuckoo_defrag_hits' in module_info
-        assert 'cuckoo_defrag_misses' in module_info
+        assert 'bf_cuckoo_defrag_hits' in info
+        assert 'bf_cuckoo_defrag_misses' in info
 
     def test_defrag_single_filter(self):
         """Test defragmentation of a single cuckoo filter"""
@@ -230,15 +229,14 @@ class TestCuckooDefrag(ValkeyBloomTestCaseBase):
 
         # Defrag metrics should exist (even if 0)
         info = client.info('modules')
-        module_info = info.get('bf', {})
 
         # These metrics should be present
-        assert 'cuckoo_defrag_hits' in module_info
-        assert 'cuckoo_defrag_misses' in module_info
+        assert 'bf_cuckoo_defrag_hits' in info
+        assert 'bf_cuckoo_defrag_misses' in info
 
         # Values should be integers
-        hits = module_info['cuckoo_defrag_hits']
-        misses = module_info['cuckoo_defrag_misses']
+        hits = info['bf_cuckoo_defrag_hits']
+        misses = info['bf_cuckoo_defrag_misses']
         assert isinstance(hits, int)
         assert isinstance(misses, int)
         assert hits >= 0

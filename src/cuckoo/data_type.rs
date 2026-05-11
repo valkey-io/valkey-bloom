@@ -1,9 +1,9 @@
+use crate::configs;
 use crate::cuckoo::utils::{
-    CuckooFilter, CuckooObject, CUCKOO_NUM_FILTERS_PER_OBJECT_LIMIT_MAX,
-    CUCKOO_OBJECT_VERSION, MAX_BUCKET_SIZE, MIN_BUCKET_SIZE,
+    CuckooFilter, CuckooObject, CUCKOO_NUM_FILTERS_PER_OBJECT_LIMIT_MAX, CUCKOO_OBJECT_VERSION,
+    MAX_BUCKET_SIZE, MIN_BUCKET_SIZE,
 };
 use crate::wrapper::cuckoo_callback;
-use crate::configs;
 use crate::MODULE_NAME;
 use std::collections::HashMap;
 use std::os::raw::c_int;
@@ -65,11 +65,9 @@ impl ValkeyDataType for CuckooObject {
             return None;
         };
         if version != CUCKOO_OBJECT_VERSION as u64 {
-            logging::log_warning(format!(
-                "Cannot load cuckoo object: unsupported version {}",
-                version
-            )
-            .as_str());
+            logging::log_warning(
+                format!("Cannot load cuckoo object: unsupported version {}", version).as_str(),
+            );
             return None;
         }
 
@@ -121,10 +119,6 @@ impl ValkeyDataType for CuckooObject {
             let Ok(num_items) = raw::load_unsigned(rdb) else {
                 return None;
             };
-            if num_items > capacity {
-                logging::log_warning("Cannot load cuckoo object: num_items exceeds capacity.");
-                return None;
-            }
 
             // Read serialized data length
             let Ok(serialized_data_len) = raw::load_unsigned(rdb) else {
@@ -302,11 +296,7 @@ pub fn get_aof_rewrite_command(key: &str, obj: &CuckooObject) -> ValkeyResult<Ve
         .map(|b| format!("{:02x}", b))
         .collect::<String>();
 
-    // Create CF.LOAD command
-    let mut cmd = Vec::new();
-    cmd.push("CF.LOAD".to_string());
-    cmd.push(key.to_string());
-    cmd.push(hex_string);
+    let cmd = vec!["CF.LOAD".to_string(), key.to_string(), hex_string];
 
     Ok(cmd)
 }
@@ -316,8 +306,8 @@ pub fn get_aof_rewrite_command(key: &str, obj: &CuckooObject) -> ValkeyResult<Ve
 /// This function creates a deterministic digest of the CuckooObject that can be used
 /// to verify that replicas have the same data as the primary.
 pub fn generate_digest(obj: &CuckooObject) -> Vec<u8> {
-    use std::hash::{Hash, Hasher};
     use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
 
     let mut hasher = DefaultHasher::new();
 

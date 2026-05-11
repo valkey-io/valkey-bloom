@@ -270,7 +270,7 @@ class TestCuckooCommand(ValkeyBloomTestCaseBase):
         assert 'exists' in str(e.value).lower() or 'busy' in str(e.value).lower()
 
         # Filter full error (non-scaling)
-        client.execute_command('CONFIG SET cuckoo-memory-usage-limit 500')
+        client.execute_command('CONFIG SET bf.cuckoo-memory-usage-limit 500')
         with pytest.raises(ResponseError) as e:
             client.execute_command('CF.RESERVE bigfilter 10000')
         assert 'exceed' in str(e.value).lower() or 'limit' in str(e.value).lower()

@@ -1,229 +1,175 @@
-import time
+import os
+import pytest
 from valkey import ResponseError
-from valkey_bloom_test_case import ValkeyBloomTestCaseBase
-from valkey_test_case import ValkeyServerHandle
-from valkeytestframework.conftest import resource_port_tracker
-from valkeytestframework.util.waiters import *
+from valkeytestframework.valkey_test_case import ReplicationTestCase
 
-class TestCuckooReplication(ValkeyBloomTestCaseBase):
+class TestCuckooReplication(ReplicationTestCase):
 
-    def setUp(self):
-        super().setUp()
-        # Create replica server
-        self.replica_port = resource_port_tracker.get_port(self.server.port + 1000)
-        self.replica = ValkeyServerHandle(
-            port=self.replica_port,
-            module_path=self.module_path,
-            server_args=[]
+    use_random_seed = 'no'
+
+    @pytest.fixture(autouse=True)
+    def setup_test(self, setup):
+        self.args = {
+            "enable-debug-command": "yes",
+            'loadmodule': os.getenv('MODULE_PATH'),
+            'bf.bloom-use-random-seed': self.use_random_seed,
+        }
+        server_path = f"{os.path.dirname(os.path.realpath(__file__))}/build/binaries/{os.environ['SERVER_VERSION']}/valkey-server"
+        self.server, self.client = self.create_server(
+            testdir=self.testdir,
+            server_path=server_path,
+            args=self.args,
         )
-        self.replica.start()
-        wait_for_equal(lambda: self.replica.is_alive(), True)
 
-        # Configure as replica
-        replica_client = self.replica.get_new_client()
-        replica_client.execute_command('REPLICAOF', 'localhost', self.server.port)
-        time.sleep(1)  # Wait for replication to establish
-
-    def tearDown(self):
-        if hasattr(self, 'replica'):
-            self.replica.stop()
-        super().tearDown()
+    @pytest.fixture(autouse=True)
+    def use_random_seed_fixture(self, bloom_config_parameterization):
+        if bloom_config_parameterization == "random-seed":
+            self.use_random_seed = "yes"
+        elif bloom_config_parameterization == "fixed-seed":
+            self.use_random_seed = "no"
 
     def test_cf_add_replication(self):
         """Test that CF.ADD replicates to replica"""
-        primary_client = self.server.get_new_client()
-        replica_client = self.replica.get_new_client()
+        self.setup_replication(num_replicas=1)
 
-        # Add item on primary
-        result = primary_client.execute_command('CF.ADD', 'replTest', 'item1')
+        result = self.client.execute_command('CF.ADD', 'replTest', 'item1')
         assert result == 1
 
-        # Wait for replication
-        time.sleep(0.5)
-        wait_for_equal(
-            lambda: replica_client.execute_command('CF.EXISTS', 'replTest', 'item1'),
-            1,
-            timeout=5
-        )
+        self.waitForReplicaToSyncUp(self.replicas[0])
 
-        # Verify on replica
-        exists = replica_client.execute_command('CF.EXISTS', 'replTest', 'item1')
+        exists = self.replicas[0].client.execute_command('CF.EXISTS', 'replTest', 'item1')
         assert exists == 1
 
     def test_cf_del_replication(self):
         """Test that CF.DEL replicates to replica"""
-        primary_client = self.server.get_new_client()
-        replica_client = self.replica.get_new_client()
+        self.setup_replication(num_replicas=1)
 
-        # Add and delete on primary
-        primary_client.execute_command('CF.ADD', 'delRepl', 'item1')
-        time.sleep(0.5)
-        primary_client.execute_command('CF.DEL', 'delRepl', 'item1')
+        self.client.execute_command('CF.ADD', 'delRepl', 'item1')
+        self.waitForReplicaToSyncUp(self.replicas[0])
+        self.client.execute_command('CF.DEL', 'delRepl', 'item1')
+        self.waitForReplicaToSyncUp(self.replicas[0])
 
-        # Wait for replication
-        time.sleep(0.5)
-
-        # Verify deletion replicated
-        exists = replica_client.execute_command('CF.EXISTS', 'delRepl', 'item1')
+        exists = self.replicas[0].client.execute_command('CF.EXISTS', 'delRepl', 'item1')
         assert exists == 0
 
     def test_cf_reserve_replication(self):
         """Test that CF.RESERVE replicates to replica"""
-        primary_client = self.server.get_new_client()
-        replica_client = self.replica.get_new_client()
+        self.setup_replication(num_replicas=1)
 
-        # Reserve on primary
-        primary_client.execute_command('CF.RESERVE', 'resRepl', 1000, 'BUCKETSIZE', 4)
-        time.sleep(0.5)
+        self.client.execute_command('CF.RESERVE', 'resRepl', 1000, 'BUCKETSIZE', 4)
+        self.waitForReplicaToSyncUp(self.replicas[0])
 
-        # Verify filter exists on replica
-        info = replica_client.execute_command('CF.INFO', 'resRepl')
+        info = self.replicas[0].client.execute_command('CF.INFO', 'resRepl')
         info_dict = dict(zip(info[::2], info[1::2]))
         assert info_dict[b'Bucket size'] == 4
 
     def test_cf_insert_replication(self):
         """Test that CF.INSERT replicates to replica"""
-        primary_client = self.server.get_new_client()
-        replica_client = self.replica.get_new_client()
+        self.setup_replication(num_replicas=1)
 
-        # Insert on primary
-        primary_client.execute_command('CF.INSERT', 'insRepl', 'ITEMS', 'val1', 'val2', 'val3')
-        time.sleep(0.5)
+        self.client.execute_command('CF.INSERT', 'insRepl', 'ITEMS', 'val1', 'val2', 'val3')
+        self.waitForReplicaToSyncUp(self.replicas[0])
 
-        # Verify all items replicated
-        exists1 = replica_client.execute_command('CF.EXISTS', 'insRepl', 'val1')
-        exists2 = replica_client.execute_command('CF.EXISTS', 'insRepl', 'val2')
-        exists3 = replica_client.execute_command('CF.EXISTS', 'insRepl', 'val3')
-        assert exists1 == 1
-        assert exists2 == 1
-        assert exists3 == 1
+        assert self.replicas[0].client.execute_command('CF.EXISTS', 'insRepl', 'val1') == 1
+        assert self.replicas[0].client.execute_command('CF.EXISTS', 'insRepl', 'val2') == 1
+        assert self.replicas[0].client.execute_command('CF.EXISTS', 'insRepl', 'val3') == 1
 
     def test_occurrence_count_replication(self):
         """Test that duplicate counts replicate correctly"""
-        primary_client = self.server.get_new_client()
-        replica_client = self.replica.get_new_client()
+        self.setup_replication(num_replicas=1)
 
-        # Add duplicates on primary
-        primary_client.execute_command('CF.ADD', 'countRepl', 'item1')
-        primary_client.execute_command('CF.ADD', 'countRepl', 'item1')
-        primary_client.execute_command('CF.ADD', 'countRepl', 'item1')
-        time.sleep(0.5)
+        self.client.execute_command('CF.ADD', 'countRepl', 'item1')
+        self.client.execute_command('CF.ADD', 'countRepl', 'item1')
+        self.client.execute_command('CF.ADD', 'countRepl', 'item1')
+        self.waitForReplicaToSyncUp(self.replicas[0])
 
-        # Verify count on replica
-        count = replica_client.execute_command('CF.COUNT', 'countRepl', 'item1')
+        count = self.replicas[0].client.execute_command('CF.COUNT', 'countRepl', 'item1')
         assert count == 3
 
     def test_scaling_filter_replication(self):
         """Test that filter scaling replicates correctly"""
-        primary_client = self.server.get_new_client()
-        replica_client = self.replica.get_new_client()
+        self.setup_replication(num_replicas=1)
 
-        # Create small filter that will scale
-        primary_client.execute_command('CF.RESERVE', 'scaleRepl', 10, 'EXPANSION', 2)
-
-        # Add items to trigger scaling
+        self.client.execute_command('CF.RESERVE', 'scaleRepl', 10, 'EXPANSION', 2)
         for i in range(30):
-            primary_client.execute_command('CF.ADD', 'scaleRepl', f'item{i}')
+            self.client.execute_command('CF.ADD', 'scaleRepl', f'item{i}')
+        self.waitForReplicaToSyncUp(self.replicas[0])
 
-        time.sleep(1)
-
-        # Verify scaling replicated
-        primary_info = primary_client.execute_command('CF.INFO', 'scaleRepl')
-        replica_info = replica_client.execute_command('CF.INFO', 'scaleRepl')
+        primary_info = self.client.execute_command('CF.INFO', 'scaleRepl')
+        replica_info = self.replicas[0].client.execute_command('CF.INFO', 'scaleRepl')
         assert primary_info == replica_info
 
-        # Verify all items exist on replica
         for i in range(30):
-            exists = replica_client.execute_command('CF.EXISTS', 'scaleRepl', f'item{i}')
+            exists = self.replicas[0].client.execute_command('CF.EXISTS', 'scaleRepl', f'item{i}')
             assert exists == 1
 
     def test_multiple_operations_replication(self):
         """Test complex sequence of operations replicates correctly"""
-        primary_client = self.server.get_new_client()
-        replica_client = self.replica.get_new_client()
+        self.setup_replication(num_replicas=1)
 
-        # Perform multiple operations
-        primary_client.execute_command('CF.RESERVE', 'multiRepl', 1000)
-        primary_client.execute_command('CF.ADD', 'multiRepl', 'keep1')
-        primary_client.execute_command('CF.ADD', 'multiRepl', 'keep2')
-        primary_client.execute_command('CF.ADD', 'multiRepl', 'remove1')
-        primary_client.execute_command('CF.DEL', 'multiRepl', 'remove1')
-        primary_client.execute_command('CF.INSERT', 'multiRepl', 'ITEMS', 'ins1', 'ins2')
+        self.client.execute_command('CF.RESERVE', 'multiRepl', 1000)
+        self.client.execute_command('CF.ADD', 'multiRepl', 'keep1')
+        self.client.execute_command('CF.ADD', 'multiRepl', 'keep2')
+        self.client.execute_command('CF.ADD', 'multiRepl', 'remove1')
+        self.client.execute_command('CF.DEL', 'multiRepl', 'remove1')
+        self.client.execute_command('CF.INSERT', 'multiRepl', 'ITEMS', 'ins1', 'ins2')
+        self.waitForReplicaToSyncUp(self.replicas[0])
 
-        time.sleep(1)
-
-        # Verify final state on replica
-        assert replica_client.execute_command('CF.EXISTS', 'multiRepl', 'keep1') == 1
-        assert replica_client.execute_command('CF.EXISTS', 'multiRepl', 'keep2') == 1
-        assert replica_client.execute_command('CF.EXISTS', 'multiRepl', 'remove1') == 0
-        assert replica_client.execute_command('CF.EXISTS', 'multiRepl', 'ins1') == 1
-        assert replica_client.execute_command('CF.EXISTS', 'multiRepl', 'ins2') == 1
+        assert self.replicas[0].client.execute_command('CF.EXISTS', 'multiRepl', 'keep1') == 1
+        assert self.replicas[0].client.execute_command('CF.EXISTS', 'multiRepl', 'keep2') == 1
+        assert self.replicas[0].client.execute_command('CF.EXISTS', 'multiRepl', 'remove1') == 0
+        assert self.replicas[0].client.execute_command('CF.EXISTS', 'multiRepl', 'ins1') == 1
+        assert self.replicas[0].client.execute_command('CF.EXISTS', 'multiRepl', 'ins2') == 1
 
     def test_replica_readonly(self):
         """Test that replica refuses write operations"""
-        replica_client = self.replica.get_new_client()
+        self.setup_replication(num_replicas=1)
 
-        # Attempt write on replica should fail
         try:
-            replica_client.execute_command('CF.ADD', 'readonlyTest', 'item1')
+            self.replicas[0].client.execute_command('CF.ADD', 'readonlyTest', 'item1')
             assert False, "Expected READONLY error"
         except ResponseError as e:
             assert 'READONLY' in str(e) or 'replica' in str(e).lower()
 
-    def test_replication_after_reconnect(self):
-        """Test replication resumes after connection loss"""
-        primary_client = self.server.get_new_client()
-        replica_client = self.replica.get_new_client()
-
-        # Add data
-        primary_client.execute_command('CF.ADD', 'reconnTest', 'item1')
-        time.sleep(0.5)
-
-        # Break replication
-        replica_client.execute_command('REPLICAOF', 'NO', 'ONE')
-        time.sleep(0.5)
-
-        # Add more data on primary (won't replicate)
-        primary_client.execute_command('CF.ADD', 'reconnTest', 'item2')
-        time.sleep(0.5)
-
-        # Verify item2 not on replica yet
-        exists = replica_client.execute_command('CF.EXISTS', 'reconnTest', 'item2')
-        assert exists == 0
-
-        # Reconnect replication
-        replica_client.execute_command('REPLICAOF', 'localhost', self.server.port)
-        time.sleep(2)
-
-        # Verify full sync occurred
-        exists = replica_client.execute_command('CF.EXISTS', 'reconnTest', 'item2')
-        assert exists == 1
-
     def test_bulk_operations_replication(self):
         """Test that bulk operations replicate correctly"""
-        primary_client = self.server.get_new_client()
-        replica_client = self.replica.get_new_client()
+        self.setup_replication(num_replicas=1)
 
-        # Perform bulk inserts
         items = [f'bulk{i}' for i in range(100)]
-        primary_client.execute_command('CF.INSERT', 'bulkRepl', 'ITEMS', *items)
-        time.sleep(1)
+        self.client.execute_command('CF.INSERT', 'bulkRepl', 'ITEMS', *items)
+        self.waitForReplicaToSyncUp(self.replicas[0])
 
-        # Verify all items on replica
-        results = replica_client.execute_command('CF.MEXISTS', 'bulkRepl', *items)
+        results = self.replicas[0].client.execute_command('CF.MEXISTS', 'bulkRepl', *items)
         assert all(r == 1 for r in results)
 
     def test_cf_load_replication(self):
-        """Test that CF.LOAD replicates correctly via AOF rewrite"""
-        primary_client = self.server.get_new_client()
-        replica_client = self.replica.get_new_client()
+        """Test that CF.LOAD replicates correctly"""
+        self.setup_replication(num_replicas=1)
 
-        # Create filter on primary and verify it replicates
-        primary_client.execute_command('CF.RESERVE', 'loadTest', 100)
-        primary_client.execute_command('CF.ADD', 'loadTest', 'item1')
+        self.client.execute_command('CF.RESERVE', 'loadTest', 100)
+        self.client.execute_command('CF.ADD', 'loadTest', 'item1')
+        self.waitForReplicaToSyncUp(self.replicas[0])
 
-        time.sleep(1)
+        exists = self.replicas[0].client.execute_command('CF.EXISTS', 'loadTest', 'item1')
+        assert exists == 1
 
-        # Verify replicated to replica
-        exists = replica_client.execute_command('CF.EXISTS', 'loadTest', 'item1')
+    def test_replication_after_reconnect(self):
+        """Test replication resumes after connection loss"""
+        self.setup_replication(num_replicas=1)
+
+        self.client.execute_command('CF.ADD', 'reconnTest', 'item1')
+        self.waitForReplicaToSyncUp(self.replicas[0])
+        assert self.replicas[0].client.execute_command('CF.EXISTS', 'reconnTest', 'item1') == 1
+
+        # Break replication
+        self.replicas[0].client.execute_command('REPLICAOF', 'NO', 'ONE')
+
+        # Add more data on primary (won't replicate immediately)
+        self.client.execute_command('CF.ADD', 'reconnTest', 'item2')
+
+        # Reconnect replication and wait for sync
+        self.replicas[0].client.execute_command('REPLICAOF', self.server.bind_ip, self.server.port)
+        self.waitForReplicaToSyncUp(self.replicas[0])
+
+        exists = self.replicas[0].client.execute_command('CF.EXISTS', 'reconnTest', 'item2')
         assert exists == 1

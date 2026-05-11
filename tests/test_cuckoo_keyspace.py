@@ -1,12 +1,12 @@
 import time
+import pytest
 from valkey import ResponseError
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 
 class TestCuckooKeyspace(ValkeyBloomTestCaseBase):
 
-    def setUp(self):
-        super().setUp()
-        # Enable keyspace notifications for module events
+    @pytest.fixture(autouse=True)
+    def configure_keyspace_events(self, setup_test):
         client = self.server.get_new_client()
         client.execute_command('CONFIG', 'SET', 'notify-keyspace-events', 'AKEm')
 

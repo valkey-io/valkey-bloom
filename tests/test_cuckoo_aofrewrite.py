@@ -1,5 +1,6 @@
 import os
 import time
+import pytest
 from valkey import ResponseError
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 from valkey_test_case import ValkeyServerHandle
@@ -7,9 +8,10 @@ from valkeytestframework.util.waiters import *
 
 class TestCuckooAOFRewrite(ValkeyBloomTestCaseBase):
 
-    def setUp(self):
-        super().setUp()
-        # Enable AOF
+    @pytest.fixture(autouse=True)
+    def configure_aof(self, setup_test):
+        # Persist appendonly in startup args so it survives server restarts
+        self.server.args['appendonly'] = 'yes'
         client = self.server.get_new_client()
         client.execute_command('CONFIG', 'SET', 'appendonly', 'yes')
         time.sleep(0.5)
@@ -34,7 +36,7 @@ class TestCuckooAOFRewrite(ValkeyBloomTestCaseBase):
         time.sleep(1)
 
         # Restart server to load from AOF
-        self.server.restart(remove_rdb=True, remove_nodes_conf=False, connect_client=True)
+        self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
         time.sleep(1)
 
@@ -68,7 +70,7 @@ class TestCuckooAOFRewrite(ValkeyBloomTestCaseBase):
         wait_for_equal(lambda: client.info('persistence')['aof_rewrite_in_progress'], 0, timeout=10)
         time.sleep(1)
 
-        self.server.restart(remove_rdb=True, remove_nodes_conf=False, connect_client=True)
+        self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
         time.sleep(1)
 
@@ -93,7 +95,7 @@ class TestCuckooAOFRewrite(ValkeyBloomTestCaseBase):
         time.sleep(1)
 
         # Restart
-        self.server.restart(remove_rdb=True, remove_nodes_conf=False, connect_client=True)
+        self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
         time.sleep(1)
 
@@ -123,7 +125,7 @@ class TestCuckooAOFRewrite(ValkeyBloomTestCaseBase):
         wait_for_equal(lambda: client.info('persistence')['aof_rewrite_in_progress'], 0, timeout=10)
         time.sleep(1)
 
-        self.server.restart(remove_rdb=True, remove_nodes_conf=False, connect_client=True)
+        self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
         time.sleep(1)
 
@@ -157,7 +159,7 @@ class TestCuckooAOFRewrite(ValkeyBloomTestCaseBase):
         wait_for_equal(lambda: client.info('persistence')['aof_rewrite_in_progress'], 0, timeout=10)
         time.sleep(1)
 
-        self.server.restart(remove_rdb=True, remove_nodes_conf=False, connect_client=True)
+        self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
         time.sleep(1)
 
@@ -190,7 +192,7 @@ class TestCuckooAOFRewrite(ValkeyBloomTestCaseBase):
         wait_for_equal(lambda: client.info('persistence')['aof_rewrite_in_progress'], 0, timeout=10)
         time.sleep(1)
 
-        self.server.restart(remove_rdb=True, remove_nodes_conf=False, connect_client=True)
+        self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
         time.sleep(1)
 
@@ -230,7 +232,7 @@ class TestCuckooAOFRewrite(ValkeyBloomTestCaseBase):
         time.sleep(1)
 
         # Restart
-        self.server.restart(remove_rdb=True, remove_nodes_conf=False, connect_client=True)
+        self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
         time.sleep(1)
 
@@ -261,7 +263,7 @@ class TestCuckooAOFRewrite(ValkeyBloomTestCaseBase):
         # and the AOF file should be smaller than incremental log
 
         # Restart to verify
-        self.server.restart(remove_rdb=True, remove_nodes_conf=False, connect_client=True)
+        self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
         time.sleep(1)
 
