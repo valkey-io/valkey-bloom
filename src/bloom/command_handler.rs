@@ -595,18 +595,25 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
                 utils::NON_SCALING_AND_VALIDATE_SCALE_TO_IS_INVALID,
             ));
         }
-        match utils::BloomObject::calculate_max_scaled_capacity(
-            capacity,
-            fp_rate,
-            scale_to,
-            tightening_ratio,
-            expansion,
-        ) {
-            Ok(_) => (),
-            Err(err) => {
-                return Err(ValkeyError::Str(err.as_str()));
-            }
-        };
+        // Skip the size projection on must-obey clients (replication, AOF replay,
+        // import slot migration). The source already validated against its own
+        // bloom-memory-usage-limit; re-running the check on this node may
+        // produce a different verdict and silently drop a write that succeeded
+        // on the primary, causing primary/replica divergence.
+        if !must_obey_client(ctx) {
+            match utils::BloomObject::calculate_max_scaled_capacity(
+                capacity,
+                fp_rate,
+                scale_to,
+                tightening_ratio,
+                expansion,
+            ) {
+                Ok(_) => (),
+                Err(err) => {
+                    return Err(ValkeyError::Str(err.as_str()));
+                }
+            };
+        }
     }
     // If the filter does not exist, create one
     let filter_key = ctx.open_key_writable(filter_name);

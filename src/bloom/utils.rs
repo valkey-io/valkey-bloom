@@ -56,6 +56,7 @@ pub enum BloomError {
     DecodeBloomFilterFailed,
     DecodeUnsupportedVersion,
     ErrorRateRange,
+    TighteningRatioRange,
     BadExpansion,
     FalsePositiveReachesZero,
     BadCapacity,
@@ -73,6 +74,7 @@ impl BloomError {
             BloomError::DecodeBloomFilterFailed => DECODE_BLOOM_OBJECT_FAILED,
             BloomError::DecodeUnsupportedVersion => DECODE_UNSUPPORTED_VERSION,
             BloomError::ErrorRateRange => ERROR_RATE_RANGE,
+            BloomError::TighteningRatioRange => TIGHTENING_RATIO_RANGE,
             BloomError::BadExpansion => BAD_EXPANSION,
             BloomError::FalsePositiveReachesZero => FALSE_POSITIVE_DEGRADES_TO_O,
             BloomError::BadCapacity => BAD_CAPACITY,
@@ -446,7 +448,7 @@ impl BloomObject {
                         if !(values.2 > BLOOM_TIGHTENING_RATIO_MIN
                             && values.2 < BLOOM_TIGHTENING_RATIO_MAX)
                         {
-                            return Err(BloomError::ErrorRateRange);
+                            return Err(BloomError::TighteningRatioRange);
                         }
                         if values.4.len()
                             >= configs::BLOOM_NUM_FILTERS_PER_OBJECT_LIMIT_MAX as usize
@@ -1228,6 +1230,7 @@ mod tests {
         let key = "key";
         let _ = bf.add_item(key.as_bytes(), true);
         let origin_fp_rate = bf.fp_rate;
+        let origin_tightening_ratio = bf.tightening_ratio;
 
         // unsupport fp_rate
         bf.fp_rate = -0.5;
@@ -1238,6 +1241,22 @@ mod tests {
             Some(BloomError::ErrorRateRange)
         );
         bf.fp_rate = origin_fp_rate;
+
+        // out-of-range tightening_ratio (must surface as TighteningRatioRange,
+        // not ErrorRateRange).
+        bf.tightening_ratio = -0.5;
+        let vec = bf.encode_object().unwrap();
+        assert_eq!(
+            BloomObject::decode_object(&vec, true).err(),
+            Some(BloomError::TighteningRatioRange)
+        );
+        bf.tightening_ratio = 1.5;
+        let vec = bf.encode_object().unwrap();
+        assert_eq!(
+            BloomObject::decode_object(&vec, true).err(),
+            Some(BloomError::TighteningRatioRange)
+        );
+        bf.tightening_ratio = origin_tightening_ratio;
 
         // build a larger than 64mb filter
         let extra_large_filter =
