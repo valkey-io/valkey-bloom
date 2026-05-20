@@ -588,19 +588,17 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
         // When the `ITEMS` argument is provided, we expect additional item arg/s to be provided.
         return Err(ValkeyError::WrongArity);
     }
-    // Check if we have a wanted capacity and calculate if we can reach that capacity. Using VALIDATESCALETO and NONSCALING options together is invalid.
+    // Check if we have a wanted capacity and calculate if we can reach that capacity.
+    // Using VALIDATESCALETO and NONSCALING options together is invalid.
+    // Skip on replicated cmds.
+    let validate_size_limit = !must_obey_client(ctx);
     if let Some(scale_to) = validate_scale_to {
         if expansion == 0 {
             return Err(ValkeyError::Str(
                 utils::NON_SCALING_AND_VALIDATE_SCALE_TO_IS_INVALID,
             ));
         }
-        // Skip the size projection on must-obey clients (replication, AOF replay,
-        // import slot migration). The source already validated against its own
-        // bloom-memory-usage-limit; re-running the check on this node may
-        // produce a different verdict and silently drop a write that succeeded
-        // on the primary, causing primary/replica divergence.
-        if !must_obey_client(ctx) {
+        if validate_size_limit {
             match utils::BloomObject::calculate_max_scaled_capacity(
                 capacity,
                 fp_rate,
@@ -623,8 +621,6 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
             return Err(ValkeyError::WrongType);
         }
     };
-    // Skip bloom filter size validation on replicated cmds.
-    let validate_size_limit = !must_obey_client(ctx);
     let mut add_succeeded = false;
     match value {
         Some(bloom) => {
