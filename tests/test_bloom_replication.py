@@ -330,3 +330,65 @@ class TestBloomReplication(ReplicationTestCase):
             assert self.replicas[0].client.execute_command('CONFIG GET bf.bloom-expansion')[1] == b'2'
             assert self.replicas[0].client.execute_command('CONFIG GET bf.bloom-fp-rate')[1] == b'0.01'
             assert self.replicas[0].client.execute_command('CONFIG GET bf.bloom-tightening-ratio')[1] == b'0.5'
+
+    def test_validatescaleto_skipped_on_replica(self):
+        # When `BF.INSERT ... VALIDATESCALETO ...` adds items to an existing
+        # bloom, the original command is replicated verbatim. If the replica
+        # has a smaller bloom-memory-usage-limit than the primary, re-running
+        # the VALIDATESCALETO projection on the replica with its own limit can
+        # reject a write that succeeded on the primary, silently diverging
+        # primary/replica state.
+        #
+        # Must-obey clients (replication, AOF replay, slot-migration import)
+        # must therefore skip the VALIDATESCALETO projection — the source
+        # already validated against its own configured limit.
+        use_external = os.environ.get("VALKEY_EXTERNAL_SERVER", "false").lower() == "true"
+        if use_external:
+            self.wait_for_primary_link_up_all_replicas()
+        else:
+            self.setup_replication(num_replicas=1)
+
+        # Tighten the replica's per-object memory limit so a VALIDATESCALETO
+        # projection that passes on the primary (default 128MB) would be
+        # rejected here if it ran.
+        assert self.replicas[0].client.execute_command(
+            'CONFIG SET bf.bloom-memory-usage-limit 1024') == b'OK'
+
+        # Step 1: create the bloom. Reserve replicates as a deterministic
+        # BF.INSERT *without* VALIDATESCALETO, so this step always succeeds.
+        assert self.client.execute_command(
+            'BF.INSERT key CAPACITY 100 ERROR 0.01 EXPANSION 2 '
+            'VALIDATESCALETO 1000000 ITEMS a') == [1]
+        self.waitForReplicaToSyncUp(self.replicas[0])
+        assert self.replicas[0].client.execute_command('BF.EXISTS key a') == 1
+
+        # Step 2: add to the existing bloom. This is the divergence-prone path:
+        # `add_operation` triggers replicate_verbatim(), so the replica
+        # receives the original command including VALIDATESCALETO and re-runs
+        # the projection against its 64KB limit.
+        assert self.client.execute_command(
+            'BF.INSERT key CAPACITY 100 ERROR 0.01 EXPANSION 2 '
+            'VALIDATESCALETO 1000000 ITEMS b') == [1]
+        self.waitForReplicaToSyncUp(self.replicas[0])
+
+        # Replica must have applied the add, not silently dropped it.
+        assert self.replicas[0].client.execute_command('BF.EXISTS key b') == 1
+        assert self.client.execute_command('BF.INFO key ITEMS') == \
+            self.replicas[0].client.execute_command('BF.INFO key ITEMS')
+
+        # And digests must agree end-to-end.
+        primary_object_digest = self.client.execute_command('DEBUG DIGEST-VALUE key')
+        replica_object_digest = self.replicas[0].client.execute_command('DEBUG DIGEST-VALUE key')
+        assert primary_object_digest == replica_object_digest
+
+        # User-issued writes on the primary that genuinely exceed *its* limit
+        # are still rejected — the must-obey skip is replica-side only.
+        assert self.client.execute_command(
+            'CONFIG SET bf.bloom-memory-usage-limit 1024') == b'OK'
+        try:
+            self.client.execute_command(
+                'BF.INSERT user_key CAPACITY 100 ERROR 0.01 EXPANSION 2 '
+                'VALIDATESCALETO 1000000 ITEMS x')
+            assert False, "expected VALIDATESCALETO error on primary"
+        except ResponseError as e:
+            assert "VALIDATESCALETO" in str(e)
