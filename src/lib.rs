@@ -6,10 +6,13 @@ use valkey_module::{
 pub mod bloom;
 pub mod configs;
 pub mod metrics;
+pub mod topk;
 pub mod wrapper;
 use crate::bloom::command_handler;
 use crate::bloom::data_type::BLOOM_TYPE;
 use crate::bloom::utils::valid_server_version;
+use crate::topk::command_handler as topk_command_handler;
+use crate::topk::data_type::TOPK_TYPE;
 use valkey_module::ModuleOptions;
 use valkey_module_macros::info_command_handler;
 
@@ -91,6 +94,12 @@ fn bloom_load_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     command_handler::bloom_filter_load(ctx, &args)
 }
 
+/// Command handler for:
+/// TOPK.RESERVE key topk [width depth decay] [SEED seed]
+fn topk_reserve_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    topk_command_handler::topk_reserve(ctx, &args)
+}
+
 ///
 /// Module Info
 ///
@@ -107,11 +116,13 @@ valkey_module! {
     allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [
         BLOOM_TYPE,
+        TOPK_TYPE,
     ],
     init: initialize,
     deinit: deinitialize,
     acl_categories: [
         "bloom",
+        "topk",
     ]
     commands: [
         ["BF.ADD", bloom_add_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
@@ -122,7 +133,8 @@ valkey_module! {
         ["BF.RESERVE", bloom_reserve_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
         ["BF.INFO", bloom_info_command, "readonly fast", 1, 1, 1, "fast read bloom"],
         ["BF.INSERT", bloom_insert_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
-        ["BF.LOAD", bloom_load_command, "write deny-oom", 1, 1, 1, "write bloom"]
+        ["BF.LOAD", bloom_load_command, "write deny-oom", 1, 1, 1, "write bloom"],
+        ["TOPK.RESERVE", topk_reserve_command, "write fast deny-oom", 1, 1, 1, "fast write topk"],
     ],
     configurations: [
         i64: [

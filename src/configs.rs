@@ -69,6 +69,8 @@ pub const FIXED_SEED: [u8; 32] = [
     89, 15, 245, 34, 234, 120, 17, 218, 167, 20, 216, 9, 59, 62, 123, 217, 29, 137, 138, 115, 62,
     152, 136, 135, 48, 127, 151, 205, 40, 7, 51, 131,
 ];
+/// fixed seed for topk
+pub const TOPK_FIXED_SEED: u64 = 0x546F706B_53656564;
 /// Minimal Valkey version that supports Bloom Module
 pub const BLOOM_MIN_SUPPORTED_VERSION: &[i64; 3] = &[8, 0, 0];
 
