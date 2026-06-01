@@ -72,10 +72,6 @@ impl TopKDataType for TopKObject {
         let Ok(seed) = raw::load_unsigned(rdb) else {
             return None;
         };
-        let Ok(is_seed_random_u64) = raw::load_unsigned(rdb) else {
-            return None;
-        };
-        let is_seed_random = is_seed_random_u64 == 1;
         if k == 0 || width == 0 || depth == 0 {
             logging::log_warning("topk: refusing to load object with zero k/width/depth");
             return None;
@@ -84,22 +80,12 @@ impl TopKDataType for TopKObject {
             logging::log_warning("topk: refusing to load object with decay outside (0, 1)");
             return None;
         }
-        // Mirror bloom's restore-time integrity check: a fixed-seed object
-        // must have the canonical sentinel seed bytes; corrupt or mismatched
-        // input is rejected rather than silently relabeled.
-        if !is_seed_random && seed != crate::configs::TOPK_FIXED_SEED {
-            logging::log_warning(
-                "topk: refusing to load object marked fixed-seed without TOPK_FIXED_SEED",
-            );
-            return None;
-        }
         Some(TopKObject::from_existing(
             k as u32,
             width as u32,
             depth as u32,
             decay,
             seed,
-            is_seed_random,
         ))
     }
 }

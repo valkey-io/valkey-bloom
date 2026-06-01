@@ -1,4 +1,3 @@
-use crate::configs::TOPK_FIXED_SEED;
 use heavykeeper::CuckooTopK;
 
 /// KeySpace Notification Events
@@ -33,7 +32,6 @@ pub struct TopKObject {
     depth: u32,
     decay: f64,
     seed: u64,
-    is_seed_random: bool,
     sketch: CuckooTopK<Vec<u8>>,
 }
 
@@ -48,29 +46,16 @@ impl TopKObject {
             depth,
             decay,
             seed,
-            is_seed_random: seed != TOPK_FIXED_SEED,
             sketch,
         }
     }
 
-    pub fn from_existing(
-        k: u32,
-        width: u32,
-        depth: u32,
-        decay: f64,
-        seed: u64,
-        is_seed_random: bool,
-    ) -> TopKObject {
-        let sketch = CuckooTopK::with_seed(k as usize, width as usize, depth as usize, decay, seed);
-        TopKObject {
-            k,
-            width,
-            depth,
-            decay,
-            seed,
-            is_seed_random,
-            sketch,
-        }
+    /// Restore an existing TopKObject (RDB load path). Identical layout to
+    /// `new_reserved` today; kept as a separate constructor so that future
+    /// load paths (digest, COPY-with-contents, etc.) have a place to plug
+    /// in without touching the create path.
+    pub fn from_existing(k: u32, width: u32, depth: u32, decay: f64, seed: u64) -> TopKObject {
+        TopKObject::new_reserved(k, width, depth, decay, seed)
     }
 
     pub fn k(&self) -> u32 {
@@ -87,9 +72,6 @@ impl TopKObject {
     }
     pub fn seed(&self) -> u64 {
         self.seed
-    }
-    pub fn is_seed_random(&self) -> bool {
-        self.is_seed_random
     }
     pub fn sketch(&self) -> &CuckooTopK<Vec<u8>> {
         &self.sketch

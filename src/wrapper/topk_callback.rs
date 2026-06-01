@@ -7,9 +7,8 @@ use valkey_module::raw;
 use valkey_module::RedisModuleString;
 
 /// # Safety
-/// Save a TopKObject to RDB. Layout is
-/// (k, width, depth, decay, seed, is_seed_random). The load callback must
-/// read them back in the same order.
+/// Save a TopKObject to RDB. Layout is (k, width, depth, decay, seed). The
+/// load callback must read them back in the same order.
 pub unsafe extern "C" fn topk_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_void) {
     let v = &*value.cast::<TopKObject>();
     raw::save_unsigned(rdb, v.k() as u64);
@@ -17,7 +16,6 @@ pub unsafe extern "C" fn topk_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut
     raw::save_unsigned(rdb, v.depth() as u64);
     raw::save_double(rdb, v.decay());
     raw::save_unsigned(rdb, v.seed());
-    raw::save_unsigned(rdb, v.is_seed_random() as u64);
 }
 
 /// # Safety

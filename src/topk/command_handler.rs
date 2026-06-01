@@ -1,4 +1,3 @@
-use crate::configs::TOPK_FIXED_SEED;
 use crate::topk::data_type::TOPK_TYPE;
 use crate::topk::utils;
 use crate::topk::utils::TopKObject;
@@ -165,27 +164,17 @@ fn parse_positive_u32(
 /// Generate a u64 seed using stdlib only. Mixes a high-resolution timestamp
 /// with the address of a stack local through DefaultHasher. Cheap and
 /// non-cryptographic; sufficient for sketch hash diversification.
-///
-/// Guaranteed to never return `TOPK_FIXED_SEED` so that
-/// `TopKObject::is_seed_random()` correctly reflects how the seed was
-/// chosen. The collision probability is 1-in-2^64; the loop is a defensive
-/// guard rather than a hot path.
 fn random_seed() -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     use std::time::{SystemTime, UNIX_EPOCH};
-    loop {
-        let mut hasher = DefaultHasher::new();
-        let now_nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos() as u64)
-            .unwrap_or(0);
-        now_nanos.hash(&mut hasher);
-        let stack_marker = &now_nanos as *const u64 as u64;
-        stack_marker.hash(&mut hasher);
-        let candidate = hasher.finish();
-        if candidate != TOPK_FIXED_SEED {
-            return candidate;
-        }
-    }
+    let mut hasher = DefaultHasher::new();
+    let now_nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    now_nanos.hash(&mut hasher);
+    let stack_marker = &now_nanos as *const u64 as u64;
+    stack_marker.hash(&mut hasher);
+    hasher.finish()
 }
