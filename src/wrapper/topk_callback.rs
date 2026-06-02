@@ -1,35 +1,6 @@
-use crate::topk::data_type::TopKDataType;
 use crate::topk::utils::TopKObject;
-use std::os::raw::{c_int, c_void};
-use std::ptr::null_mut;
-use valkey_module::logging;
-use valkey_module::raw;
+use std::os::raw::c_void;
 use valkey_module::RedisModuleString;
-
-/// # Safety
-/// Save a TopKObject to RDB. Layout is (k, width, depth, decay, seed). The
-/// load callback must read them back in the same order.
-pub unsafe extern "C" fn topk_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_void) {
-    let v = &*value.cast::<TopKObject>();
-    raw::save_unsigned(rdb, v.k() as u64);
-    raw::save_unsigned(rdb, v.width() as u64);
-    raw::save_unsigned(rdb, v.depth() as u64);
-    raw::save_double(rdb, v.decay());
-    raw::save_unsigned(rdb, v.seed());
-}
-
-/// # Safety
-/// Restore a TopKObject from RDB. Delegates parsing to the TopKDataType impl
-/// in topk::data_type.
-pub unsafe extern "C" fn topk_rdb_load(rdb: *mut raw::RedisModuleIO, encver: c_int) -> *mut c_void {
-    if let Some(item) = <TopKObject as TopKDataType>::load_from_rdb(rdb, encver) {
-        let bb = Box::new(item);
-        Box::into_raw(bb).cast::<libc::c_void>()
-    } else {
-        logging::log_warning("Failed to restore topk object.");
-        null_mut()
-    }
-}
 
 /// # Safety
 /// Drop the TopKObject when its key is deleted or replaced.

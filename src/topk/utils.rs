@@ -2,10 +2,6 @@ use heavykeeper::CuckooTopK;
 
 /// KeySpace Notification Events
 pub const RESERVE_EVENT: &str = "topk.reserve";
-
-/// Default sketch parameters used when the user only provides `topk`. These
-/// match RedisBloom's defaults so client behavior is consistent for users
-/// migrating between modules.
 pub const DEFAULT_WIDTH: u32 = 8;
 pub const DEFAULT_DEPTH: u32 = 7;
 pub const DEFAULT_DECAY: f64 = 0.9;
@@ -48,14 +44,6 @@ impl TopKObject {
             seed,
             sketch,
         }
-    }
-
-    /// Restore an existing TopKObject (RDB load path). Identical layout to
-    /// `new_reserved` today; kept as a separate constructor so that future
-    /// load paths (digest, COPY-with-contents, etc.) have a place to plug
-    /// in without touching the create path.
-    pub fn from_existing(k: u32, width: u32, depth: u32, decay: f64, seed: u64) -> TopKObject {
-        TopKObject::new_reserved(k, width, depth, decay, seed)
     }
 
     pub fn k(&self) -> u32 {
