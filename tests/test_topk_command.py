@@ -60,6 +60,10 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
             'BUSYKEY Target key name already exists.',
         )
 
+        # After the key is deleted, the name is free to be reserved again.
+        assert self.client.execute_command('DEL dup') == 1
+        assert self.client.execute_command('TOPK.RESERVE dup 5') == b'OK'
+
     def test_topk_reserve_wrong_arity(self):
         # The handler accepts exactly 3, 5, 6, or 8 args. Anything else is a
         # wrong-arity error from valkey-server.

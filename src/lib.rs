@@ -134,7 +134,7 @@ valkey_module! {
         ["BF.INFO", bloom_info_command, "readonly fast", 1, 1, 1, "fast read bloom"],
         ["BF.INSERT", bloom_insert_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
         ["BF.LOAD", bloom_load_command, "write deny-oom", 1, 1, 1, "write bloom"],
-        // Commands for topk
+        // TOPK Commands
         ["TOPK.RESERVE", topk_reserve_command, "write fast deny-oom", 1, 1, 1, "fast write topk"],
     ],
     configurations: [
