@@ -8,14 +8,13 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
     Basic coverage for TOPK.RESERVE.
 
     Syntax:
-        TOPK.RESERVE key topk [width depth decay] [SEED seed]
+        TOPK.RESERVE key topk [SEED seed] [width depth decay] [SEED seed]
 
     The width/depth/decay group is all-or-nothing; defaults apply when the
     group is omitted (DEFAULT_WIDTH=8, DEFAULT_DEPTH=7, DEFAULT_DECAY=0.9).
-    Valid arities are 3, 5, 6, and 8.
-
-    Test cases mirror the validation logic in src/topk/command_handler.rs and
-    the error strings in src/topk/utils.rs.
+    The SEED keyword may appear either right after `topk` or at the very
+    end, but not both. Valid arities are 3, 5, 6, and 8.
+    
     """
 
     def test_topk_reserve_success(self):
@@ -40,7 +39,17 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
             'TOPK.RESERVE tk5 10 200 5 0.5 SEED 42'
         ) == b'OK'
 
-        assert self.client.execute_command('DBSIZE') == 5
+        # arity 8: SEED block leading, before the sketch params.
+        assert self.client.execute_command(
+            'TOPK.RESERVE tk6 10 SEED 42 200 5 0.5'
+        ) == b'OK'
+
+        # Case-insensitive SEED token in the leading position.
+        assert self.client.execute_command(
+            'TOPK.RESERVE tk7 10 seed 42 200 5 0.5'
+        ) == b'OK'
+
+        assert self.client.execute_command('DBSIZE') == 7
 
     def test_topk_reserve_key_already_exists(self):
         assert self.client.execute_command('TOPK.RESERVE dup 5') == b'OK'
@@ -75,6 +84,14 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
             'TOPK.RESERVE key 5 NOTSEED 42',   # arity 5, wrong literal token
         ]:
             self.verify_error_response(self.client, cmd, 'ERROR')
+
+        # SEED appearing both before and after the sketch params is ambiguous
+        # and rejected, even though arity 8 is otherwise valid.
+        self.verify_error_response(
+            self.client,
+            'TOPK.RESERVE key 5 SEED 1 SEED 2',
+            "wrong number of arguments for 'TOPK.RESERVE' command",
+        )
 
     def test_topk_reserve_bad_params(self):
         validation_cases = [

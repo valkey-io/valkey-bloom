@@ -41,10 +41,9 @@ fn replicate_and_notify_events(
 /// Syntax:
 ///     TOPK.RESERVE key topk [SEED seed] [width depth decay] [SEED seed]
 ///
-/// Only `key` and `topk` are required.  
-/// The SEED keyword is always optional and may appear either right after `topk` or at the very end (but not both). 
-/// When the user does not supply a seed, we generate a random one on the primary. 
-
+/// Only `key` and `topk` are required.
+/// The SEED keyword is always optional and may appear either right after `topk` or at the very end (but not both).
+/// When the user does not supply a seed, we generate a random one on the primary.
 pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     let argc = input_args.len();
     // Valid arities:
@@ -68,7 +67,7 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
     let mut user_seed: Option<u64> = None;
     if idx < argc && is_seed_token(&input_args[idx]) {
         idx += 1;
-        user_seed = Some(parse_seed_value(&input_args, idx, argc)?);
+        user_seed = Some(parse_seed_value(input_args, idx, argc)?);
         idx += 1;
     }
 
@@ -77,7 +76,10 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
     // SEED handler picks it up.
     let (width, depth, decay) = if idx < argc && !is_seed_token(&input_args[idx]) {
         if argc - idx < 3 {
-            return Err(ValkeyError::WrongArity);
+            // Arity is valid overall but the remaining tokens cannot form a
+            // complete width/depth/decay tuple and the head is not SEED, so
+            // the structure is a syntax error rather than a count error.
+            return Err(ValkeyError::Str(utils::ERROR));
         }
         let width = parse_positive_u32(
             &input_args[idx],
@@ -115,7 +117,7 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
             return Err(ValkeyError::WrongArity);
         }
         idx += 1;
-        user_seed = Some(parse_seed_value(&input_args, idx, argc)?);
+        user_seed = Some(parse_seed_value(input_args, idx, argc)?);
         idx += 1;
     }
 
@@ -164,7 +166,7 @@ fn is_seed_token(arg: &ValkeyString) -> bool {
     arg.to_string_lossy().eq_ignore_ascii_case("SEED")
 }
 
-/// Parse the u64 value that must follow a SEED keyword. 
+/// Parse the u64 value that must follow a SEED keyword.
 fn parse_seed_value(args: &[ValkeyString], idx: usize, argc: usize) -> Result<u64, ValkeyError> {
     if idx >= argc {
         return Err(ValkeyError::WrongArity);
