@@ -16,6 +16,7 @@ valkey-module = { version = "0.1.5", features = ["min-valkey-compatibility-versi
 valkey-module-macros = "0"
 linkme = "0"
 bloomfilter = { version = "3.0.1", features = ["serde"] }
+heavykeeper = "0.6"
 lazy_static = "1.4.0"
 libc = "0.2"
 serde = { version = "1.0", features = ["derive"] }
