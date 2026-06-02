@@ -4,36 +4,49 @@ use crate::topk::utils::TopKObject;
 use valkey_module::NotifyEvent;
 use valkey_module::{Context, ValkeyError, ValkeyResult, ValkeyString, VALKEY_OK};
 
-fn replicate_and_notify_events(
-    ctx: &Context,
-    key_name: &ValkeyString,
+/// Structure to help provide the command arguments required for replication. This is used by mutative commands.
+struct ReplicateArgs {
     k: u32,
     width: u32,
     depth: u32,
     decay: f64,
     seed: u64,
+}
+
+/// Helper function to replicate mutative commands to the replica nodes and publish keyspace events.
+/// There are two main cases for replication:
+/// - RESERVE operation
+/// - ADD operation: pending
+fn replicate_and_notify_events(
+    ctx: &Context,
+    key_name: &ValkeyString,
+    reserve_operation: bool,
+    args: ReplicateArgs,
 ) {
-    let k_str = ValkeyString::create_from_slice(std::ptr::null_mut(), k.to_string().as_bytes());
-    let width_str =
-        ValkeyString::create_from_slice(std::ptr::null_mut(), width.to_string().as_bytes());
-    let depth_str =
-        ValkeyString::create_from_slice(std::ptr::null_mut(), depth.to_string().as_bytes());
-    let decay_str =
-        ValkeyString::create_from_slice(std::ptr::null_mut(), decay.to_string().as_bytes());
-    let seed_token = ValkeyString::create_from_slice(std::ptr::null_mut(), b"SEED");
-    let seed_val =
-        ValkeyString::create_from_slice(std::ptr::null_mut(), seed.to_string().as_bytes());
-    let cmd = vec![
-        key_name,
-        &k_str,
-        &width_str,
-        &depth_str,
-        &decay_str,
-        &seed_token,
-        &seed_val,
-    ];
-    ctx.replicate("TOPK.RESERVE", cmd.as_slice());
-    ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::RESERVE_EVENT, key_name);
+    if reserve_operation {
+        let k_val =
+            ValkeyString::create_from_slice(std::ptr::null_mut(), args.k.to_string().as_bytes());
+        let width_val = ValkeyString::create_from_slice(
+            std::ptr::null_mut(),
+            args.width.to_string().as_bytes(),
+        );
+        let depth_val = ValkeyString::create_from_slice(
+            std::ptr::null_mut(),
+            args.depth.to_string().as_bytes(),
+        );
+        let decay_val = ValkeyString::create_from_slice(
+            std::ptr::null_mut(),
+            args.decay.to_string().as_bytes(),
+        );
+        let seed_str = ValkeyString::create_from_slice(std::ptr::null_mut(), "SEED".as_bytes());
+        let seed_val =
+            ValkeyString::create_from_slice(std::ptr::null_mut(), args.seed.to_string().as_bytes());
+        let cmd = vec![
+            key_name, &k_val, &width_val, &depth_val, &decay_val, &seed_str, &seed_val,
+        ];
+        ctx.replicate("TOPK.RESERVE", cmd.as_slice());
+        ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::RESERVE_EVENT, key_name);
+    }
 }
 
 /// Handle TOPK.RESERVE.
@@ -139,7 +152,14 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
     let topk = TopKObject::new_reserved(k, width, depth, decay, seed);
     match key.set_value(&TOPK_TYPE, topk) {
         Ok(()) => {
-            replicate_and_notify_events(ctx, key_name, k, width, depth, decay, seed);
+            let replicate_args = ReplicateArgs {
+                k,
+                width,
+                depth,
+                decay,
+                seed,
+            };
+            replicate_and_notify_events(ctx, key_name, true, replicate_args);
             VALKEY_OK
         }
         Err(_) => Err(ValkeyError::Str(utils::ERROR)),
