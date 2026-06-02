@@ -73,7 +73,11 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
     let key_name = &input_args[idx];
     idx += 1;
 
-    let k = parse_positive_u32(&input_args[idx], utils::BAD_TOPK, utils::TOPK_LARGER_THAN_0)?;
+    let k = match input_args[idx].to_string_lossy().parse::<u32>() {
+        Ok(0) => return Err(ValkeyError::Str(utils::TOPK_LARGER_THAN_0)),
+        Ok(num) if (utils::TOPK_K_MIN..=utils::TOPK_K_MAX).contains(&num) => num,
+        _ => return Err(ValkeyError::Str(utils::BAD_TOPK)),
+    };
     idx += 1;
 
     let mut user_seed: Option<u64> = None;
@@ -93,17 +97,17 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
             if argc - idx < 3 {
                 return Err(ValkeyError::Str(utils::ERROR));
             }
-            let width = parse_positive_u32(
-                &input_args[idx],
-                utils::BAD_WIDTH,
-                utils::WIDTH_LARGER_THAN_0,
-            )?;
+            let width = match input_args[idx].to_string_lossy().parse::<u32>() {
+                Ok(0) => return Err(ValkeyError::Str(utils::WIDTH_LARGER_THAN_0)),
+                Ok(num) if (utils::TOPK_WIDTH_MIN..=utils::TOPK_WIDTH_MAX).contains(&num) => num,
+                _ => return Err(ValkeyError::Str(utils::BAD_WIDTH)),
+            };
             idx += 1;
-            let depth = parse_positive_u32(
-                &input_args[idx],
-                utils::BAD_DEPTH,
-                utils::DEPTH_LARGER_THAN_0,
-            )?;
+            let depth = match input_args[idx].to_string_lossy().parse::<u32>() {
+                Ok(0) => return Err(ValkeyError::Str(utils::DEPTH_LARGER_THAN_0)),
+                Ok(num) if (utils::TOPK_DEPTH_MIN..=utils::TOPK_DEPTH_MAX).contains(&num) => num,
+                _ => return Err(ValkeyError::Str(utils::BAD_DEPTH)),
+            };
             idx += 1;
             let decay = match input_args[idx].to_string_lossy().parse::<f64>() {
                 Ok(num) if num > 0.0 && num < 1.0 => num,
@@ -146,21 +150,6 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
             VALKEY_OK
         }
         Err(_) => Err(ValkeyError::Str(utils::ERROR)),
-    }
-}
-
-/// Parse an arg as a u32 that must be strictly positive. Returns the
-/// `bad_format` error for unparseable input (including negatives) and
-/// `not_positive` for explicit zero.
-fn parse_positive_u32(
-    arg: &ValkeyString,
-    bad_format: &'static str,
-    not_positive: &'static str,
-) -> Result<u32, ValkeyError> {
-    match arg.to_string_lossy().parse::<u32>() {
-        Ok(0) => Err(ValkeyError::Str(not_positive)),
-        Ok(n) => Ok(n),
-        Err(_) => Err(ValkeyError::Str(bad_format)),
     }
 }
 

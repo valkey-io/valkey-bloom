@@ -6,6 +6,18 @@ pub const DEFAULT_WIDTH: u32 = 8;
 pub const DEFAULT_DEPTH: u32 = 7;
 pub const DEFAULT_DECAY: f64 = 0.9;
 
+/// Per-argument bounds.
+/// The minimums are 1,The maximums are placeholders covering the
+/// full u32 range until topk-specific configs are introduced; tighten them
+/// once dedicated config knobs land.
+// TODO: replace these with configurable bounds once topk configs exist.
+pub const TOPK_K_MIN: u32 = 1;
+pub const TOPK_K_MAX: u32 = u32::MAX;
+pub const TOPK_WIDTH_MIN: u32 = 1;
+pub const TOPK_WIDTH_MAX: u32 = u32::MAX;
+pub const TOPK_DEPTH_MIN: u32 = 1;
+pub const TOPK_DEPTH_MAX: u32 = u32::MAX;
+
 /// Client Errors
 pub const ERROR: &str = "ERROR";
 pub const KEY_EXISTS: &str = "BUSYKEY Target key name already exists.";
