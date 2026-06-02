@@ -4,10 +4,7 @@ use crate::topk::utils::TopKObject;
 use valkey_module::NotifyEvent;
 use valkey_module::{Context, ValkeyError, ValkeyResult, ValkeyString, VALKEY_OK};
 
-/// Replicate TOPK.RESERVE deterministically. We always append the resolved
-/// seed (whether the user passed one or we generated one) so that replicas
-/// build a CuckooTopK that hashes items the same way the primary does.
-fn replicate_reserve(
+fn replicate_and_notify_events(
     ctx: &Context,
     key_name: &ValkeyString,
     k: u32,
@@ -42,17 +39,12 @@ fn replicate_reserve(
 /// Handle TOPK.RESERVE.
 ///
 /// Syntax:
-///     TOPK.RESERVE key topk [width depth decay] [SEED seed]
+///     TOPK.RESERVE key topk [SEED seed] [width depth decay] [SEED seed]
 ///
-/// Only `key` and `topk` are required. The three sketch parameters
-/// (width, depth, decay) are all-or-nothing: provide all three or omit all
-/// three to take the defaults from `utils::DEFAULT_*`. The SEED keyword is
-/// always optional; the literal token disambiguates the otherwise-ambiguous
-/// trailing-seed case. When the user does not supply a seed, we generate a
-/// random one on the primary. The resolved seed is always replicated so
-/// replicas build a byte-identical sketch.
-///
-/// Valid argument counts: 3, 5, 6, 8.
+/// Only `key` and `topk` are required.  
+/// The SEED keyword is always optional and may appear either right after `topk` or at the very end (but not both). 
+/// When the user does not supply a seed, we generate a random one on the primary. 
+
 pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     let argc = input_args.len();
     // Valid arities:
@@ -60,6 +52,7 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
     //   5 = key topk SEED <n>
     //   6 = key topk width depth decay
     //   8 = key topk width depth decay SEED <n>
+    //       key topk SEED <n> width depth decay
     if argc != 3 && argc != 5 && argc != 6 && argc != 8 {
         return Err(ValkeyError::WrongArity);
     }
@@ -71,9 +64,21 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
     let k = parse_positive_u32(&input_args[idx], utils::BAD_TOPK, utils::TOPK_LARGER_THAN_0)?;
     idx += 1;
 
-    // Sketch params are all-or-nothing. Arities 6 and 8 supply them; 3 and 5
-    // take the documented defaults.
-    let (width, depth, decay) = if argc >= 6 {
+    // Optional leading SEED <n> block, immediately after `topk`.
+    let mut user_seed: Option<u64> = None;
+    if idx < argc && is_seed_token(&input_args[idx]) {
+        idx += 1;
+        user_seed = Some(parse_seed_value(&input_args, idx, argc)?);
+        idx += 1;
+    }
+
+    // Sketch params block: width depth decay (all three or none). If the
+    // next token is the literal SEED, this block is skipped and the trailing
+    // SEED handler picks it up.
+    let (width, depth, decay) = if idx < argc && !is_seed_token(&input_args[idx]) {
+        if argc - idx < 3 {
+            return Err(ValkeyError::WrongArity);
+        }
         let width = parse_positive_u32(
             &input_args[idx],
             utils::BAD_WIDTH,
@@ -101,25 +106,18 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
         )
     };
 
-    // Trailing SEED <n> pair. Present iff arity is 5 or 8. The token must be
-    // the literal "SEED" (case-insensitive) followed by a u64.
-    let user_seed = if idx < argc {
-        if !input_args[idx]
-            .to_string_lossy()
-            .eq_ignore_ascii_case("SEED")
-        {
+    // Optional trailing SEED <n>. Reject if a leading SEED was already given.
+    if idx < argc {
+        if !is_seed_token(&input_args[idx]) {
             return Err(ValkeyError::Str(utils::ERROR));
         }
+        if user_seed.is_some() {
+            return Err(ValkeyError::WrongArity);
+        }
         idx += 1;
-        let seed = match input_args[idx].to_string_lossy().parse::<u64>() {
-            Ok(num) => num,
-            Err(_) => return Err(ValkeyError::Str(utils::INVALID_SEED)),
-        };
+        user_seed = Some(parse_seed_value(&input_args, idx, argc)?);
         idx += 1;
-        Some(seed)
-    } else {
-        None
-    };
+    }
 
     if idx != argc {
         return Err(ValkeyError::WrongArity);
@@ -139,7 +137,7 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
     let topk = TopKObject::new_reserved(k, width, depth, decay, seed);
     match key.set_value(&TOPK_TYPE, topk) {
         Ok(()) => {
-            replicate_reserve(ctx, key_name, k, width, depth, decay, seed);
+            replicate_and_notify_events(ctx, key_name, k, width, depth, decay, seed);
             VALKEY_OK
         }
         Err(_) => Err(ValkeyError::Str(utils::ERROR)),
@@ -159,6 +157,22 @@ fn parse_positive_u32(
         Ok(n) => Ok(n),
         Err(_) => Err(ValkeyError::Str(bad_format)),
     }
+}
+
+/// Case-insensitive match for the literal SEED keyword.
+fn is_seed_token(arg: &ValkeyString) -> bool {
+    arg.to_string_lossy().eq_ignore_ascii_case("SEED")
+}
+
+/// Parse the u64 value that must follow a SEED keyword. 
+fn parse_seed_value(args: &[ValkeyString], idx: usize, argc: usize) -> Result<u64, ValkeyError> {
+    if idx >= argc {
+        return Err(ValkeyError::WrongArity);
+    }
+    args[idx]
+        .to_string_lossy()
+        .parse::<u64>()
+        .map_err(|_| ValkeyError::Str(utils::INVALID_SEED))
 }
 
 /// Generate a u64 seed using stdlib only. Mixes a high-resolution timestamp
