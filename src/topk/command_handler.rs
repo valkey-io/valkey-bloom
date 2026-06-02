@@ -76,67 +76,50 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
     let k = parse_positive_u32(&input_args[idx], utils::BAD_TOPK, utils::TOPK_LARGER_THAN_0)?;
     idx += 1;
 
-    // Optional leading SEED <n> block, immediately after `topk`.
     let mut user_seed: Option<u64> = None;
-    if idx < argc && is_seed_token(&input_args[idx]) {
-        idx += 1;
-        user_seed = Some(parse_seed_value(input_args, idx, argc)?);
-        idx += 1;
+    let mut sketch: Option<(u32, u32, f64)> = None;
+    while idx < argc {
+        if is_seed_token(&input_args[idx]) {
+            if user_seed.is_some() {
+                return Err(ValkeyError::WrongArity);
+            }
+            idx += 1;
+            user_seed = Some(parse_seed_value(input_args, idx, argc)?);
+            idx += 1;
+        } else {
+            if sketch.is_some() {
+                return Err(ValkeyError::Str(utils::ERROR));
+            }
+            if argc - idx < 3 {
+                return Err(ValkeyError::Str(utils::ERROR));
+            }
+            let width = parse_positive_u32(
+                &input_args[idx],
+                utils::BAD_WIDTH,
+                utils::WIDTH_LARGER_THAN_0,
+            )?;
+            idx += 1;
+            let depth = parse_positive_u32(
+                &input_args[idx],
+                utils::BAD_DEPTH,
+                utils::DEPTH_LARGER_THAN_0,
+            )?;
+            idx += 1;
+            let decay = match input_args[idx].to_string_lossy().parse::<f64>() {
+                Ok(num) if num > 0.0 && num < 1.0 => num,
+                Ok(_) => return Err(ValkeyError::Str(utils::DECAY_RANGE)),
+                Err(_) => return Err(ValkeyError::Str(utils::BAD_DECAY)),
+            };
+            idx += 1;
+            sketch = Some((width, depth, decay));
+        }
     }
 
-    // Sketch params block: width depth decay (all three or none). If the
-    // next token is the literal SEED, this block is skipped and the trailing
-    // SEED handler picks it up.
-    let (width, depth, decay) = if idx < argc && !is_seed_token(&input_args[idx]) {
-        if argc - idx < 3 {
-            // Arity is valid overall but the remaining tokens cannot form a
-            // complete width/depth/decay tuple and the head is not SEED, so
-            // the structure is a syntax error rather than a count error.
-            return Err(ValkeyError::Str(utils::ERROR));
-        }
-        let width = parse_positive_u32(
-            &input_args[idx],
-            utils::BAD_WIDTH,
-            utils::WIDTH_LARGER_THAN_0,
-        )?;
-        idx += 1;
-        let depth = parse_positive_u32(
-            &input_args[idx],
-            utils::BAD_DEPTH,
-            utils::DEPTH_LARGER_THAN_0,
-        )?;
-        idx += 1;
-        let decay = match input_args[idx].to_string_lossy().parse::<f64>() {
-            Ok(num) if num > 0.0 && num < 1.0 => num,
-            Ok(_) => return Err(ValkeyError::Str(utils::DECAY_RANGE)),
-            Err(_) => return Err(ValkeyError::Str(utils::BAD_DECAY)),
-        };
-        idx += 1;
-        (width, depth, decay)
-    } else {
-        (
-            utils::DEFAULT_WIDTH,
-            utils::DEFAULT_DEPTH,
-            utils::DEFAULT_DECAY,
-        )
-    };
-
-    // Optional trailing SEED <n>. Reject if a leading SEED was already given.
-    if idx < argc {
-        if !is_seed_token(&input_args[idx]) {
-            return Err(ValkeyError::Str(utils::ERROR));
-        }
-        if user_seed.is_some() {
-            return Err(ValkeyError::WrongArity);
-        }
-        idx += 1;
-        user_seed = Some(parse_seed_value(input_args, idx, argc)?);
-        idx += 1;
-    }
-
-    if idx != argc {
-        return Err(ValkeyError::WrongArity);
-    }
+    let (width, depth, decay) = sketch.unwrap_or((
+        utils::DEFAULT_WIDTH,
+        utils::DEFAULT_DEPTH,
+        utils::DEFAULT_DECAY,
+    ));
 
     // Reject if the key already exists. TOPK params are immutable for the
     // lifetime of the object, so a second RESERVE cannot mutate the sketch.
