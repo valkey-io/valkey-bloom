@@ -100,6 +100,11 @@ fn topk_reserve_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult 
     topk_command_handler::topk_reserve(ctx, &args)
 }
 
+/// Command handler for TOPK.ADD <key> <item> [<item> ...]
+fn topk_add_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    topk_command_handler::topk_add(ctx, &args)
+}
+
 ///
 /// Module Info
 ///
@@ -136,6 +141,7 @@ valkey_module! {
         ["BF.LOAD", bloom_load_command, "write deny-oom", 1, 1, 1, "write bloom"],
         // TOPK Commands
         ["TOPK.RESERVE", topk_reserve_command, "write fast deny-oom", 1, 1, 1, "fast write topk"],
+        ["TOPK.ADD", topk_add_command, "write fast deny-oom", 1, 1, 1, "fast write topk"],
     ],
     configurations: [
         i64: [

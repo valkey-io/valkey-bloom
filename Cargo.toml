@@ -16,7 +16,8 @@ valkey-module = { version = "0.1.5", features = ["min-valkey-compatibility-versi
 valkey-module-macros = "0"
 linkme = "0"
 bloomfilter = { version = "3.0.1", features = ["serde"] }
-heavykeeper = "0.6"
+# TODO: This is a temporary solution until we add this functionality to the original heavykeeper crate.
+heavykeeper = { git = "https://github.com/detemmienation/heavykeeper-rs.git", branch = "evicted" }
 lazy_static = "1.4.0"
 libc = "0.2"
 serde = { version = "1.0", features = ["derive"] }

@@ -2,6 +2,7 @@ use heavykeeper::CuckooTopK;
 
 /// KeySpace Notification Events
 pub const RESERVE_EVENT: &str = "topk.reserve";
+pub const ADD_EVENT: &str = "topk.add";
 pub const DEFAULT_WIDTH: u32 = 8;
 pub const DEFAULT_DEPTH: u32 = 7;
 pub const DEFAULT_DECAY: f64 = 0.9;
@@ -21,6 +22,7 @@ pub const TOPK_DEPTH_MAX: u32 = u32::MAX;
 /// Client Errors
 pub const ERROR: &str = "ERROR";
 pub const KEY_EXISTS: &str = "BUSYKEY Target key name already exists.";
+pub const NOT_FOUND: &str = "ERR TopK: key does not exist";
 pub const BAD_TOPK: &str = "ERR bad topk";
 pub const BAD_WIDTH: &str = "ERR bad width";
 pub const BAD_DEPTH: &str = "ERR bad depth";
@@ -78,5 +80,14 @@ impl TopKObject {
     }
     pub fn sketch_mut(&mut self) -> &mut CuckooTopK<Vec<u8>> {
         &mut self.sketch
+    }
+
+    /// Add `increment` occurrences of `item` to the sketch and return the
+    /// heavy-slot resident displaced by this insertion (if any). At most one
+    /// item can be evicted per call.
+    pub fn add(&mut self, item: &[u8], increment: u64) -> Option<Vec<u8>> {
+        self.sketch
+            .add_with_evicted(item, increment)
+            .map(|node| node.item)
     }
 }
