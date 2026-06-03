@@ -95,7 +95,7 @@ fn bloom_load_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 }
 
 /// Command handler for:
-/// TOPK.RESERVE key topk [SEED seed] [width depth decay] [SEED seed]
+/// TOPK.RESERVE key topk [width depth decay] [SEED seed]
 fn topk_reserve_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     topk_command_handler::topk_reserve(ctx, &args)
 }

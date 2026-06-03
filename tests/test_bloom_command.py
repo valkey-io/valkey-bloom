@@ -3,11 +3,6 @@ from valkeytestframework.conftest import resource_port_tracker
 
 class TestBloomCommand(ValkeyBloomTestCaseBase):
 
-    def verify_command_arity(self, command, expected_arity): 
-        command_info = self.client.execute_command('COMMAND', 'INFO', command)
-        actual_arity = command_info.get(command).get('arity')
-        assert actual_arity == expected_arity, f"Arity mismatch for command '{command}'"
-
     def test_bloom_command_arity(self):
         self.verify_command_arity('BF.EXISTS', -1)
         self.verify_command_arity('BF.ADD', -1)

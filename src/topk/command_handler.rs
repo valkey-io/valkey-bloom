@@ -168,9 +168,6 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
 /// Returns an array, one entry per input item, in order:
 ///   - Null if no heavy-slot resident was displaced by the insertion.
 ///   - The bulk-string of the displaced item otherwise.
-///
-/// The key must already hold a TOPK reserved via TOPK.RESERVE; missing keys
-/// are an error rather than auto-created (matching upstream RedisBloom).
 pub fn topk_add(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     let argc = input_args.len();
     if argc < 3 {

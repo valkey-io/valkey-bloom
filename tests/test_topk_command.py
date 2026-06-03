@@ -3,11 +3,6 @@ from valkeytestframework.conftest import resource_port_tracker  # noqa: F401
 
 class TestTopkCommand(ValkeyBloomTestCaseBase):
 
-    def verify_command_arity(self, command, expected_arity):
-        command_info = self.client.execute_command('COMMAND', 'INFO', command)
-        actual_arity = command_info.get(command).get('arity')
-        assert actual_arity == expected_arity, f"Arity mismatch for command '{command}'"
-
     def test_topk_command_arity(self):
         self.verify_command_arity('TOPK.RESERVE', -1)
         self.verify_command_arity('TOPK.ADD', -1)
