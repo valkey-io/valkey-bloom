@@ -2,7 +2,7 @@ use crate::topk::data_type::TOPK_TYPE;
 use crate::topk::utils;
 use crate::topk::utils::TopKObject;
 use valkey_module::NotifyEvent;
-use valkey_module::{Context, ValkeyError, ValkeyResult, ValkeyString, VALKEY_OK};
+use valkey_module::{Context, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue, VALKEY_OK};
 
 /// Structure to help provide the command arguments required for replication. This is used by mutative commands.
 struct ReplicateArgs {
@@ -15,15 +15,19 @@ struct ReplicateArgs {
 
 /// Helper function to replicate mutative commands to the replica nodes and publish keyspace events.
 /// There are two main cases for replication:
-/// - RESERVE operation
-/// - ADD operation: pending
+/// - RESERVE operation: replays a deterministic TOPK.RESERVE on replicas.
+/// - ADD operation: verbatim replication is safe because TOPK.ADD is
+///   deterministic given the same sketch state, and replicas were seeded
+///   identically via the replicated TOPK.RESERVE.
 fn replicate_and_notify_events(
     ctx: &Context,
     key_name: &ValkeyString,
     reserve_operation: bool,
-    args: ReplicateArgs,
+    add_operation: bool,
+    args: Option<ReplicateArgs>,
 ) {
     if reserve_operation {
+        let args = args.expect("reserve replication requires ReplicateArgs");
         let k_val =
             ValkeyString::create_from_slice(std::ptr::null_mut(), args.k.to_string().as_bytes());
         let width_val = ValkeyString::create_from_slice(
@@ -46,6 +50,9 @@ fn replicate_and_notify_events(
         ];
         ctx.replicate("TOPK.RESERVE", cmd.as_slice());
         ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::RESERVE_EVENT, key_name);
+    } else if add_operation {
+        ctx.replicate_verbatim();
+        ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::ADD_EVENT, key_name);
     }
 }
 
@@ -146,11 +153,49 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
                 decay,
                 seed,
             };
-            replicate_and_notify_events(ctx, key_name, true, replicate_args);
+            replicate_and_notify_events(ctx, key_name, true, false, Some(replicate_args));
             VALKEY_OK
         }
         Err(_) => Err(ValkeyError::Str(utils::ERROR)),
     }
+}
+
+/// Handle TOPK.ADD.
+///
+/// Syntax:
+///     TOPK.ADD key item [item ...]
+///
+/// Returns an array, one entry per input item, in order:
+///   - Null if no heavy-slot resident was displaced by the insertion.
+///   - The bulk-string of the displaced item otherwise.
+///
+/// The key must already hold a TOPK reserved via TOPK.RESERVE; missing keys
+/// are an error rather than auto-created (matching upstream RedisBloom).
+pub fn topk_add(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
+    let argc = input_args.len();
+    if argc < 3 {
+        return Err(ValkeyError::WrongArity);
+    }
+
+    let key_name = &input_args[1];
+    let key = ctx.open_key_writable(key_name);
+    let topk = match key.get_value::<TopKObject>(&TOPK_TYPE) {
+        Ok(Some(v)) => v,
+        Ok(None) => return Err(ValkeyError::Str(utils::NOT_FOUND)),
+        Err(_) => return Err(ValkeyError::WrongType),
+    };
+
+    let items = &input_args[2..];
+    let mut result: Vec<ValkeyValue> = Vec::with_capacity(items.len());
+    for item in items {
+        match topk.add(item.as_slice(), 1) {
+            Some(evicted) => result.push(ValkeyValue::StringBuffer(evicted)),
+            None => result.push(ValkeyValue::Null),
+        }
+    }
+
+    replicate_and_notify_events(ctx, key_name, false, true, None);
+    Ok(ValkeyValue::Array(result))
 }
 
 /// Case-insensitive match for the literal SEED keyword.
