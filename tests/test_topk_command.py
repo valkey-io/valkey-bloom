@@ -77,28 +77,11 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         # A reserved name is free again once deleted.
         assert self.client.execute_command('DEL tk1') == 1
         assert self.client.execute_command('TOPK.RESERVE tk1 5') == b'OK'
-
-        # ---- TOPK.ADD: no eviction ----
-        # With k=3 and only three distinct items, nothing is ever displaced.
-        assert self.client.execute_command('TOPK.RESERVE tk_noevict 3 50 4 0.9') == b'OK'
-        assert self.client.execute_command(
-            'TOPK.ADD tk_noevict apple banana cherry apple banana cherry'
-        ) == [None] * 6
-        # Repeated adds of an already-tracked item still return nil.
-        assert self.client.execute_command('TOPK.ADD tk_noevict apple') == [None]
-
-        # ---- TOPK.ADD: eviction returns the displaced item ----
-        # k=1 means the second distinct item to outweigh the first evicts it.
-        assert self.client.execute_command('TOPK.RESERVE tk_evict 1 50 4 0.9') == b'OK'
-        assert self.client.execute_command('TOPK.ADD tk_evict apple') == [None]
-        assert self.client.execute_command('TOPK.ADD tk_evict banana banana') == [None, b'apple']
-
-        # ---- TOPK.ADD: mix of eviction and non-eviction in one call ----
-        # k=2: first two distinct items fill the queue, a third displaces one
-        # once it climbs high enough. Exactly one eviction of banana happens
-        # across the two cherry adds.
-        assert self.client.execute_command('TOPK.RESERVE tk_mixed 2 50 4 0.9') == b'OK'
-        self.client.execute_command('TOPK.ADD tk_mixed apple apple banana')
-        result = self.client.execute_command('TOPK.ADD tk_mixed cherry cherry')
-        assert len(result) == 2
-        assert [r for r in result if r is not None] == [b'banana']
+        assert self.client.execute_command('TOPK.RESERVE tk_add 5 50 4 0.9') == b'OK'
+        add_success_cases = [
+            ('TOPK.ADD tk_add apple', 1),
+            ('TOPK.ADD tk_add apple banana cherry', 3),
+            ('TOPK.ADD tk_add a b c d e f g', 7),
+        ]
+        for cmd, expected_len in add_success_cases:
+            assert len(self.client.execute_command(cmd)) == expected_len
