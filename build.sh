@@ -31,7 +31,7 @@ if [ -z "$SERVER_VERSION" ]; then
     export SERVER_VERSION="unstable"
 fi
 
-if [ "$SERVER_VERSION" != "unstable" ] && [ "$SERVER_VERSION" != "8.0" ] && [ "$SERVER_VERSION" != "8.1" ] && [ "$SERVER_VERSION" != "9.0" ]; then
+if [ "$SERVER_VERSION" != "unstable" ] && [ "$SERVER_VERSION" != "8.0" ] && [ "$SERVER_VERSION" != "8.1" ] && [ "$SERVER_VERSION" != "9.0" ] && [ "$SERVER_VERSION" != "9.1" ]; then
   echo "ERROR: Unsupported version - $SERVER_VERSION"
   exit 1
 fi
@@ -47,6 +47,20 @@ fi
 REPO_URL="https://github.com/valkey-io/valkey.git"
 BINARY_PATH="tests/build/binaries/$SERVER_VERSION/valkey-server"
 CACHED_VALKEY_PATH="tests/build/valkey"
+
+# Optional: path to an externally built valkey-server binary. When set,
+# we skip building Valkey from source and copy the provided binary into
+# the integration test directory instead.
+if [ -n "$VALKEY_SERVER_PATH" ]; then
+    if [ ! -f "$VALKEY_SERVER_PATH" ] || [ ! -x "$VALKEY_SERVER_PATH" ]; then
+        echo "ERROR: VALKEY_SERVER_PATH is set but file does not exist or is not executable: $VALKEY_SERVER_PATH"
+        exit 1
+    fi
+    echo "Using external valkey-server binary: $VALKEY_SERVER_PATH"
+    mkdir -p "tests/build/binaries/$SERVER_VERSION"
+    cp "$VALKEY_SERVER_PATH" "$BINARY_PATH"
+fi
+
 if [ -f "$BINARY_PATH" ] && [ -x "$BINARY_PATH" ]; then
     echo "valkey-server binary '$BINARY_PATH' found."
 else
