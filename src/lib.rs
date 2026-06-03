@@ -100,9 +100,16 @@ fn topk_reserve_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult 
     topk_command_handler::topk_reserve(ctx, &args)
 }
 
-/// Command handler for TOPK.ADD <key> <item> [<item> ...]
+/// Command handler for:
+///  TOPK.ADD <key> <item> [<item> ...]
 fn topk_add_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     topk_command_handler::topk_add(ctx, &args)
+}
+
+/// Command handler for:
+/// TOPK.INFO key
+fn topk_info_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    topk_command_handler::topk_info(ctx, &args)
 }
 
 ///
@@ -142,6 +149,7 @@ valkey_module! {
         // TOPK Commands
         ["TOPK.RESERVE", topk_reserve_command, "write fast deny-oom", 1, 1, 1, "fast write topk"],
         ["TOPK.ADD", topk_add_command, "write fast deny-oom", 1, 1, 1, "fast write topk"],
+        ["TOPK.INFO", topk_info_command, "readonly fast", 1, 1, 1, "fast read topk"],
     ],
     configurations: [
         i64: [

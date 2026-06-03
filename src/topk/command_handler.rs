@@ -159,7 +159,6 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
         Err(_) => Err(ValkeyError::Str(utils::ERROR)),
     }
 }
-
 /// Handle TOPK.ADD.
 ///
 /// Syntax:
@@ -192,6 +191,39 @@ pub fn topk_add(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     }
 
     replicate_and_notify_events(ctx, key_name, false, true, None);
+    Ok(ValkeyValue::Array(result))
+}
+
+/// Handle TOPK.INFO.
+///
+/// Syntax:
+///     TOPK.INFO key
+///
+/// Returns the number of required items (k), width, depth, and decay of the
+/// sketch stored at `key`.
+pub fn topk_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
+    if input_args.len() != 2 {
+        return Err(ValkeyError::WrongArity);
+    }
+
+    let key_name = &input_args[1];
+    let key = ctx.open_key(key_name);
+    let topk = match key.get_value::<TopKObject>(&TOPK_TYPE) {
+        Ok(Some(topk)) => topk,
+        Ok(None) => return Err(ValkeyError::Str(utils::NOT_FOUND)),
+        Err(_) => return Err(ValkeyError::WrongType),
+    };
+
+    let result = vec![
+        ValkeyValue::SimpleStringStatic("k"),
+        ValkeyValue::Integer(topk.k() as i64),
+        ValkeyValue::SimpleStringStatic("width"),
+        ValkeyValue::Integer(topk.width() as i64),
+        ValkeyValue::SimpleStringStatic("depth"),
+        ValkeyValue::Integer(topk.depth() as i64),
+        ValkeyValue::SimpleStringStatic("decay"),
+        ValkeyValue::Float(topk.decay()),
+    ];
     Ok(ValkeyValue::Array(result))
 }
 
