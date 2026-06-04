@@ -88,38 +88,32 @@ fn bloom_insert_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult 
     command_handler::bloom_filter_insert(ctx, &args)
 }
 
-/// Command handler for:
-/// BF.LOAD <key> data
+/// Command handler for BF.LOAD <key> data
 fn bloom_load_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     command_handler::bloom_filter_load(ctx, &args)
 }
 
-/// Command handler for:
-/// TOPK.RESERVE key topk [width depth decay] [SEED seed]
+/// Command handler for TOPK.RESERVE key topk [width depth decay] [SEED seed]
 fn topk_reserve_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     topk_command_handler::topk_reserve(ctx, &args)
 }
 
-/// Command handler for:
-///  TOPK.ADD <key> <item> [<item> ...]
+/// Command handler for TOPK.ADD <key> <item> [<item> ...]
 fn topk_add_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     topk_command_handler::topk_add(ctx, &args)
 }
 
-/// Command handler for:
-///  TOPK.INCRBY <key> <item> <increment> [<item> <increment> ...]
+/// Command handler for TOPK.INCRBY <key> <item> <increment> [<item> <increment> ...]
 fn topk_incrby_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     topk_command_handler::topk_incrby(ctx, &args)
 }
 
-/// Command handler for:
-/// TOPK.INFO key
+/// Command handler for TOPK.INFO key
 fn topk_info_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     topk_command_handler::topk_info(ctx, &args)
 }
 
-/// Command handler for:
-///  TOPK.LIST key [WITHCOUNT]
+/// Command handler for TOPK.LIST key [WITHCOUNT]
 fn topk_list_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     topk_command_handler::topk_list(ctx, &args)
 }

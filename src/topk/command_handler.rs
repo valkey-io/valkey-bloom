@@ -159,6 +159,21 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
         Err(_) => Err(ValkeyError::Str(utils::ERROR)),
     }
 }
+
+fn apply_increments<'a>(
+    topk: &mut TopKObject,
+    items: impl ExactSizeIterator<Item = (&'a [u8], u64)>,
+) -> Vec<ValkeyValue> {
+    let mut result: Vec<ValkeyValue> = Vec::with_capacity(items.len());
+    for (item, increment) in items {
+        match topk.add(item, increment) {
+            Some(evicted) => result.push(ValkeyValue::StringBuffer(evicted)),
+            None => result.push(ValkeyValue::Null),
+        }
+    }
+    result
+}
+
 /// Handle TOPK.ADD.
 ///
 /// Syntax:
@@ -182,13 +197,7 @@ pub fn topk_add(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     };
 
     let items = &input_args[2..];
-    let mut result: Vec<ValkeyValue> = Vec::with_capacity(items.len());
-    for item in items {
-        match topk.add(item.as_slice(), 1) {
-            Some(evicted) => result.push(ValkeyValue::StringBuffer(evicted)),
-            None => result.push(ValkeyValue::Null),
-        }
-    }
+    let result = apply_increments(topk, items.iter().map(|item| (item.as_slice(), 1)));
 
     replicate_and_notify_events(ctx, key_name, false, true, None);
     Ok(ValkeyValue::Array(result))
@@ -206,7 +215,7 @@ pub fn topk_add(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
 pub fn topk_incrby(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     let argc = input_args.len();
     // key + at least one item/increment pair, and the pairs must be complete.
-    if argc < 4 || !(argc - 2).is_multiple_of(2) {
+    if argc < 4 || !argc.is_multiple_of(2) {
         return Err(ValkeyError::WrongArity);
     }
 
@@ -230,13 +239,12 @@ pub fn topk_incrby(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
         parsed.push((item, increment));
     }
 
-    let mut result: Vec<ValkeyValue> = Vec::with_capacity(parsed.len());
-    for (item, increment) in parsed {
-        match topk.add(item.as_slice(), increment) {
-            Some(evicted) => result.push(ValkeyValue::StringBuffer(evicted)),
-            None => result.push(ValkeyValue::Null),
-        }
-    }
+    let result = apply_increments(
+        topk,
+        parsed
+            .iter()
+            .map(|(item, increment)| (item.as_slice(), *increment)),
+    );
 
     replicate_and_notify_events(ctx, key_name, false, true, None);
     Ok(ValkeyValue::Array(result))
