@@ -184,61 +184,60 @@ impl CuckooObject {
     /// Add an item to the CuckooObject, with auto-scaling if enabled
     pub fn add_item(&mut self, item: &[u8], validate_size_limit: bool) -> Result<i64, CuckooError> {
         let num_filters = self.filters.len() as i32;
-        if let Some(filter) = self.filters.last_mut() {
-            match filter.add(item) {
-                Ok(true) => {
-                    use crate::metrics;
-                    metrics::CUCKOO_NUM_ITEMS_ACROSS_OBJECTS.fetch_add(1, Ordering::Relaxed);
-                    Ok(1)
-                }
-                Ok(false) => Ok(1), // duplicate: occurrence_map updated, fingerprint unchanged
-                Err(CuckooError::FilterFull) => {
-                    if self.expansion == 0 {
-                        return Err(CuckooError::NonScalingFilterFull);
-                    }
-                    if num_filters == CUCKOO_NUM_FILTERS_PER_OBJECT_LIMIT_MAX {
-                        return Err(CuckooError::MaxNumScalingFilters);
-                    }
-
-                    let new_capacity = match filter.capacity().checked_mul(self.expansion.into()) {
-                        Some(cap) => cap,
-                        None => return Err(CuckooError::BadCapacity),
-                    };
-
-                    if validate_size_limit
-                        && !self.validate_size_before_scaling(new_capacity, self.bucket_size)
-                    {
-                        return Err(CuckooError::ExceedsMaxSize);
-                    }
-
-                    let memory_usage_before = self.cuckoo_object_memory_usage();
-                    let mut new_filter = Box::new(CuckooFilter::new(
-                        new_capacity,
-                        self.bucket_size,
-                        self.max_kicks,
-                    ));
-
-                    match new_filter.add(item) {
-                        Ok(_) => {
-                            self.filters.push(new_filter);
-                            let memory_usage_after = self.cuckoo_object_memory_usage();
-
-                            use crate::metrics;
-                            metrics::CUCKOO_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
-                                memory_usage_after - memory_usage_before,
-                                Ordering::Relaxed,
-                            );
-                            metrics::CUCKOO_NUM_ITEMS_ACROSS_OBJECTS
-                                .fetch_add(1, Ordering::Relaxed);
-                            Ok(1)
-                        }
-                        Err(e) => Err(e),
-                    }
-                }
-                Err(e) => Err(e),
+        let filter = self
+            .filters
+            .last_mut()
+            .expect("CuckooObject must have at least one filter");
+        match filter.add(item) {
+            Ok(true) => {
+                use crate::metrics;
+                metrics::CUCKOO_NUM_ITEMS_ACROSS_OBJECTS.fetch_add(1, Ordering::Relaxed);
+                Ok(1)
             }
-        } else {
-            Ok(0)
+            Ok(false) => Ok(1), // duplicate: occurrence_map updated, fingerprint unchanged
+            Err(CuckooError::FilterFull) => {
+                if self.expansion == 0 {
+                    return Err(CuckooError::NonScalingFilterFull);
+                }
+                if num_filters == CUCKOO_NUM_FILTERS_PER_OBJECT_LIMIT_MAX {
+                    return Err(CuckooError::MaxNumScalingFilters);
+                }
+
+                let new_capacity = match filter.capacity().checked_mul(self.expansion.into()) {
+                    Some(cap) => cap,
+                    None => return Err(CuckooError::BadCapacity),
+                };
+
+                if validate_size_limit
+                    && !self.validate_size_before_scaling(new_capacity, self.bucket_size)
+                {
+                    return Err(CuckooError::ExceedsMaxSize);
+                }
+
+                let memory_usage_before = self.cuckoo_object_memory_usage();
+                let mut new_filter = Box::new(CuckooFilter::new(
+                    new_capacity,
+                    self.bucket_size,
+                    self.max_kicks,
+                ));
+
+                match new_filter.add(item) {
+                    Ok(_) => {
+                        self.filters.push(new_filter);
+                        let memory_usage_after = self.cuckoo_object_memory_usage();
+
+                        use crate::metrics;
+                        metrics::CUCKOO_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
+                            memory_usage_after - memory_usage_before,
+                            Ordering::Relaxed,
+                        );
+                        metrics::CUCKOO_NUM_ITEMS_ACROSS_OBJECTS.fetch_add(1, Ordering::Relaxed);
+                        Ok(1)
+                    }
+                    Err(e) => Err(e),
+                }
+            }
+            Err(e) => Err(e),
         }
     }
 
