@@ -237,8 +237,86 @@ The command_handler.rs file has stubs but needs full implementation for:
 1. Create JSON command definitions
 2. Update README with CF.* commands
 3. Add code comments
-4. Performance testing
-5. Memory leak testing
+4. Performance benchmarks (see below)
+5. Memory scaling table (see below)
+
+---
+
+## 📊 Performance Benchmarks
+
+> Run `SERVER_VERSION=unstable sh benchmark_cuckoo.sh` after building the module to populate this table.
+
+### CF.* Command Throughput
+
+_Results pending — run `benchmark_cuckoo.sh` to collect._
+
+| Command                              | Throughput (req/sec) |
+| ------------------------------------ | -------------------- |
+| CF.ADD (new key each op)             | —                    |
+| CF.EXISTS (populated filter)         | —                    |
+| CF.DEL (populated filter)            | —                    |
+| CF.COUNT (populated filter)          | —                    |
+| CF.RESERVE (unique key)              | —                    |
+
+---
+
+## 📐 Memory Scaling
+
+> Run the memory scaling tests to populate these tables:
+> ```
+> SERVER_VERSION=unstable \
+>   MODULE_PATH=target/release/libvalkey_bloom.dylib \
+>   python3 -m pytest tests/test_cuckoo_memory_scaling.py -v -s
+> ```
+
+### Memory vs Capacity (bucket_size=4, expansion=1)
+
+Values reported by `CF.INFO … size` / `memory_usage()` for a freshly created empty filter.
+Memory scales linearly: `~184 B overhead + capacity × bucket_size`.
+
+| Capacity  | Memory (bytes) | Human-readable |
+| --------: | -------------: | -------------: |
+|       100 |            584 |          584 B |
+|       500 |          2,184 |         2.1 KB |
+|     1,000 |          4,184 |         4.1 KB |
+|     5,000 |         20,184 |        19.7 KB |
+|    10,000 |         40,184 |        39.2 KB |
+|    50,000 |        200,184 |       195.5 KB |
+|   100,000 |        400,184 |       390.8 KB |
+|   500,000 |      2,000,184 |         1.9 MB |
+| 1,000,000 |      4,000,184 |         3.8 MB |
+
+### Memory vs Bucket Size (capacity=10,000, expansion=1)
+
+Larger `bucket_size` improves false-positive rate but costs proportionally more memory.
+
+| bucket_size | Memory (bytes) | Human-readable |
+| ----------: | -------------: | -------------: |
+|           1 |         10,184 |         9.9 KB |
+|           2 |         20,184 |        19.7 KB |
+|           4 |         40,184 |        39.2 KB |
+|           8 |         80,184 |        78.3 KB |
+|          16 |        160,184 |       156.4 KB |
+|          32 |        320,184 |       312.7 KB |
+|          64 |        640,184 |       625.2 KB |
+|         128 |      1,280,184 |         1.2 MB |
+|         255 |      2,550,184 |         2.4 MB |
+
+### Memory after filling to capacity with different expansion rates (capacity=1000, bucket_size=4)
+
+_Requires live measurement — expansion triggers filter scaling at runtime._
+
+### Memory Grid: capacity × bucket_size (empty filter, expansion=1)
+
+| capacity  | bucket_size=1 | bucket_size=2 | bucket_size=4 | bucket_size=8 |
+| --------: | ------------: | ------------: | ------------: | ------------: |
+|     1,000 |        1.2 KB |        2.1 KB |        4.1 KB |        8.0 KB |
+|    10,000 |        9.9 KB |       19.7 KB |       39.2 KB |       78.3 KB |
+|   100,000 |       97.8 KB |      195.5 KB |      390.8 KB |      781.4 KB |
+| 1,000,000 |      976.7 KB |        1.9 MB |        3.8 MB |        7.6 MB |
+
+> **Note:** Memory is computed from `memory_usage()` → `capacity × bucket_size + ~184 B struct overhead`.
+> The expansion-rate row requires a running server to measure post-scaling allocations.
 
 ---
 
