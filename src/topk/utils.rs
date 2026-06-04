@@ -86,8 +86,6 @@ impl TopKObject {
     /// heavy-slot resident displaced by this insertion (if any). At most one
     /// item can be evicted per call.
     pub fn add(&mut self, item: &[u8], increment: u64) -> Option<Vec<u8>> {
-        self.sketch
-            .add_with_evicted(item, increment)
-            .map(|node| node.item)
+        self.sketch.add_with_evicted(item, increment)
     }
 }
