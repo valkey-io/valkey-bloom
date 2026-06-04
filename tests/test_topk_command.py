@@ -6,6 +6,7 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
     def test_topk_command_arity(self):
         self.verify_command_arity('TOPK.RESERVE', -1)
         self.verify_command_arity('TOPK.ADD', -1)
+        self.verify_command_arity('TOPK.INFO', -1)
 
     def test_topk_command_error(self):
         # test set up
@@ -56,6 +57,13 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
             # wrong number of arguments
             ('TOPK.ADD', "wrong number of arguments for 'TOPK.ADD' command"),
             ('TOPK.ADD tk', "wrong number of arguments for 'TOPK.ADD' command"),
+            # key must exist.
+            ('TOPK.INFO missing', 'TopK: key does not exist'),
+            # wrong type
+            ('TOPK.INFO strkey', 'WRONGTYPE Operation against a key holding the wrong kind of value'),
+            # wrong number of arguments 
+            ('TOPK.INFO', "wrong number of arguments for 'TOPK.INFO' command"),
+            ('TOPK.INFO dup extra', "wrong number of arguments for 'TOPK.INFO' command"),
         ]
         for cmd, expected_err_reply in basic_error_test_cases:
             self.verify_error_response(self.client, cmd, expected_err_reply)
@@ -85,3 +93,20 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         ]
         for cmd, expected_len in add_success_cases:
             assert len(self.client.execute_command(cmd)) == expected_len
+
+        # TOPK.INFO reports k, width, depth, and decay of an existing sketch.
+        def info_dict(key):
+            raw = self.client.execute_command(f'TOPK.INFO {key}')
+            it = iter(raw)
+            return dict(zip(it, it))
+        info = info_dict('tk1')
+        assert info[b'k'] == 5
+        assert info[b'width'] == 8
+        assert info[b'depth'] == 7
+        assert info[b'decay'] == b'0.9'
+
+        info = info_dict('tk5')
+        assert info[b'k'] == 10
+        assert info[b'width'] == 200
+        assert info[b'depth'] == 5
+        assert info[b'decay'] == b'0.5'
