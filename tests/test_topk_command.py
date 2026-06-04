@@ -6,6 +6,7 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
     def test_topk_command_arity(self):
         self.verify_command_arity('TOPK.RESERVE', -1)
         self.verify_command_arity('TOPK.ADD', -1)
+        self.verify_command_arity('TOPK.INCRBY', -1)
         self.verify_command_arity('TOPK.INFO', -1)
 
     def test_topk_command_error(self):
@@ -57,6 +58,19 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
             # wrong number of arguments
             ('TOPK.ADD', "wrong number of arguments for 'TOPK.ADD' command"),
             ('TOPK.ADD tk', "wrong number of arguments for 'TOPK.ADD' command"),
+            # key must already be reserved
+            ('TOPK.INCRBY missing apple 1', 'TopK: key does not exist'),
+            # wrong type
+            ('TOPK.INCRBY strkey apple 1', 'WRONGTYPE Operation against a key holding the wrong kind of value'),
+            # increment must parse as u64 and be > 0.
+            ('TOPK.INCRBY dup apple abc', 'bad increment'),
+            ('TOPK.INCRBY dup apple -1', 'bad increment'),
+            ('TOPK.INCRBY dup apple 0', 'bad increment'),
+            # wrong number of arguments: needs complete item/increment pairs.
+            ('TOPK.INCRBY', "wrong number of arguments for 'TOPK.INCRBY' command"),
+            ('TOPK.INCRBY dup', "wrong number of arguments for 'TOPK.INCRBY' command"),
+            ('TOPK.INCRBY dup apple', "wrong number of arguments for 'TOPK.INCRBY' command"),
+            ('TOPK.INCRBY dup apple 1 banana', "wrong number of arguments for 'TOPK.INCRBY' command"),
             # key must exist.
             ('TOPK.INFO missing', 'TopK: key does not exist'),
             # wrong type
@@ -92,6 +106,16 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
             ('TOPK.ADD tk_add a b c d e f g', 7),
         ]
         for cmd, expected_len in add_success_cases:
+            assert len(self.client.execute_command(cmd)) == expected_len
+
+        # TOPK.INCRBY behaves like ADD but with explicit per-item increments.
+        assert self.client.execute_command('TOPK.RESERVE tk_incr 5 50 4 0.9') == b'OK'
+        incrby_success_cases = [
+            ('TOPK.INCRBY tk_incr apple 1', 1),
+            ('TOPK.INCRBY tk_incr apple 5 banana 3', 2),
+            ('TOPK.INCRBY tk_incr a 1 b 2 c 3', 3),
+        ]
+        for cmd, expected_len in incrby_success_cases:
             assert len(self.client.execute_command(cmd)) == expected_len
 
         # TOPK.INFO reports k, width, depth, and decay of an existing sketch.

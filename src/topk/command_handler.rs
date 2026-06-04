@@ -194,6 +194,54 @@ pub fn topk_add(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     Ok(ValkeyValue::Array(result))
 }
 
+/// Handle TOPK.INCRBY.
+///
+/// Syntax:
+///     TOPK.INCRBY key item increment [item increment ...]
+///
+/// Like TOPK.ADD, but each item carries an explicit increment.
+/// Returns an array, one entry per item/increment pair, in order:
+///   - Null if no heavy-slot resident was displaced by the insertion.
+///   - The bulk-string of the displaced item otherwise.
+pub fn topk_incrby(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
+    let argc = input_args.len();
+    // key + at least one item/increment pair, and the pairs must be complete.
+    if argc < 4 || !(argc - 2).is_multiple_of(2) {
+        return Err(ValkeyError::WrongArity);
+    }
+
+    let key_name = &input_args[1];
+    let key = ctx.open_key_writable(key_name);
+    let topk = match key.get_value::<TopKObject>(&TOPK_TYPE) {
+        Ok(Some(v)) => v,
+        Ok(None) => return Err(ValkeyError::Str(utils::NOT_FOUND)),
+        Err(_) => return Err(ValkeyError::WrongType),
+    };
+
+    let pairs = &input_args[2..];
+    let mut parsed: Vec<(&ValkeyString, u64)> = Vec::with_capacity(pairs.len() / 2);
+    for pair in pairs.chunks_exact(2) {
+        let item = &pair[0];
+        let increment = match pair[1].to_string_lossy().parse::<u64>() {
+            Ok(0) => return Err(ValkeyError::Str(utils::BAD_INCREMENT)),
+            Ok(num) => num,
+            Err(_) => return Err(ValkeyError::Str(utils::BAD_INCREMENT)),
+        };
+        parsed.push((item, increment));
+    }
+
+    let mut result: Vec<ValkeyValue> = Vec::with_capacity(parsed.len());
+    for (item, increment) in parsed {
+        match topk.add(item.as_slice(), increment) {
+            Some(evicted) => result.push(ValkeyValue::StringBuffer(evicted)),
+            None => result.push(ValkeyValue::Null),
+        }
+    }
+
+    replicate_and_notify_events(ctx, key_name, false, true, None);
+    Ok(ValkeyValue::Array(result))
+}
+
 /// Handle TOPK.INFO.
 ///
 /// Syntax:

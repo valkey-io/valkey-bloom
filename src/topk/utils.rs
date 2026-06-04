@@ -28,6 +28,7 @@ pub const BAD_WIDTH: &str = "ERR bad width";
 pub const BAD_DEPTH: &str = "ERR bad depth";
 pub const BAD_DECAY: &str = "ERR bad decay";
 pub const INVALID_SEED: &str = "ERR invalid seed";
+pub const BAD_INCREMENT: &str = "ERR bad increment";
 pub const TOPK_LARGER_THAN_0: &str = "ERR (topk should be larger than 0)";
 pub const WIDTH_LARGER_THAN_0: &str = "ERR (width should be larger than 0)";
 pub const DEPTH_LARGER_THAN_0: &str = "ERR (depth should be larger than 0)";
