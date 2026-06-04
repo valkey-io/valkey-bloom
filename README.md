@@ -47,6 +47,12 @@ ASAN_BUILD=true
 ./build.sh clean
 ```
 
+To skip building Valkey from source and reuse an externally built `valkey-server` binary, set `VALKEY_SERVER_PATH` to its absolute path.
+The binary will be copied into the integration test directory and the source clone/compile step will be skipped:
+```text
+SERVER_VERSION=unstable VALKEY_SERVER_PATH=/path/to/valkey-server ./build.sh
+```
+
 ## Load the Module
 To test the module with a Valkey, you can load the module in the following ways:
 
