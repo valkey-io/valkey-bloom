@@ -8,6 +8,7 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         self.verify_command_arity('TOPK.ADD', -1)
         self.verify_command_arity('TOPK.INCRBY', -1)
         self.verify_command_arity('TOPK.INFO', -1)
+        self.verify_command_arity('TOPK.LIST', -1)
 
     def test_topk_command_error(self):
         # test set up
@@ -78,6 +79,15 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
             # wrong number of arguments 
             ('TOPK.INFO', "wrong number of arguments for 'TOPK.INFO' command"),
             ('TOPK.INFO dup extra', "wrong number of arguments for 'TOPK.INFO' command"),
+            # key must exist.
+            ('TOPK.LIST missing', 'TopK: key does not exist'),
+            # wrong type
+            ('TOPK.LIST strkey', 'WRONGTYPE Operation against a key holding the wrong kind of value'),
+            # only WITHCOUNT is accepted as the optional third argument.
+            ('TOPK.LIST dup NOTWITHCOUNT', 'ERROR'),
+            # wrong number of arguments.
+            ('TOPK.LIST', "wrong number of arguments for 'TOPK.LIST' command"),
+            ('TOPK.LIST dup WITHCOUNT extra', "wrong number of arguments for 'TOPK.LIST' command"),
         ]
         for cmd, expected_err_reply in basic_error_test_cases:
             self.verify_error_response(self.client, cmd, expected_err_reply)
@@ -134,3 +144,25 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         assert info[b'width'] == 200
         assert info[b'depth'] == 5
         assert info[b'decay'] == b'0.5'
+
+        # TOPK.LIST returns tracked items by descending count, at most k.
+        assert self.client.execute_command('TOPK.RESERVE tk_list 3 50 4 0.9 SEED 42') == b'OK'
+        self.client.execute_command('TOPK.INCRBY tk_list apple 10 banana 5 cherry 2')
+
+        listed = self.client.execute_command('TOPK.LIST tk_list')
+        assert listed == [b'apple', b'banana', b'cherry']
+
+        # WITHCOUNT interleaves each item with its estimated count.
+        listed_wc = self.client.execute_command('TOPK.LIST tk_list WITHCOUNT')
+        it = iter(listed_wc)
+        counts = dict(zip(it, it))
+        assert counts[b'apple'] == 10
+        assert counts[b'banana'] == 5
+        assert counts[b'cherry'] == 2
+
+        # WITHCOUNT is case-insensitive.
+        assert self.client.execute_command('TOPK.LIST tk_list withcount') == listed_wc
+
+        # The list never exceeds k even when more distinct items are added.
+        self.client.execute_command('TOPK.INCRBY tk_list durian 1 elderberry 1')
+        assert len(self.client.execute_command('TOPK.LIST tk_list')) <= 3

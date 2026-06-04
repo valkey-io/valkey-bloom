@@ -275,6 +275,55 @@ pub fn topk_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     Ok(ValkeyValue::Array(result))
 }
 
+/// Handle TOPK.LIST.
+///
+/// Syntax:
+///     TOPK.LIST key [WITHCOUNT]
+///
+/// Return the full list of items in Top-K sketch.
+/// With WITHCOUNT, each item is followed by its estimated count.
+pub fn topk_list(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
+    let argc = input_args.len();
+    if !(2..=3).contains(&argc) {
+        return Err(ValkeyError::WrongArity);
+    }
+
+    let with_count = if argc == 3 {
+        if input_args[2]
+            .to_string_lossy()
+            .eq_ignore_ascii_case("WITHCOUNT")
+        {
+            true
+        } else {
+            return Err(ValkeyError::Str(utils::ERROR));
+        }
+    } else {
+        false
+    };
+
+    let key_name = &input_args[1];
+    let key = ctx.open_key(key_name);
+    let topk = match key.get_value::<TopKObject>(&TOPK_TYPE) {
+        Ok(Some(topk)) => topk,
+        Ok(None) => return Err(ValkeyError::Str(utils::NOT_FOUND)),
+        Err(_) => return Err(ValkeyError::WrongType),
+    };
+
+    let items = topk.list();
+    let mut result: Vec<ValkeyValue> = Vec::with_capacity(if with_count {
+        items.len() * 2
+    } else {
+        items.len()
+    });
+    for (item, count) in items {
+        result.push(ValkeyValue::StringBuffer(item));
+        if with_count {
+            result.push(ValkeyValue::Integer(count as i64));
+        }
+    }
+    Ok(ValkeyValue::Array(result))
+}
+
 /// Case-insensitive match for the literal SEED keyword.
 fn is_seed_token(arg: &ValkeyString) -> bool {
     arg.to_string_lossy().eq_ignore_ascii_case("SEED")

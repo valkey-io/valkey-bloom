@@ -89,4 +89,13 @@ impl TopKObject {
     pub fn add(&mut self, item: &[u8], increment: u64) -> Option<Vec<u8>> {
         self.sketch.add_with_evicted(item, increment)
     }
+
+    /// Return the Top-K items
+    pub fn list(&self) -> Vec<(Vec<u8>, u64)> {
+        self.sketch
+            .list()
+            .into_iter()
+            .map(|node| (node.item, node.count))
+            .collect()
+    }
 }
