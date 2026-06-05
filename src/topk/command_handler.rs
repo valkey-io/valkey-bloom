@@ -364,6 +364,35 @@ pub fn topk_count(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     Ok(ValkeyValue::Array(result))
 }
 
+/// Handle TOPK.QUERY.
+///
+/// Syntax:
+///     TOPK.QUERY key item [item ...]
+///
+/// Return, for each item, whether it is currently in the Top-K list. Returns
+/// an array of integers (1 = in the list, 0 = not) in order.
+pub fn topk_query(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
+    let argc = input_args.len();
+    if argc < 3 {
+        return Err(ValkeyError::WrongArity);
+    }
+
+    let key_name = &input_args[1];
+    let key = ctx.open_key(key_name);
+    let topk = match key.get_value::<TopKObject>(&TOPK_TYPE) {
+        Ok(Some(topk)) => topk,
+        Ok(None) => return Err(ValkeyError::Str(utils::NOT_FOUND)),
+        Err(_) => return Err(ValkeyError::WrongType),
+    };
+
+    let items = &input_args[2..];
+    let result: Vec<ValkeyValue> = items
+        .iter()
+        .map(|item| ValkeyValue::Integer(topk.query(item.as_slice()) as i64))
+        .collect();
+    Ok(ValkeyValue::Array(result))
+}
+
 /// Case-insensitive match for the literal SEED keyword.
 fn is_seed_token(arg: &ValkeyString) -> bool {
     arg.to_string_lossy().eq_ignore_ascii_case("SEED")

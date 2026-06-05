@@ -96,6 +96,11 @@ impl TopKObject {
         self.sketch.count(item)
     }
 
+    /// Return whether `item` is currently in the Top-K list.
+    pub fn query(&self, item: &[u8]) -> bool {
+        self.sketch.query_topk_items(item)
+    }
+
     /// Return the Top-K items
     pub fn list(&self) -> Vec<(Vec<u8>, u64)> {
         self.sketch
@@ -263,6 +268,51 @@ mod tests {
         let counts: std::collections::HashMap<Vec<u8>, u64> = topk.list().into_iter().collect();
         assert_eq!(topk.count(b"apple"), counts[b"apple".as_slice()]);
         assert_eq!(topk.count(b"banana"), counts[b"banana".as_slice()]);
+    }
+
+    #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
+    fn test_query_untracked_item_is_false(seed: u64) {
+        let topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
+        assert!(!topk.query(b"apple"));
+    }
+
+    #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
+    fn test_query_tracked_item_is_true(seed: u64) {
+        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
+        topk.add(b"apple", 10);
+        topk.add(b"banana", 5);
+        assert!(topk.query(b"apple"));
+        assert!(topk.query(b"banana"));
+        assert!(!topk.query(b"cherry"));
+    }
+
+    #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
+    fn test_query_evicted_item_is_false(seed: u64) {
+        // An item displaced from the top-k by hotter items is no longer a
+        // member, even though it may still have a residual sketch count.
+        let mut topk = TopKObject::new_reserved(2, 256, 4, DEFAULT_DECAY, seed);
+        topk.add(b"apple", 5);
+        topk.add(b"banana", 10);
+        topk.add(b"cherry", 20);
+        assert!(!topk.query(b"apple"));
+        assert!(topk.query(b"banana"));
+        assert!(topk.query(b"cherry"));
+    }
+
+    #[test]
+    fn test_query_agrees_with_list() {
+        // query() membership matches what list() reports.
+        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, 42);
+        topk.add(b"apple", 10);
+        topk.add(b"banana", 5);
+        let listed: std::collections::HashSet<Vec<u8>> =
+            topk.list().into_iter().map(|(item, _)| item).collect();
+        assert_eq!(topk.query(b"apple"), listed.contains(b"apple".as_slice()));
+        assert_eq!(topk.query(b"banana"), listed.contains(b"banana".as_slice()));
+        assert_eq!(
+            topk.query(b"missing"),
+            listed.contains(b"missing".as_slice())
+        );
     }
 
     #[test]
