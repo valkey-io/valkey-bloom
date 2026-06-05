@@ -34,3 +34,23 @@ class TestTopkBasic(ValkeyBloomTestCaseBase):
         evictions = [r for r in result if r is not None]
         assert len(evictions) == 1
 
+    def test_topk_incrby_accumulates_count(self):
+        # Repeated increments of the same item accumulate. Verify the summed
+        # count through TOPK.LIST WITHCOUNT.
+        assert self.client.execute_command('TOPK.RESERVE tk 3 50 4 0.9 SEED 42') == b'OK'
+        self.client.execute_command('TOPK.INCRBY tk apple 4')
+        self.client.execute_command('TOPK.INCRBY tk apple 6')
+        listed = self.client.execute_command('TOPK.LIST tk WITHCOUNT')
+        it = iter(listed)
+        counts = dict(zip(it, it))
+        assert counts[b'apple'] == 10
+
+    def test_topk_add_low_count_does_not_displace_min(self):
+        # Once the top-k is full, an item whose count never beats the current
+        # minimum tracked count is not admitted and displaces nothing.
+        assert self.client.execute_command('TOPK.RESERVE tk 2 50 4 0.9 SEED 42') == b'OK'
+        self.client.execute_command('TOPK.INCRBY tk hot 50 warm 30')
+        assert self.client.execute_command('TOPK.ADD tk cold') == [None]
+        listed = self.client.execute_command('TOPK.LIST tk')
+        assert b'cold' not in listed
+

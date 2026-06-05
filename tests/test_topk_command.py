@@ -6,6 +6,9 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
     def test_topk_command_arity(self):
         self.verify_command_arity('TOPK.RESERVE', -1)
         self.verify_command_arity('TOPK.ADD', -1)
+        self.verify_command_arity('TOPK.INCRBY', -1)
+        self.verify_command_arity('TOPK.INFO', -1)
+        self.verify_command_arity('TOPK.LIST', -1)
 
     def test_topk_command_error(self):
         # test set up
@@ -56,6 +59,35 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
             # wrong number of arguments
             ('TOPK.ADD', "wrong number of arguments for 'TOPK.ADD' command"),
             ('TOPK.ADD tk', "wrong number of arguments for 'TOPK.ADD' command"),
+            # key must already be reserved
+            ('TOPK.INCRBY missing apple 1', 'TopK: key does not exist'),
+            # wrong type
+            ('TOPK.INCRBY strkey apple 1', 'WRONGTYPE Operation against a key holding the wrong kind of value'),
+            # increment must parse as u64 and be > 0.
+            ('TOPK.INCRBY dup apple abc', 'bad increment'),
+            ('TOPK.INCRBY dup apple -1', 'bad increment'),
+            ('TOPK.INCRBY dup apple 0', 'bad increment'),
+            # wrong number of arguments: needs complete item/increment pairs.
+            ('TOPK.INCRBY', "wrong number of arguments for 'TOPK.INCRBY' command"),
+            ('TOPK.INCRBY dup', "wrong number of arguments for 'TOPK.INCRBY' command"),
+            ('TOPK.INCRBY dup apple', "wrong number of arguments for 'TOPK.INCRBY' command"),
+            ('TOPK.INCRBY dup apple 1 banana', "wrong number of arguments for 'TOPK.INCRBY' command"),
+            # key must exist.
+            ('TOPK.INFO missing', 'TopK: key does not exist'),
+            # wrong type
+            ('TOPK.INFO strkey', 'WRONGTYPE Operation against a key holding the wrong kind of value'),
+            # wrong number of arguments 
+            ('TOPK.INFO', "wrong number of arguments for 'TOPK.INFO' command"),
+            ('TOPK.INFO dup extra', "wrong number of arguments for 'TOPK.INFO' command"),
+            # key must exist.
+            ('TOPK.LIST missing', 'TopK: key does not exist'),
+            # wrong type
+            ('TOPK.LIST strkey', 'WRONGTYPE Operation against a key holding the wrong kind of value'),
+            # only WITHCOUNT is accepted as the optional third argument.
+            ('TOPK.LIST dup NOTWITHCOUNT', 'ERROR'),
+            # wrong number of arguments.
+            ('TOPK.LIST', "wrong number of arguments for 'TOPK.LIST' command"),
+            ('TOPK.LIST dup WITHCOUNT extra', "wrong number of arguments for 'TOPK.LIST' command"),
         ]
         for cmd, expected_err_reply in basic_error_test_cases:
             self.verify_error_response(self.client, cmd, expected_err_reply)
@@ -82,6 +114,63 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
             ('TOPK.ADD tk_add apple', 1),
             ('TOPK.ADD tk_add apple banana cherry', 3),
             ('TOPK.ADD tk_add a b c d e f g', 7),
+            ('TOPK.ADD tk_add 12345 67890', 2),
+            ('TOPK.ADD tk_add item-1 item_2 item.3 item:4', 4),
+            ('TOPK.ADD tk_add Item1 ITEM2 iTeM3', 3),
+            ('TOPK.ADD tk_add dup dup dup', 3),
+            ('TOPK.ADD tk_add ' + 'x' * 256, 1),
         ]
         for cmd, expected_len in add_success_cases:
             assert len(self.client.execute_command(cmd)) == expected_len
+
+        # TOPK.INCRBY behaves like ADD but with explicit per-item increments.
+        assert self.client.execute_command('TOPK.RESERVE tk_incr 5 50 4 0.9') == b'OK'
+        incrby_success_cases = [
+            ('TOPK.INCRBY tk_incr apple 1', 1),
+            ('TOPK.INCRBY tk_incr apple 5 banana 3', 2),
+            ('TOPK.INCRBY tk_incr a 1 b 2 c 3', 3),
+            ('TOPK.INCRBY tk_incr 12345 7 item-1 2', 2),
+            ('TOPK.INCRBY tk_incr whale 1000000', 1),
+            ('TOPK.INCRBY tk_incr dup 2 dup 3', 2),
+        ]
+        for cmd, expected_len in incrby_success_cases:
+            assert len(self.client.execute_command(cmd)) == expected_len
+
+        # TOPK.INFO reports k, width, depth, and decay of an existing sketch.
+        def info_dict(key):
+            raw = self.client.execute_command(f'TOPK.INFO {key}')
+            it = iter(raw)
+            return dict(zip(it, it))
+        info = info_dict('tk1')
+        assert info[b'k'] == 5
+        assert info[b'width'] == 8
+        assert info[b'depth'] == 7
+        assert info[b'decay'] == b'0.9'
+
+        info = info_dict('tk5')
+        assert info[b'k'] == 10
+        assert info[b'width'] == 200
+        assert info[b'depth'] == 5
+        assert info[b'decay'] == b'0.5'
+
+        # TOPK.LIST returns tracked items by descending count, at most k.
+        assert self.client.execute_command('TOPK.RESERVE tk_list 3 50 4 0.9 SEED 42') == b'OK'
+        self.client.execute_command('TOPK.INCRBY tk_list apple 10 banana 5 cherry 2')
+
+        listed = self.client.execute_command('TOPK.LIST tk_list')
+        assert listed == [b'apple', b'banana', b'cherry']
+
+        # WITHCOUNT interleaves each item with its estimated count.
+        listed_wc = self.client.execute_command('TOPK.LIST tk_list WITHCOUNT')
+        it = iter(listed_wc)
+        counts = dict(zip(it, it))
+        assert counts[b'apple'] == 10
+        assert counts[b'banana'] == 5
+        assert counts[b'cherry'] == 2
+
+        # WITHCOUNT is case-insensitive.
+        assert self.client.execute_command('TOPK.LIST tk_list withcount') == listed_wc
+
+        # The list never exceeds k even when more distinct items are added.
+        self.client.execute_command('TOPK.INCRBY tk_list durian 1 elderberry 1')
+        assert len(self.client.execute_command('TOPK.LIST tk_list')) <= 3

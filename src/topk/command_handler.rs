@@ -160,6 +160,20 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
     }
 }
 
+fn add_with_increments<'a>(
+    topk: &mut TopKObject,
+    items: impl ExactSizeIterator<Item = (&'a [u8], u64)>,
+) -> Vec<ValkeyValue> {
+    let mut result: Vec<ValkeyValue> = Vec::with_capacity(items.len());
+    for (item, increment) in items {
+        match topk.add(item, increment) {
+            Some(evicted) => result.push(ValkeyValue::StringBuffer(evicted)),
+            None => result.push(ValkeyValue::Null),
+        }
+    }
+    result
+}
+
 /// Handle TOPK.ADD.
 ///
 /// Syntax:
@@ -183,15 +197,138 @@ pub fn topk_add(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     };
 
     let items = &input_args[2..];
-    let mut result: Vec<ValkeyValue> = Vec::with_capacity(items.len());
-    for item in items {
-        match topk.add(item.as_slice(), 1) {
-            Some(evicted) => result.push(ValkeyValue::StringBuffer(evicted)),
-            None => result.push(ValkeyValue::Null),
-        }
-    }
+    let result = add_with_increments(topk, items.iter().map(|item| (item.as_slice(), 1)));
 
     replicate_and_notify_events(ctx, key_name, false, true, None);
+    Ok(ValkeyValue::Array(result))
+}
+
+/// Handle TOPK.INCRBY.
+///
+/// Syntax:
+///     TOPK.INCRBY key item increment [item increment ...]
+///
+/// Like TOPK.ADD, but each item carries an explicit increment.
+/// Returns an array, one entry per item/increment pair, in order:
+///   - Null if no heavy-slot resident was displaced by the insertion.
+///   - The bulk-string of the displaced item otherwise.
+pub fn topk_incrby(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
+    let argc = input_args.len();
+    // key + at least one item/increment pair, and the pairs must be complete.
+    if argc < 4 || !argc.is_multiple_of(2) {
+        return Err(ValkeyError::WrongArity);
+    }
+
+    let key_name = &input_args[1];
+    let key = ctx.open_key_writable(key_name);
+    let topk = match key.get_value::<TopKObject>(&TOPK_TYPE) {
+        Ok(Some(v)) => v,
+        Ok(None) => return Err(ValkeyError::Str(utils::NOT_FOUND)),
+        Err(_) => return Err(ValkeyError::WrongType),
+    };
+
+    let pairs = &input_args[2..];
+    let mut parsed: Vec<(&ValkeyString, u64)> = Vec::with_capacity(pairs.len() / 2);
+    for pair in pairs.chunks_exact(2) {
+        let item = &pair[0];
+        let increment = match pair[1].to_string_lossy().parse::<u64>() {
+            Ok(0) => return Err(ValkeyError::Str(utils::BAD_INCREMENT)),
+            Ok(num) => num,
+            Err(_) => return Err(ValkeyError::Str(utils::BAD_INCREMENT)),
+        };
+        parsed.push((item, increment));
+    }
+
+    let result = add_with_increments(
+        topk,
+        parsed
+            .iter()
+            .map(|(item, increment)| (item.as_slice(), *increment)),
+    );
+
+    replicate_and_notify_events(ctx, key_name, false, true, None);
+    Ok(ValkeyValue::Array(result))
+}
+
+/// Handle TOPK.INFO.
+///
+/// Syntax:
+///     TOPK.INFO key
+///
+/// Returns the number of required items (k), width, depth, and decay of the
+/// sketch stored at `key`.
+pub fn topk_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
+    if input_args.len() != 2 {
+        return Err(ValkeyError::WrongArity);
+    }
+
+    let key_name = &input_args[1];
+    let key = ctx.open_key(key_name);
+    let topk = match key.get_value::<TopKObject>(&TOPK_TYPE) {
+        Ok(Some(topk)) => topk,
+        Ok(None) => return Err(ValkeyError::Str(utils::NOT_FOUND)),
+        Err(_) => return Err(ValkeyError::WrongType),
+    };
+
+    let result = vec![
+        ValkeyValue::SimpleStringStatic("k"),
+        ValkeyValue::Integer(topk.k() as i64),
+        ValkeyValue::SimpleStringStatic("width"),
+        ValkeyValue::Integer(topk.width() as i64),
+        ValkeyValue::SimpleStringStatic("depth"),
+        ValkeyValue::Integer(topk.depth() as i64),
+        ValkeyValue::SimpleStringStatic("decay"),
+        ValkeyValue::Float(topk.decay()),
+    ];
+    Ok(ValkeyValue::Array(result))
+}
+
+/// Handle TOPK.LIST.
+///
+/// Syntax:
+///     TOPK.LIST key [WITHCOUNT]
+///
+/// Return the full list of items in Top-K sketch.
+/// With WITHCOUNT, each item is followed by its estimated count.
+pub fn topk_list(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
+    let argc = input_args.len();
+    if !(2..=3).contains(&argc) {
+        return Err(ValkeyError::WrongArity);
+    }
+
+    let with_count = if argc == 3 {
+        if input_args[2]
+            .to_string_lossy()
+            .eq_ignore_ascii_case("WITHCOUNT")
+        {
+            true
+        } else {
+            return Err(ValkeyError::Str(utils::ERROR));
+        }
+    } else {
+        false
+    };
+
+    let key_name = &input_args[1];
+    let key = ctx.open_key(key_name);
+    let topk = match key.get_value::<TopKObject>(&TOPK_TYPE) {
+        Ok(Some(topk)) => topk,
+        Ok(None) => return Err(ValkeyError::Str(utils::NOT_FOUND)),
+        Err(_) => return Err(ValkeyError::WrongType),
+    };
+
+    let items = topk.list();
+    let mut result: Vec<ValkeyValue> = Vec::with_capacity(if with_count {
+        items.len() * 2
+    } else {
+        items.len()
+    });
+    for (item, count) in items {
+        result.push(ValkeyValue::StringBuffer(item));
+        if with_count {
+            result.push(ValkeyValue::Integer(count as i64));
+        }
+    }
     Ok(ValkeyValue::Array(result))
 }
 
