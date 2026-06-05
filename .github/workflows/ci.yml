@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        server_version: ['unstable', '8.0', '8.1']
+        server_version: ['unstable', '8.0', '8.1', '9.0', '9.1']
     steps:
     - uses: actions/checkout@v4
     - name: Set the server version for python integration tests
@@ -81,7 +81,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        server_version: ['unstable', '8.0', '8.1']
+        server_version: ['unstable', '8.0', '8.1', '9.0', '9.1']
     steps:
     - uses: actions/checkout@v4
     - name: Set the server version for python integration tests
