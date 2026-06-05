@@ -105,10 +105,6 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
-    fn new_topk(k: u32, seed: u64) -> TopKObject {
-        TopKObject::new_reserved(k, 256, 4, DEFAULT_DECAY, seed)
-    }
-
     #[test]
     fn test_new_reserved_stores_params() {
         // The constructor should round-trip every parameter through the getters.
@@ -122,7 +118,7 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_add_zero_increment_is_noop(seed: u64) {
-        let mut topk = new_topk(3, seed);
+        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
         // A zero increment does no work and never evicts.
         assert_eq!(topk.add(b"apple", 0), None);
         assert!(topk.list().is_empty());
@@ -130,7 +126,7 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_add_no_eviction_until_full(seed: u64) {
-        let mut topk = new_topk(2, seed);
+        let mut topk = TopKObject::new_reserved(2, 256, 4, DEFAULT_DECAY, seed);
         // Priority queue has room (k=2), so neither insert evicts.
         assert_eq!(topk.add(b"apple", 5), None);
         assert_eq!(topk.add(b"banana", 10), None);
@@ -139,7 +135,7 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_add_returns_evicted_item(seed: u64) {
-        let mut topk = new_topk(2, seed);
+        let mut topk = TopKObject::new_reserved(2, 256, 4, DEFAULT_DECAY, seed);
         assert_eq!(topk.add(b"apple", 5), None);
         assert_eq!(topk.add(b"banana", 10), None);
         assert_eq!(topk.add(b"cherry", 20), Some(b"apple".to_vec()));
@@ -152,7 +148,7 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_add_low_count_does_not_displace_min(seed: u64) {
-        let mut topk = new_topk(2, seed);
+        let mut topk = TopKObject::new_reserved(2, 256, 4, DEFAULT_DECAY, seed);
         topk.add(b"hot", 50);
         topk.add(b"warm", 30);
         // "cold" never beats the current minimum (30), so nothing is evicted.
@@ -161,16 +157,16 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_add_existing_item_accumulates_count(seed: u64) {
-        let mut topk = new_topk(3, seed);
+        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
         topk.add(b"apple", 4);
         topk.add(b"apple", 6);
         let counts: std::collections::HashMap<Vec<u8>, u64> = topk.list().into_iter().collect();
-        assert_eq!(counts.get(&b"apple".to_vec()), Some(&10));
+        assert_eq!(counts.get(b"apple".as_slice()), Some(&10));
     }
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_list_sorted_by_descending_count(seed: u64) {
-        let mut topk = new_topk(5, seed);
+        let mut topk = TopKObject::new_reserved(5, 256, 4, DEFAULT_DECAY, seed);
         topk.add(b"apple", 10);
         topk.add(b"banana", 5);
         topk.add(b"cherry", 2);
@@ -188,7 +184,7 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_list_never_exceeds_k(seed: u64) {
-        let mut topk = new_topk(3, seed);
+        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
         for (item, incr) in [
             (b"a".as_slice(), 10),
             (b"b".as_slice(), 9),
@@ -208,21 +204,21 @@ mod tests {
         case::mixed(b"item-1", b"item-2")
     )]
     fn test_add_and_list_with_non_alpha_items(item_a: &[u8], item_b: &[u8]) {
-        let mut topk = new_topk(2, 42);
+        let mut topk = TopKObject::new_reserved(2, 256, 4, DEFAULT_DECAY, 42);
         topk.add(item_a, 10);
         topk.add(item_b, 5);
 
         let counts: std::collections::HashMap<Vec<u8>, u64> = topk.list().into_iter().collect();
-        assert_eq!(counts.get(&item_a.to_vec()), Some(&10));
-        assert_eq!(counts.get(&item_b.to_vec()), Some(&5));
+        assert_eq!(counts.get(item_a), Some(&10));
+        assert_eq!(counts.get(item_b), Some(&5));
     }
 
     #[test]
     fn test_seed() {
         // Two sketches built with the same seed are deterministic: identical
         // input produces identical Top-K output.
-        let mut a = new_topk(3, 42);
-        let mut b = new_topk(3, 42);
+        let mut a = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, 42);
+        let mut b = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, 42);
         for (item, incr) in [
             (b"apple".as_slice(), 7),
             (b"banana".as_slice(), 11),

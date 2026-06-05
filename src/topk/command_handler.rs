@@ -160,7 +160,7 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
     }
 }
 
-fn apply_increments<'a>(
+fn add_with_increments<'a>(
     topk: &mut TopKObject,
     items: impl ExactSizeIterator<Item = (&'a [u8], u64)>,
 ) -> Vec<ValkeyValue> {
@@ -197,7 +197,7 @@ pub fn topk_add(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     };
 
     let items = &input_args[2..];
-    let result = apply_increments(topk, items.iter().map(|item| (item.as_slice(), 1)));
+    let result = add_with_increments(topk, items.iter().map(|item| (item.as_slice(), 1)));
 
     replicate_and_notify_events(ctx, key_name, false, true, None);
     Ok(ValkeyValue::Array(result))
@@ -239,7 +239,7 @@ pub fn topk_incrby(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
         parsed.push((item, increment));
     }
 
-    let result = apply_increments(
+    let result = add_with_increments(
         topk,
         parsed
             .iter()
