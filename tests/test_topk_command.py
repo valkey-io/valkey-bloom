@@ -114,6 +114,11 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
             ('TOPK.ADD tk_add apple', 1),
             ('TOPK.ADD tk_add apple banana cherry', 3),
             ('TOPK.ADD tk_add a b c d e f g', 7),
+            ('TOPK.ADD tk_add 12345 67890', 2),
+            ('TOPK.ADD tk_add item-1 item_2 item.3 item:4', 4),
+            ('TOPK.ADD tk_add Item1 ITEM2 iTeM3', 3),
+            ('TOPK.ADD tk_add dup dup dup', 3),
+            ('TOPK.ADD tk_add ' + 'x' * 256, 1),
         ]
         for cmd, expected_len in add_success_cases:
             assert len(self.client.execute_command(cmd)) == expected_len
@@ -124,6 +129,9 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
             ('TOPK.INCRBY tk_incr apple 1', 1),
             ('TOPK.INCRBY tk_incr apple 5 banana 3', 2),
             ('TOPK.INCRBY tk_incr a 1 b 2 c 3', 3),
+            ('TOPK.INCRBY tk_incr 12345 7 item-1 2', 2),
+            ('TOPK.INCRBY tk_incr whale 1000000', 1),
+            ('TOPK.INCRBY tk_incr dup 2 dup 3', 2),
         ]
         for cmd, expected_len in incrby_success_cases:
             assert len(self.client.execute_command(cmd)) == expected_len
