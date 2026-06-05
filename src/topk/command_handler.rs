@@ -332,6 +332,38 @@ pub fn topk_list(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     Ok(ValkeyValue::Array(result))
 }
 
+/// Handle TOPK.COUNT.
+///
+/// Syntax:
+///     TOPK.COUNT key item [item ...]
+///
+/// Return the estimated count for one or more items. Returns an array, one
+/// entry per input item, in order.
+///
+/// Note: the returned counts are estimates and may be lower than the true
+/// counts, but never higher, due to the decaying nature of the sketch.
+pub fn topk_count(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
+    let argc = input_args.len();
+    if argc < 3 {
+        return Err(ValkeyError::WrongArity);
+    }
+
+    let key_name = &input_args[1];
+    let key = ctx.open_key(key_name);
+    let topk = match key.get_value::<TopKObject>(&TOPK_TYPE) {
+        Ok(Some(topk)) => topk,
+        Ok(None) => return Err(ValkeyError::Str(utils::NOT_FOUND)),
+        Err(_) => return Err(ValkeyError::WrongType),
+    };
+
+    let items = &input_args[2..];
+    let result: Vec<ValkeyValue> = items
+        .iter()
+        .map(|item| ValkeyValue::Integer(topk.count(item.as_slice()) as i64))
+        .collect();
+    Ok(ValkeyValue::Array(result))
+}
+
 /// Case-insensitive match for the literal SEED keyword.
 fn is_seed_token(arg: &ValkeyString) -> bool {
     arg.to_string_lossy().eq_ignore_ascii_case("SEED")

@@ -90,6 +90,12 @@ impl TopKObject {
         self.sketch.add_with_evicted(item, increment)
     }
 
+    /// Return the estimated count for `item`, or 0 if it has no residual
+    /// presence in the priority queue or sketch cells.
+    pub fn count(&self, item: &[u8]) -> u64 {
+        self.sketch.count(item)
+    }
+
     /// Return the Top-K items
     pub fn list(&self) -> Vec<(Vec<u8>, u64)> {
         self.sketch
@@ -211,6 +217,52 @@ mod tests {
         let counts: std::collections::HashMap<Vec<u8>, u64> = topk.list().into_iter().collect();
         assert_eq!(counts.get(item_a), Some(&10));
         assert_eq!(counts.get(item_b), Some(&5));
+    }
+
+    #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
+    fn test_count_untracked_item_is_zero(seed: u64) {
+        let topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
+        assert_eq!(topk.count(b"apple"), 0);
+    }
+
+    #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
+    fn test_count_reflects_added_increments(seed: u64) {
+        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
+        topk.add(b"apple", 10);
+        topk.add(b"banana", 5);
+        assert_eq!(topk.count(b"apple"), 10);
+        assert_eq!(topk.count(b"banana"), 5);
+        assert_eq!(topk.count(b"cherry"), 0);
+    }
+
+    #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
+    fn test_count_accumulates_repeated_adds(seed: u64) {
+        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
+        topk.add(b"apple", 4);
+        topk.add(b"apple", 6);
+        assert_eq!(topk.count(b"apple"), 10);
+    }
+
+    #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
+    fn test_count_never_exceeds_true_count(seed: u64) {
+        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
+        for item in [b"a".as_slice(), b"b".as_slice(), b"c".as_slice()] {
+            for _ in 0..20 {
+                topk.add(item, 1);
+            }
+            assert!(topk.count(item) <= 20);
+        }
+    }
+
+    #[test]
+    fn test_count_matches_list_withcount() {
+        // The count reported by count() agrees with the count surfaced by list().
+        let mut topk = TopKObject::new_reserved(5, 256, 4, DEFAULT_DECAY, 42);
+        topk.add(b"apple", 10);
+        topk.add(b"banana", 5);
+        let counts: std::collections::HashMap<Vec<u8>, u64> = topk.list().into_iter().collect();
+        assert_eq!(topk.count(b"apple"), counts[b"apple".as_slice()]);
+        assert_eq!(topk.count(b"banana"), counts[b"banana".as_slice()]);
     }
 
     #[test]

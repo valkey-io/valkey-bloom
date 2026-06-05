@@ -9,6 +9,7 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         self.verify_command_arity('TOPK.INCRBY', -1)
         self.verify_command_arity('TOPK.INFO', -1)
         self.verify_command_arity('TOPK.LIST', -1)
+        self.verify_command_arity('TOPK.COUNT', -1)
 
     def test_topk_command_error(self):
         # test set up
@@ -88,6 +89,13 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
             # wrong number of arguments.
             ('TOPK.LIST', "wrong number of arguments for 'TOPK.LIST' command"),
             ('TOPK.LIST dup WITHCOUNT extra', "wrong number of arguments for 'TOPK.LIST' command"),
+            # key must exist.
+            ('TOPK.COUNT missing apple', 'TopK: key does not exist'),
+            # wrong type
+            ('TOPK.COUNT strkey apple', 'WRONGTYPE Operation against a key holding the wrong kind of value'),
+            # wrong number of arguments: needs key plus at least one item.
+            ('TOPK.COUNT', "wrong number of arguments for 'TOPK.COUNT' command"),
+            ('TOPK.COUNT dup', "wrong number of arguments for 'TOPK.COUNT' command"),
         ]
         for cmd, expected_err_reply in basic_error_test_cases:
             self.verify_error_response(self.client, cmd, expected_err_reply)
@@ -174,3 +182,23 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         # The list never exceeds k even when more distinct items are added.
         self.client.execute_command('TOPK.INCRBY tk_list durian 1 elderberry 1')
         assert len(self.client.execute_command('TOPK.LIST tk_list')) <= 3
+
+        # TOPK.COUNT returns the estimated count per item, in order.
+        assert self.client.execute_command('TOPK.RESERVE tk_count 3 50 4 0.9 SEED 42') == b'OK'
+        self.client.execute_command('TOPK.INCRBY tk_count apple 10 banana 5 cherry 2')
+        assert self.client.execute_command('TOPK.COUNT tk_count apple') == [10]
+        assert self.client.execute_command('TOPK.COUNT tk_count apple banana cherry') == [10, 5, 2]
+        assert self.client.execute_command('TOPK.COUNT tk_count missing') == [0]
+        assert self.client.execute_command('TOPK.COUNT tk_count apple missing banana') == [10, 0, 5]
+        assert self.client.execute_command('TOPK.COUNT tk_count apple apple') == [10, 10]
+
+        # Estimates never exceed true counts. Use a small, narrow
+        # sketch so collisions are likely, then check the invariant holds.
+        assert self.client.execute_command('TOPK.RESERVE tk_inv 5 4 2 0.9 SEED 42') == b'OK'
+        true_counts = {f'item-{i}': i + 1 for i in range(50)}
+        for item, count in true_counts.items():
+            self.client.execute_command(f'TOPK.INCRBY tk_inv {item} {count}')
+        items = list(true_counts.keys())
+        estimates = self.client.execute_command('TOPK.COUNT tk_inv ' + ' '.join(items))
+        for item, estimate in zip(items, estimates):
+            assert estimate <= true_counts[item], f'{item}: {estimate} > {true_counts[item]}'
