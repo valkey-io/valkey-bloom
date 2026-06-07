@@ -37,6 +37,11 @@
                         "token": "FILTERS"
                     },
                     {
+                        "name": "items",
+                        "type": "pure-token",
+                        "token": "ITEMS"
+                    },
+                    {
                         "name": "error",
                         "type": "pure-token",
                         "token": "ERROR"
