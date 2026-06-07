@@ -758,14 +758,14 @@ pub fn bloom_filter_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
                 "FILTERS" => Ok(ValkeyValue::Integer(val.num_filters() as i64)),
                 "ITEMS" => Ok(ValkeyValue::Integer(val.cardinality())),
                 "ERROR" => Ok(ValkeyValue::Float(val.fp_rate())),
-                "TIGHTENING" if val.expansion() > 0 => {
-                    Ok(ValkeyValue::Float(val.tightening_ratio()))
-                }
                 "EXPANSION" => {
                     if val.expansion() == 0 {
                         return Ok(ValkeyValue::Null);
                     }
                     Ok(ValkeyValue::Integer(val.expansion() as i64))
+                }
+                "TIGHTENING" if val.expansion() > 0 => {
+                    Ok(ValkeyValue::Float(val.tightening_ratio()))
                 }
                 // Only calculate and expose MAXSCALEDCAPACITY for scaling bloom objects.
                 "MAXSCALEDCAPACITY" if val.expansion() > 0 => {
