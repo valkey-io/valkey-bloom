@@ -54,3 +54,15 @@ class TestTopkBasic(ValkeyBloomTestCaseBase):
         listed = self.client.execute_command('TOPK.LIST tk')
         assert b'cold' not in listed
 
+    def test_topk_count_never_exceeds_true_count(self):
+        # Estimates never exceed true counts. Use a small, narrow sketch so
+        # collisions are likely, then check the invariant holds.
+        assert self.client.execute_command('TOPK.RESERVE tk_inv 5 4 2 0.9 SEED 42') == b'OK'
+        true_counts = {f'item-{i}': i + 1 for i in range(50)}
+        for item, count in true_counts.items():
+            self.client.execute_command(f'TOPK.INCRBY tk_inv {item} {count}')
+        items = list(true_counts.keys())
+        estimates = self.client.execute_command('TOPK.COUNT tk_inv ' + ' '.join(items))
+        for item, estimate in zip(items, estimates):
+            assert estimate <= true_counts[item], f'{item}: {estimate} > {true_counts[item]}'
+

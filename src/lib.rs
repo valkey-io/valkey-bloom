@@ -118,6 +118,16 @@ fn topk_list_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     topk_command_handler::topk_list(ctx, &args)
 }
 
+/// Command handler for TOPK.COUNT key item [item ...]
+fn topk_count_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    topk_command_handler::topk_count(ctx, &args)
+}
+
+/// Command handler for TOPK.QUERY key item [item ...]
+fn topk_query_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    topk_command_handler::topk_query(ctx, &args)
+}
+
 ///
 /// Module Info
 ///
@@ -158,6 +168,8 @@ valkey_module! {
         ["TOPK.INCRBY", topk_incrby_command, "write fast deny-oom", 1, 1, 1, "fast write topk"],
         ["TOPK.INFO", topk_info_command, "readonly fast", 1, 1, 1, "fast read topk"],
         ["TOPK.LIST", topk_list_command, "readonly", 1, 1, 1, "read topk"],
+        ["TOPK.COUNT", topk_count_command, "readonly fast", 1, 1, 1, "fast read topk"],
+        ["TOPK.QUERY", topk_query_command, "readonly fast", 1, 1, 1, "fast read topk"],
     ],
     configurations: [
         i64: [
