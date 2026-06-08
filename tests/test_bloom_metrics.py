@@ -55,7 +55,6 @@ class TestBloomMetrics(ValkeyBloomTestCaseBase):
 
         # Delete a default key and make sure the metrics are still correct
         self.client.execute_command('UNLINK key')
-        wait_for_equal(lambda: self.parse_valkey_info("bf").get('bf_bloom_num_objects'), '2')
         self.verify_bloom_metrics(self.client.execute_command("INFO bf"), DEFAULT_BLOOM_FILTER_SIZE * 2, 2, 2, 3, DEFAULT_BLOOM_FILTER_CAPACITY * 2)
         self.verify_bloom_metrics(self.client.execute_command("INFO Modules"), DEFAULT_BLOOM_FILTER_SIZE * 2, 2, 2, 3, DEFAULT_BLOOM_FILTER_CAPACITY * 2)
 
@@ -74,6 +73,7 @@ class TestBloomMetrics(ValkeyBloomTestCaseBase):
         # Flush database so all keys should now be gone and metrics should all be at 0
         self.client.execute_command('FLUSHDB')
         wait_for_equal(lambda: self.client.execute_command('DBSIZE'), 0)
+        wait_for_equal(lambda: self.parse_valkey_info("bf").get('bf_bloom_num_objects'), '0')
         self.verify_bloom_metrics(self.client.execute_command("INFO bf"), 0, 0, 0, 0, 0)
         self.verify_bloom_metrics(self.client.execute_command("INFO Modules"), 0, 0, 0, 0, 0)
 
