@@ -98,7 +98,7 @@ impl TopKObject {
 
     /// Return whether `item` is currently in the Top-K list.
     pub fn query(&self, item: &[u8]) -> bool {
-        self.sketch.query_topk_items(item)
+        self.sketch.contains_top_k(item)
     }
 
     /// Return the Top-K items
