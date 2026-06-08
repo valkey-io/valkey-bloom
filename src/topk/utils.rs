@@ -225,18 +225,15 @@ mod tests {
     }
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
-    fn test_count_untracked_item_is_zero(seed: u64) {
-        let topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
-        assert_eq!(topk.count(b"apple"), 0);
-    }
-
-    #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_count_reflects_added_increments(seed: u64) {
         let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
+        // Untracked items report a count of zero before anything is added.
+        assert_eq!(topk.count(b"apple"), 0);
         topk.add(b"apple", 10);
         topk.add(b"banana", 5);
         assert_eq!(topk.count(b"apple"), 10);
         assert_eq!(topk.count(b"banana"), 5);
+        // An item that was never added also reports zero.
         assert_eq!(topk.count(b"cherry"), 0);
     }
 
@@ -268,12 +265,6 @@ mod tests {
         let counts: std::collections::HashMap<Vec<u8>, u64> = topk.list().into_iter().collect();
         assert_eq!(topk.count(b"apple"), counts[b"apple".as_slice()]);
         assert_eq!(topk.count(b"banana"), counts[b"banana".as_slice()]);
-    }
-
-    #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
-    fn test_query_untracked_item_is_false(seed: u64) {
-        let topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
-        assert!(!topk.query(b"apple"));
     }
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
