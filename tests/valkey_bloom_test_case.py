@@ -7,6 +7,7 @@ import string
 import logging
 import subprocess
 import time
+from valkeytestframework.util.waiters import wait_for_equal
 
 class ValkeyBloomTestCaseBase(ValkeyTestCase):
 
@@ -351,4 +352,51 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
             assert False, f"Unexpected extra message returned: {extra_message}"
         for message in expected_messages:
             assert message in result_messages, f"{message} was not found in messages received"
+
+    # ACL category helpers
+
+    def run_acl_category_permissions_test(self, category, commands):
+        """Create users with assorted grants for the given ACL category and
+        verify denied users are rejected while permitted users succeed."""
+        client = self.server.get_new_client()
+        list_of_commands = client.execute_command(f"COMMAND LIST FILTERBY ACLCAT {category}")
+        # Users without access to the category.
+        client.execute_command(f"ACL SETUSER non{category}user1 on >{category}_pass -@{category}")
+        client.execute_command(f"ACL SETUSER non{category}user2 on >{category}_pass -@all")
+        # Users with access via different grant combinations.
+        client.execute_command(f"ACL SETUSER {category}user1 on >{category}_pass ~* &* +@all ")
+        client.execute_command(f"ACL SETUSER {category}user2 on >{category}_pass ~* &* -@all +@{category} ")
+        client.execute_command(f"ACL SETUSER {category}user3 on >{category}_pass ~* &* -@all +@write +@read ")
+        client.execute_command(f"ACL SETUSER {category}user4 on >{category}_pass ~* &* -@all +@write +@{category}")
+        # Denied users cannot run any command in the category.
+        for i in range(1, 3):
+            client.execute_command(f"AUTH non{category}user{i} {category}_pass")
+            for cmd in commands:
+                self.verify_invalid_user_permissions(client, cmd, list_of_commands)
+        # Permitted users can run every command in the category.
+        for i in range(1, 5):
+            client.execute_command(f"AUTH {category}user{i} {category}_pass")
+            for cmd in commands:
+                self.verify_valid_user_permissions(client, cmd)
+            self.client.execute_command('FLUSHDB')
+            wait_for_equal(lambda: self.client.execute_command('DBSIZE'), 0)
+
+    def verify_invalid_user_permissions(self, client, cmd, list_of_commands):
+        cmd_name = cmd[0].split()[0]
+        # Each command under test should appear in the category's command list.
+        assert cmd_name.encode() in list_of_commands
+        try:
+            client.execute_command(cmd[0])
+            assert False, f"User with no category access shouldnt be able to run {cmd_name}"
+        except Exception as e:
+            assert f"has no permissions to run the '{cmd_name}' command" in str(e)
+
+    def verify_command_acl_categories(self, commands):
+        """Assert each command exposes the expected flags and ACL categories via
+        COMMAND INFO. Each entry is (command, expected_flags, expected_categories)."""
+        for cmd in commands:
+            cmd_info = self.client.execute_command(f'COMMAND INFO {cmd[0]}')
+            assert cmd_info[0][2] == cmd[1]
+            for category in cmd[2]:
+                assert category in cmd_info[0][6]
 
