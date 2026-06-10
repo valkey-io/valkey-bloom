@@ -308,3 +308,47 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
             server.connect()
         
         return server.client
+    
+    # Keyspace notification helpers
+
+    def create_subscribe_clients(self):
+        """Create a client subscribed to all keyspace/keyevent channels and
+        enable keyspace notifications on the server."""
+        self.keyspace_client = self.server.get_new_client()
+        self.keyspace_client_subscribe = self.keyspace_client.pubsub()
+        self.keyspace_client_subscribe.psubscribe('__key*__:*')
+        self.keyspace_client.execute_command('CONFIG', 'SET', 'notify-keyspace-events', 'KEA')
+
+    def build_keyspace_event_messages(self, event, key_name):
+        """Return the (keyspace, keyevent) pmessage pair expected for a given
+        event name fired against key_name."""
+        keyspace_message = {'type': 'pmessage', 'pattern': b'__key*__:*', 'channel': f"__keyspace@0__:{key_name}".encode('utf-8'), 'data': event.encode('utf-8')}
+        keyevent_message = {'type': 'pmessage', 'pattern': b'__key*__:*', 'channel': f"__keyevent@0__:{event}".encode('utf-8'), 'data': f"{key_name}".encode('utf-8')}
+        return keyspace_message, keyevent_message
+
+    def get_subscribe_client_messages(self, client, cmd, expected_message_count):
+        """Run cmd and collect exactly expected_message_count keyspace
+        notifications, skipping the one-time psubscribe confirmation (only
+        real notifications have type 'pmessage')."""
+        client.execute_command(cmd)
+        messages = []
+        timeout = time.time() + 5
+        while len(messages) != expected_message_count:
+            message = self.keyspace_client_subscribe.get_message()
+            if message:
+                if message.get('type') != 'pmessage':
+                    continue
+                messages.append(message)
+            if timeout < time.time():
+                assert False, f"The number of expected messages failed to return in time, messages received so far {messages}"
+        return messages
+
+    def check_keyspace_response(self, result_messages, expected_messages):
+        """Assert no extra notifications are pending and every expected message
+        was received."""
+        extra_message = self.keyspace_client_subscribe.get_message()
+        if extra_message:
+            assert False, f"Unexpected extra message returned: {extra_message}"
+        for message in expected_messages:
+            assert message in result_messages, f"{message} was not found in messages received"
+
