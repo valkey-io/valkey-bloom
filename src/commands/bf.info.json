@@ -37,14 +37,19 @@
                         "token": "FILTERS"
                     },
                     {
-                        "name": "expansion",
+                        "name": "items",
                         "type": "pure-token",
-                        "token": "EXPANSION"
+                        "token": "ITEMS"
                     },
                     {
                         "name": "error",
                         "type": "pure-token",
                         "token": "ERROR"
+                    },
+                    {
+                        "name": "expansion",
+                        "type": "pure-token",
+                        "token": "EXPANSION"
                     },
                     {
                         "name": "tightening",
