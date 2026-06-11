@@ -14,6 +14,11 @@ pub const KEY_EXISTS: &str = "ERR Target key name already exists.";
 pub const BAD_INCREMENT: &str = "ERR bad increment";
 pub const INCREMENT_MUST_BE_POSITIVE: &str = "ERR increment must be positive";
 
+///Keyspace Notification Events
+pub const INITBYPROB_EVENT: &str = "countminsketch.initbyprob";
+pub const INITBYDIM_EVENT: &str = "countminsketch.initbydim";
+pub const INCR_EVENT: &str = "countminsketch.incrby";
+
 #[derive(Debug, PartialEq)]
 pub enum CMSError {
     InvalidWidth,
@@ -101,7 +106,6 @@ impl CMSObject {
     pub fn total(&self) -> u64 {
         self.total
     }
-
 }
 
 struct CMS {
