@@ -14,7 +14,11 @@ class TestTopkKeyEventNotifications(ValkeyBloomTestCaseBase):
             ('TOPK.ADD add_test apple banana', ['topk.add'], 2),
             ('TOPK.RESERVE incr_test 3 50 4 0.9', ['topk.reserve'], 2),
             ('TOPK.INCRBY incr_test apple 5 banana 3', ['topk.add'], 2),
+            # Read-only commands 
             ('TOPK.QUERY add_test apple', [], 0),
+            ('TOPK.COUNT add_test apple', [], 0),
+            ('TOPK.LIST add_test', [], 0),
+            ('TOPK.INFO add_test', [], 0),
         ]
 
         for command, events_expected, expected_message_count in topk_commands:

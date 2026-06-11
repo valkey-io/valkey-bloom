@@ -1,5 +1,6 @@
 from valkeytestframework.conftest import resource_port_tracker
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
+from valkeytestframework.util.waiters import *
 
 class TestTopkACLCategory(ValkeyBloomTestCaseBase):
 
@@ -14,7 +15,28 @@ class TestTopkACLCategory(ValkeyBloomTestCaseBase):
             ('TOPK.LIST reserve_key', [b'item']),
             ('TOPK.INFO reserve_key', 8),
         ]
-        self.run_acl_category_permissions_test("topk", topk_commands)
+        client = self.server.get_new_client()
+        # Get a list of all commands with the acl category topk
+        list_of_topk_commands = client.execute_command("COMMAND LIST FILTERBY ACLCAT topk")
+        # Create users with different acl permissions
+        client.execute_command("ACL SETUSER nontopkuser1 on >topk_pass -@topk")
+        client.execute_command("ACL SETUSER nontopkuser2 on >topk_pass -@all")
+        client.execute_command("ACL SETUSER topkuser1 on >topk_pass ~* &* +@all ")
+        client.execute_command("ACL SETUSER topkuser2 on >topk_pass ~* &* -@all +@topk ")
+        client.execute_command("ACL SETUSER topkuser3 on >topk_pass ~* &* -@all +@write +@read ")
+        client.execute_command("ACL SETUSER topkuser4 on >topk_pass ~* &* -@all +@write +@topk")
+        # Switch to the users with no topk command access and check error occurs as expected
+        for i in range(1, 3):
+            client.execute_command(f"AUTH nontopkuser{i} topk_pass")
+            for cmd in topk_commands:
+                self.verify_invalid_user_permissions(client, cmd, list_of_topk_commands)
+        # Switch to the users with topk command access and check commands are run as expected
+        for i in range(1, 5):
+            client.execute_command(f"AUTH topkuser{i} topk_pass")
+            for cmd in topk_commands:
+                self.verify_valid_user_permissions(client, cmd)
+            self.client.execute_command('FLUSHDB')
+            wait_for_equal(lambda: self.client.execute_command('DBSIZE'), 0)
 
     def verify_valid_user_permissions(self, client, cmd):
         cmd_name = cmd[0].split()[0]
