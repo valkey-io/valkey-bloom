@@ -52,16 +52,6 @@ class TestBloomACLCategory(ValkeyBloomTestCaseBase):
         except Exception as e:
             assert False, f"bloomuser should be able to execute {cmd_name}: {str(e)}"
 
-    def verify_invalid_user_permissions(self, client, cmd, list_of_bloom_commands):
-        cmd_name = cmd[0].split()[0]
-        # Check that each command we try to run appeared in the list of commands with the bloom acl category
-        assert cmd_name.encode() in list_of_bloom_commands
-        try:
-            result = client.execute_command(cmd[0])
-            assert False, f"User with no bloom category access shouldnt be able to run {cmd_name}"
-        except Exception as e:
-            assert f"has no permissions to run the '{cmd_name}' command" in str(e)
-
     def test_bloom_command_acl_categories(self):
         # List of bloom commands and their acl categories
         bloom_commands = [
@@ -75,9 +65,4 @@ class TestBloomACLCategory(ValkeyBloomTestCaseBase):
             ('BF.RESERVE', [b'write', b'denyoom', b'module', b'fast'], [b'@write', b'@fast', b'@bloom']),
             ('BF.LOAD', [b'write', b'denyoom', b'module'], [b'@write', b'@bloom']),
         ]
-        for cmd in bloom_commands:
-            # Get the info of the commands and compare the acl categories
-            cmd_info = self.client.execute_command(f'COMMAND INFO {cmd[0]}')
-            assert cmd_info[0][2] == cmd[1]
-            for category in cmd[2]:
-                assert category in cmd_info[0][6]
+        self.verify_command_acl_categories(bloom_commands)

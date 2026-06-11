@@ -16,9 +16,9 @@ struct ReplicateArgs {
 /// Helper function to replicate mutative commands to the replica nodes and publish keyspace events.
 /// There are two main cases for replication:
 /// - RESERVE operation: replays a deterministic TOPK.RESERVE on replicas.
-/// - ADD operation: verbatim replication is safe because TOPK.ADD is
-///   deterministic given the same sketch state, and replicas were seeded
-///   identically via the replicated TOPK.RESERVE.
+/// - ADD operation: covers TOPK.ADD and TOPK.INCRBY; both replicate verbatim and publish
+///   the same `topk.add` event, safe because they are deterministic once the
+///   replica is seeded identically via the replicated TOPK.RESERVE.
 fn replicate_and_notify_events(
     ctx: &Context,
     key_name: &ValkeyString,
