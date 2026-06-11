@@ -94,10 +94,7 @@ pub fn cms_initialize_by_dimensions(ctx: &Context, args: Vec<ValkeyString>) -> V
                     //TEMP REMOVE AFTER DOING SEED CONFIGURATION
                     let seed = [0u8; 32];
                     let r = Replications::ReplicateArgsDim { width, depth };
-                    let replicate_args = ReplicateArgs {
-                        seed,
-                        args: r,
-                    };
+                    let replicate_args = ReplicateArgs { seed, args: r };
                     replicate_and_notify_events(ctx, key, true, false, replicate_args);
                     VALKEY_OK
                 }
@@ -152,10 +149,7 @@ pub fn cms_initialize_by_probability(ctx: &Context, args: Vec<ValkeyString>) -> 
                     //TEMP REMOVE AFTER DOING SEED CONFIGURATION
                     let seed = [0u8; 32];
                     let r = Replications::ReplicateArgsProb { error: error_rate };
-                    let replicate_args = ReplicateArgs {
-                        seed,
-                        args: r,
-                    };
+                    let replicate_args = ReplicateArgs { seed, args: r };
                     replicate_and_notify_events(ctx, key, true, false, replicate_args);
                     VALKEY_OK
                 }

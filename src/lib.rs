@@ -104,7 +104,6 @@ fn cms_initbyprob_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResul
     cms_command_handler::cms_initialize_by_probability(ctx, args)
 }
 
-
 ///
 /// Module Info
 ///
