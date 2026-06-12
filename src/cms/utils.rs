@@ -15,6 +15,7 @@ pub const KEY_EXISTS: &str = "ERR Target key name already exists.";
 ///Keyspace Notification Events
 pub const INITBYPROB_EVENT: &str = "countminsketch.initbyprob";
 pub const INITBYDIM_EVENT: &str = "countminsketch.initbydim";
+pub const INCR_EVENT: &str = "countminsketch.incrby";
 
 #[derive(Debug, PartialEq)]
 pub enum CMSError {
