@@ -1,4 +1,6 @@
+use crate::metrics;
 use heavykeeper::CuckooTopK;
+use std::sync::atomic::Ordering;
 
 /// KeySpace Notification Events
 pub const RESERVE_EVENT: &str = "topk.reserve";
@@ -44,6 +46,7 @@ pub struct TopKObject {
     decay: f64,
     seed: u64,
     sketch: CuckooTopK<Vec<u8>>,
+    num_items: u64,
 }
 
 impl TopKObject {
@@ -51,14 +54,25 @@ impl TopKObject {
     /// after the handler has parsed and validated all parameters.
     pub fn new_reserved(k: u32, width: u32, depth: u32, decay: f64, seed: u64) -> TopKObject {
         let sketch = CuckooTopK::with_seed(k as usize, width as usize, depth as usize, decay, seed);
-        TopKObject {
+        let topk = TopKObject {
             k,
             width,
             depth,
             decay,
             seed,
             sketch,
-        }
+            num_items: 0,
+        };
+        topk.topk_object_incr_metrics_on_new_create();
+        topk
+    }
+
+    /// Increments metrics related to object count, memory, and summed k upon creation of a new object.
+    fn topk_object_incr_metrics_on_new_create(&self) {
+        metrics::TOPK_NUM_OBJECTS.fetch_add(1, Ordering::Relaxed);
+        metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
+            .fetch_add(std::mem::size_of::<TopKObject>(), Ordering::Relaxed);
+        metrics::TOPK_SUM_K_ACROSS_OBJECTS.fetch_add(self.k as u64, Ordering::Relaxed);
     }
 
     pub fn k(&self) -> u32 {
@@ -87,6 +101,12 @@ impl TopKObject {
     /// heavy-slot resident displaced by this insertion (if any). At most one
     /// item can be evicted per call.
     pub fn add(&mut self, item: &[u8], increment: u64) -> Option<Vec<u8>> {
+        // Saturate like the underlying sketch (heavykeeper uses saturating_add),
+        // and feed the gauge the actual delta so Drop's subtraction stays balanced.
+        let new_num_items = self.num_items.saturating_add(increment);
+        let delta = new_num_items - self.num_items;
+        self.num_items = new_num_items;
+        metrics::TOPK_NUM_ITEMS_ACROSS_OBJECTS.fetch_add(delta, Ordering::Relaxed);
         self.sketch.add_with_evicted(item, increment)
     }
 
@@ -108,6 +128,16 @@ impl TopKObject {
             .into_iter()
             .map(|node| (node.item, node.count))
             .collect()
+    }
+}
+
+impl Drop for TopKObject {
+    fn drop(&mut self) {
+        metrics::TOPK_NUM_OBJECTS.fetch_sub(1, Ordering::Relaxed);
+        metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
+            .fetch_sub(std::mem::size_of::<TopKObject>(), Ordering::Relaxed);
+        metrics::TOPK_SUM_K_ACROSS_OBJECTS.fetch_sub(self.k as u64, Ordering::Relaxed);
+        metrics::TOPK_NUM_ITEMS_ACROSS_OBJECTS.fetch_sub(self.num_items, Ordering::Relaxed);
     }
 }
 
