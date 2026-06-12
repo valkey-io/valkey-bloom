@@ -47,11 +47,11 @@ pub struct CMSObject {
 
 impl CMSObject {
     pub fn new_by_dimension(width: u64, depth: u64) -> Result<CMSObject, CMSError> {
-        if width == 0 {
+        if width < 1 {
             return Err(CMSError::InvalidWidth);
         }
 
-        if depth == 0 {
+        if depth < 1 {
             return Err(CMSError::InvalidDepth);
         }
 
@@ -79,15 +79,10 @@ impl CMSObject {
             return Err(CMSError::InvalidProbability);
         }
 
-        // width = ceil(e / error)
-        let width = (std::f64::consts::E / error_tolerance).ceil() as u64;
-        // depth = ceil(ln(1 / probability_confidence))
-        let depth = (1.0_f64 / probability).ln().ceil() as u64;
-
         let cms = CMS::new_by_probability(error_tolerance, probability)?;
         let obj = CMSObject {
-            width,
-            depth,
+            width: cms.sketch.width() as u64,
+            depth: cms.sketch.depth() as u64,
             total: 0,
             cms,
         };
@@ -114,7 +109,6 @@ struct CMS {
 
 impl CMS {
     pub fn new_by_probability(epsilon: f64, probability: f64) -> Result<CMS, CMSError> {
-        // flowstats::CountMinSketch::new(epsilon, delta)
         // epsilon: Maximum overcount as a fraction of total (e.g., 0.01 for 1%)
         // delta (probability): Probability of exceeding the error bound (e.g., 0.001 for 0.1%)
         let cms = CountMinSketch::new(epsilon, probability);

@@ -4,13 +4,13 @@ use crate::cms::data_type::CMS_TYPE;
 use crate::cms::utils::{self, CMSObject};
 
 struct ReplicateArgs {
-    seed: [u8; 32],
+    //seed: [u8; 32],
     args: Replications,
 }
 
 enum Replications {
     ReplicateArgsDim { width: u64, depth: u64 },
-    ReplicateArgsProb { error: f64 },
+    ReplicateArgsProb { error_rate: f64, fp_rate: f64 },
 }
 
 fn replicate_and_notify_events(
@@ -21,8 +21,9 @@ fn replicate_and_notify_events(
     args: ReplicateArgs,
 ) {
     if init_operation {
-        let seed_str = ValkeyString::create_from_slice(std::ptr::null_mut(), "SEED".as_bytes());
-        let seed_val = ValkeyString::create_from_slice(std::ptr::null_mut(), &args.seed);
+        //For later when we need seeding discussions (cms.merge)
+        // let seed_str = ValkeyString::create_from_slice(std::ptr::null_mut(), "SEED".as_bytes());
+        // let seed_val = ValkeyString::create_from_slice(std::ptr::null_mut(), &args.seed);
 
         match args.args {
             Replications::ReplicateArgsDim { width, depth } => {
@@ -34,16 +35,23 @@ fn replicate_and_notify_events(
                     std::ptr::null_mut(),
                     depth.to_string().as_bytes(),
                 );
-                let cmd = vec![&width_val, &depth_val, &seed_str, &seed_val];
+                let cmd = vec![&width_val, &depth_val];
                 ctx.replicate("CMS.INITBYDIM", cmd.as_slice());
                 ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::INITBYDIM_EVENT, key_name);
             }
-            Replications::ReplicateArgsProb { error } => {
+            Replications::ReplicateArgsProb {
+                error_rate,
+                fp_rate,
+            } => {
                 let error_val = ValkeyString::create_from_slice(
                     std::ptr::null_mut(),
-                    error.to_string().as_bytes(),
+                    error_rate.to_string().as_bytes(),
                 );
-                let cmd = vec![&error_val, &seed_str, &seed_val];
+                let fp_val = ValkeyString::create_from_slice(
+                    std::ptr::null_mut(),
+                    fp_rate.to_string().as_bytes(),
+                );
+                let cmd = vec![&error_val, &fp_val];
                 ctx.replicate("CMS.INITBYPROB", cmd.as_slice());
                 ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::INITBYPROB_EVENT, key_name);
             }
@@ -87,14 +95,10 @@ pub fn cms_initialize_by_dimensions(ctx: &Context, args: Vec<ValkeyString>) -> V
                 Err(err) => return Err(ValkeyError::Str(err.as_str())),
             };
 
-            //TODO: Replication Args need done still
-
             match filter_key.set_value(&CMS_TYPE, cms) {
                 Ok(()) => {
-                    //TEMP REMOVE AFTER DOING SEED CONFIGURATION
-                    let seed = [0u8; 32];
                     let r = Replications::ReplicateArgsDim { width, depth };
-                    let replicate_args = ReplicateArgs { seed, args: r };
+                    let replicate_args = ReplicateArgs { args: r };
                     replicate_and_notify_events(ctx, key, true, false, replicate_args);
                     VALKEY_OK
                 }
@@ -123,7 +127,7 @@ pub fn cms_initialize_by_probability(ctx: &Context, args: Vec<ValkeyString>) -> 
 
     //False positive rate. Delta
     // A delta of 1% means the count will be outside of the epsilon range 1% of the time.
-    let probability = match args[3].to_string_lossy().parse::<f64>() {
+    let fp_rate = match args[3].to_string_lossy().parse::<f64>() {
         Ok(p) if p > 0.0 && p < 1.0 => p,
         Ok(_) => return Err(ValkeyError::Str(utils::PROBABILITY_RANGE)),
         Err(_) => return Err(ValkeyError::Str(utils::BAD_PROBABILITY)),
@@ -138,18 +142,18 @@ pub fn cms_initialize_by_probability(ctx: &Context, args: Vec<ValkeyString>) -> 
     match cms {
         Some(_) => Err(ValkeyError::Str(utils::ITEM_EXISTS)),
         None => {
-            let cms = match utils::CMSObject::new_by_probability(error_rate, probability) {
+            let cms = match utils::CMSObject::new_by_probability(error_rate, fp_rate) {
                 Ok(v) => v,
                 Err(err) => return Err(ValkeyError::Str(err.as_str())),
             };
 
-            //TODO: Replication Args need done still
             match filter_key.set_value(&CMS_TYPE, cms) {
                 Ok(()) => {
-                    //TEMP REMOVE AFTER DOING SEED CONFIGURATION
-                    let seed = [0u8; 32];
-                    let r = Replications::ReplicateArgsProb { error: error_rate };
-                    let replicate_args = ReplicateArgs { seed, args: r };
+                    let r = Replications::ReplicateArgsProb {
+                        error_rate,
+                        fp_rate,
+                    };
+                    let replicate_args = ReplicateArgs { args: r };
                     replicate_and_notify_events(ctx, key, true, false, replicate_args);
                     VALKEY_OK
                 }
