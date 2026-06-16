@@ -67,12 +67,30 @@ impl TopKObject {
         topk
     }
 
+    /// Build a deep copy of `src` for the COPY command. Clones the sketch
+    /// contents (heavy/lobby cells and priority queue) and carries over the
+    /// running item count.
+    pub fn create_copy_from(src: &TopKObject) -> TopKObject {
+        let topk = TopKObject {
+            k: src.k,
+            width: src.width,
+            depth: src.depth,
+            decay: src.decay,
+            seed: src.seed,
+            sketch: src.sketch.clone(),
+            num_items: src.num_items,
+        };
+        topk.topk_object_incr_metrics_on_new_create();
+        topk
+    }
+
     /// Increments metrics related to object count, memory, and summed k upon creation of a new object.
     fn topk_object_incr_metrics_on_new_create(&self) {
         metrics::TOPK_NUM_OBJECTS.fetch_add(1, Ordering::Relaxed);
         metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
             .fetch_add(std::mem::size_of::<TopKObject>(), Ordering::Relaxed);
         metrics::TOPK_SUM_K_ACROSS_OBJECTS.fetch_add(self.k as u64, Ordering::Relaxed);
+        metrics::TOPK_NUM_ITEMS_ACROSS_OBJECTS.fetch_add(self.num_items, Ordering::Relaxed);
     }
 
     pub fn k(&self) -> u32 {
