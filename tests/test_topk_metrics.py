@@ -47,3 +47,26 @@ class TestTopkMetrics(ValkeyBloomTestCaseBase):
         wait_for_equal(lambda: self.client.execute_command('DBSIZE'), 0)
         self.verify_topk_metrics(self.client.execute_command("INFO bf"), 0, 0, 0, 0)
         self.verify_topk_metrics(self.client.execute_command("INFO Modules"), 0, 0, 0, 0)
+
+    def test_copy_metrics(self):
+        # Reserve a TopK (k=5), add 3 items, then increment by 5 -> num_items = 8.
+        assert self.client.execute_command('TOPK.RESERVE orig 5 50 4 0.9 SEED 42') == b'OK'
+        self.client.execute_command('TOPK.ADD orig apple banana cherry')
+        self.client.execute_command('TOPK.INCRBY orig apple 5')
+        self.verify_topk_metrics(self.client.execute_command("INFO bf"), DEFAULT_TOPK_SIZE, 1, 8, 5)
+
+        # Deep copy
+        assert self.client.execute_command('COPY orig copied') == 1
+        self.verify_topk_metrics(self.client.execute_command("INFO bf"), DEFAULT_TOPK_SIZE * 2, 2, 16, 10)
+
+        # The copy holds the same Top-K members as the source.
+        assert self.client.execute_command('TOPK.LIST orig') == self.client.execute_command('TOPK.LIST copied')
+
+        # Deleting the source leaves the copy's contribution intact.
+        self.client.execute_command('DEL orig')
+        self.verify_topk_metrics(self.client.execute_command("INFO bf"), DEFAULT_TOPK_SIZE, 1, 8, 5)
+
+        # Perform a FLUSHALL which should set all metrics data to 0
+        self.client.execute_command('FLUSHALL')
+        wait_for_equal(lambda: self.client.execute_command('DBSIZE'), 0)
+        self.verify_topk_metrics(self.client.execute_command("INFO bf"), 0, 0, 0, 0)
