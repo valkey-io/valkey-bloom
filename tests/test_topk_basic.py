@@ -33,6 +33,28 @@ class TestTopkBasic(ValkeyBloomTestCaseBase):
         assert client.execute_command('TOPK.LIST tk') == client.execute_command('TOPK.LIST tk_copy')
         assert client.execute_command('TOPK.LIST tk WITHCOUNT') == client.execute_command('TOPK.LIST tk_copy WITHCOUNT')
 
+        for cmd in [
+            'TOPK.ADD tk date',
+            'TOPK.INCRBY tk date 10',
+            'TOPK.ADD tk apple banana',
+            'TOPK.INCRBY tk elderberry 8 fig 6',
+        ]:
+            copy_cmd = cmd.replace('tk ', 'tk_copy ', 1)
+            assert client.execute_command(cmd) == client.execute_command(copy_cmd)
+
+        # Final membership, ordering, and per-item counts all still agree.
+        assert client.execute_command('TOPK.LIST tk WITHCOUNT') == client.execute_command('TOPK.LIST tk_copy WITHCOUNT')
+        for item in ['apple', 'banana', 'cherry', 'date', 'elderberry', 'fig', 'missing']:
+            assert client.execute_command(f'TOPK.COUNT tk {item}') == \
+                client.execute_command(f'TOPK.COUNT tk_copy {item}')
+            assert client.execute_command(f'TOPK.QUERY tk {item}') == \
+                client.execute_command(f'TOPK.QUERY tk_copy {item}')
+
+        # The two sketches are independent
+        before = client.execute_command('TOPK.LIST tk WITHCOUNT')
+        client.execute_command('TOPK.INCRBY tk_copy grape 100')
+        assert client.execute_command('TOPK.LIST tk WITHCOUNT') == before
+
     def test_module_data_type(self):
         # Validate the name of the Module data type and its encoding.
         client = self.server.get_new_client()
