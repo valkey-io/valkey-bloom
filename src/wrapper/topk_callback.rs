@@ -9,13 +9,13 @@ pub unsafe extern "C" fn topk_free(value: *mut c_void) {
 }
 
 /// # Safety
-/// Approximate memory usage for the MEMORY USAGE command. Currently reports
-/// only the size of the wrapper struct; the heap allocations CuckooTopK
-/// performs internally (lobby + heavy slots) are not yet accounted for.
-/// Refine when TOPK.ADD lands and we have a stable view into the sketch.
+/// Approximate memory usage for the MEMORY USAGE command. Reports the wrapper
+/// struct plus the sketch's heap allocations (lobby/heavy cell arrays, decay
+/// table, and priority-queue containers). Excludes the variable byte contents
+/// of individual tracked keys.
 pub unsafe extern "C" fn topk_mem_usage(value: *const c_void) -> usize {
-    let _v = &*value.cast::<TopKObject>();
-    std::mem::size_of::<TopKObject>()
+    let v = &*value.cast::<TopKObject>();
+    v.memory_usage()
 }
 
 /// # Safety

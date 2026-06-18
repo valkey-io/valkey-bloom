@@ -162,10 +162,8 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         assert info[b'width'] == 8
         assert info[b'depth'] == 7
         assert info[b'decay'] == b'0.9'
-        # size is the object's estimated memory in bytes.
-        # TODO: assert size <= MEMORY USAGE once that callback also uses
-        # memory_usage(); today it still reports only size_of::<TopKObject>().
         assert info[b'size'] > 0
+        assert info[b'size'] <= self.client.execute_command('MEMORY USAGE tk1')
 
         info = info_dict('tk5')
         assert info[b'k'] == 10
@@ -173,6 +171,7 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         assert info[b'depth'] == 5
         assert info[b'decay'] == b'0.5'
         assert info[b'size'] > 0
+        assert info[b'size'] <= self.client.execute_command('MEMORY USAGE tk5')
 
         # TOPK.LIST returns tracked items by descending count, at most k.
         assert self.client.execute_command('TOPK.RESERVE tk_list 3 50 4 0.9 SEED 42') == b'OK'

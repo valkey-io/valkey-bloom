@@ -96,8 +96,7 @@ impl TopKObject {
     /// Increments metrics related to object count, memory, and summed k upon creation of a new object.
     fn topk_object_incr_metrics_on_new_create(&self) {
         metrics::TOPK_NUM_OBJECTS.fetch_add(1, Ordering::Relaxed);
-        metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
-            .fetch_add(std::mem::size_of::<TopKObject>(), Ordering::Relaxed);
+        metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(self.memory_usage(), Ordering::Relaxed);
         metrics::TOPK_SUM_K_ACROSS_OBJECTS.fetch_add(self.k as u64, Ordering::Relaxed);
         metrics::TOPK_TOTAL_ITEMS_ADDED_ACROSS_OBJECTS.fetch_add(self.num_items, Ordering::Relaxed);
     }
@@ -161,8 +160,7 @@ impl TopKObject {
 impl Drop for TopKObject {
     fn drop(&mut self) {
         metrics::TOPK_NUM_OBJECTS.fetch_sub(1, Ordering::Relaxed);
-        metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
-            .fetch_sub(std::mem::size_of::<TopKObject>(), Ordering::Relaxed);
+        metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES.fetch_sub(self.memory_usage(), Ordering::Relaxed);
         metrics::TOPK_SUM_K_ACROSS_OBJECTS.fetch_sub(self.k as u64, Ordering::Relaxed);
         metrics::TOPK_TOTAL_ITEMS_ADDED_ACROSS_OBJECTS.fetch_sub(self.num_items, Ordering::Relaxed);
     }
