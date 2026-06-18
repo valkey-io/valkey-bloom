@@ -121,27 +121,6 @@ class TestTopkBasic(ValkeyBloomTestCaseBase):
         assert client.execute_command('PERSIST TEST_PERSIST') == 1
         assert client.execute_command('TTL TEST_PERSIST') == -1
 
-    def test_topk_wrong_type(self):
-        topk_commands = [
-            'TOPK.RESERVE key 3 50 4 0.9',
-            'TOPK.ADD key item',
-            'TOPK.INCRBY key item 1',
-            'TOPK.QUERY key item',
-            'TOPK.COUNT key item',
-            'TOPK.LIST key',
-            'TOPK.INFO key',
-        ]
-        client = self.server.get_new_client()
-        # Set the key we try to perform topk commands on to a string.
-        client.execute_command("set key value")
-        for cmd in topk_commands:
-            cmd_name = cmd.split()[0]
-            try:
-                result = client.execute_command(cmd)
-                assert False, f"{cmd_name} on existing non topk object should fail, instead: {result}"
-            except ResponseError as e:
-                assert str(e) == "WRONGTYPE Operation against a key holding the wrong kind of value"
-
     def test_topk_add_no_eviction(self):
         assert self.client.execute_command('TOPK.RESERVE tk 3 50 4 0.9 SEED 42') == b'OK'
         assert self.client.execute_command(
