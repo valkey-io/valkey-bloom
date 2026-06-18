@@ -152,7 +152,7 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         for cmd, expected_len in incrby_success_cases:
             assert len(self.client.execute_command(cmd)) == expected_len
 
-        # TOPK.INFO reports k, width, depth, and decay of an existing sketch.
+        # TOPK.INFO reports k, width, depth, decay, and size of an existing sketch.
         def info_dict(key):
             raw = self.client.execute_command(f'TOPK.INFO {key}')
             it = iter(raw)
@@ -162,12 +162,17 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         assert info[b'width'] == 8
         assert info[b'depth'] == 7
         assert info[b'decay'] == b'0.9'
+        # size is the object's estimated memory in bytes.
+        # TODO: assert size <= MEMORY USAGE once that callback also uses
+        # memory_usage(); today it still reports only size_of::<TopKObject>().
+        assert info[b'size'] > 0
 
         info = info_dict('tk5')
         assert info[b'k'] == 10
         assert info[b'width'] == 200
         assert info[b'depth'] == 5
         assert info[b'decay'] == b'0.5'
+        assert info[b'size'] > 0
 
         # TOPK.LIST returns tracked items by descending count, at most k.
         assert self.client.execute_command('TOPK.RESERVE tk_list 3 50 4 0.9 SEED 42') == b'OK'

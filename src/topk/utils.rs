@@ -84,6 +84,15 @@ impl TopKObject {
         topk
     }
 
+    /// Estimated total memory (in bytes) of this object: the wrapper struct
+    /// plus the heap the underlying sketch owns (lobby/heavy cell arrays, the
+    /// decay-threshold table, and the priority-queue allocations). Excludes the
+    /// variable byte contents of individual tracked keys, which `mem_bytes`
+    /// does not account for.
+    pub fn memory_usage(&self) -> usize {
+        std::mem::size_of::<TopKObject>() + self.sketch.mem_bytes()
+    }
+
     /// Increments metrics related to object count, memory, and summed k upon creation of a new object.
     fn topk_object_incr_metrics_on_new_create(&self) {
         metrics::TOPK_NUM_OBJECTS.fetch_add(1, Ordering::Relaxed);
