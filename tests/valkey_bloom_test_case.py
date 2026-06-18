@@ -290,7 +290,7 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
                 total_memory_bytes = int(line.split(':')[1])
             elif line.startswith('bf_topk_num_objects:'):
                 num_objects = int(line.split(':')[1])
-            elif line.startswith('bf_topk_num_items_across_objects:'):
+            elif line.startswith('bf_topk_total_items_added_across_objects:'):
                 num_items = int(line.split(':')[1])
             elif line.startswith('bf_topk_sum_k_across_objects:'):
                 sum_k = int(line.split(':')[1])

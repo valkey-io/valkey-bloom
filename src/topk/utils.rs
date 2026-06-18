@@ -90,7 +90,7 @@ impl TopKObject {
         metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
             .fetch_add(std::mem::size_of::<TopKObject>(), Ordering::Relaxed);
         metrics::TOPK_SUM_K_ACROSS_OBJECTS.fetch_add(self.k as u64, Ordering::Relaxed);
-        metrics::TOPK_NUM_ITEMS_ACROSS_OBJECTS.fetch_add(self.num_items, Ordering::Relaxed);
+        metrics::TOPK_TOTAL_ITEMS_ADDED_ACROSS_OBJECTS.fetch_add(self.num_items, Ordering::Relaxed);
     }
 
     pub fn k(&self) -> u32 {
@@ -124,7 +124,7 @@ impl TopKObject {
         let new_num_items = self.num_items.saturating_add(increment);
         let delta = new_num_items - self.num_items;
         self.num_items = new_num_items;
-        metrics::TOPK_NUM_ITEMS_ACROSS_OBJECTS.fetch_add(delta, Ordering::Relaxed);
+        metrics::TOPK_TOTAL_ITEMS_ADDED_ACROSS_OBJECTS.fetch_add(delta, Ordering::Relaxed);
         self.sketch.add_with_evicted(item, increment)
     }
 
@@ -155,7 +155,7 @@ impl Drop for TopKObject {
         metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
             .fetch_sub(std::mem::size_of::<TopKObject>(), Ordering::Relaxed);
         metrics::TOPK_SUM_K_ACROSS_OBJECTS.fetch_sub(self.k as u64, Ordering::Relaxed);
-        metrics::TOPK_NUM_ITEMS_ACROSS_OBJECTS.fetch_sub(self.num_items, Ordering::Relaxed);
+        metrics::TOPK_TOTAL_ITEMS_ADDED_ACROSS_OBJECTS.fetch_sub(self.num_items, Ordering::Relaxed);
     }
 }
 
