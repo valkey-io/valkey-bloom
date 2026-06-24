@@ -10,6 +10,10 @@ lazy_static! {
     pub static ref BLOOM_CAPACITY_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
     pub static ref BLOOM_DEFRAG_HITS: AtomicU64 = AtomicU64::new(0);
     pub static ref BLOOM_DEFRAG_MISSES: AtomicU64 = AtomicU64::new(0);
+    pub static ref TOPK_NUM_OBJECTS: AtomicU64 = AtomicU64::new(0);
+    pub static ref TOPK_OBJECT_TOTAL_MEMORY_BYTES: AtomicUsize = AtomicUsize::new(0);
+    pub static ref TOPK_TOTAL_ITEMS_ADDED_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
+    pub static ref TOPK_SUM_K_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
 }
 
 pub fn bloom_info_handler(ctx: &InfoContext) -> ValkeyResult<()> {
@@ -52,6 +56,37 @@ pub fn bloom_info_handler(ctx: &InfoContext) -> ValkeyResult<()> {
         .field(
             "bloom_defrag_misses",
             BLOOM_DEFRAG_MISSES.load(Ordering::Relaxed).to_string(),
+        )?
+        .build_section()?
+        .build_info()?;
+
+    Ok(())
+}
+
+pub fn topk_info_handler(ctx: &InfoContext) -> ValkeyResult<()> {
+    ctx.builder()
+        .add_section("topk_core_metrics")
+        .field(
+            "topk_total_memory_bytes",
+            TOPK_OBJECT_TOTAL_MEMORY_BYTES
+                .load(Ordering::Relaxed)
+                .to_string(),
+        )?
+        .field(
+            "topk_num_objects",
+            TOPK_NUM_OBJECTS.load(Ordering::Relaxed).to_string(),
+        )?
+        .field(
+            "topk_total_items_added_across_objects",
+            TOPK_TOTAL_ITEMS_ADDED_ACROSS_OBJECTS
+                .load(Ordering::Relaxed)
+                .to_string(),
+        )?
+        .field(
+            "topk_sum_k_across_objects",
+            TOPK_SUM_K_ACROSS_OBJECTS
+                .load(Ordering::Relaxed)
+                .to_string(),
         )?
         .build_section()?
         .build_info()?;

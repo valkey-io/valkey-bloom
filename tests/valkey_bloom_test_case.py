@@ -269,6 +269,37 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
         assert num_items == expected_num_items
         assert sum_capacity == expected_sum_capacity
 
+    def verify_topk_metrics(self, info_response, expected_memory, expected_num_objects, expected_num_items, expected_sum_k):
+        """
+            Verify the TopK metric values are recorded properly:
+            expected_memory: total bytes used by all TopK objects. Memory is
+                currently a placeholder: a fixed size_of::<TopKObject>() per
+                object (DEFAULT_TOPK_SIZE), not including the sketch heap.
+            expected_num_objects: number of TopK keys
+            expected_num_items: total increments applied across all objects (ADD = +1, INCRBY = +increment)
+            expected_sum_k: sum of k across all objects
+        """
+        response_str = info_response.decode('utf-8')
+        lines = response_str.split('\r\n')
+        total_memory_bytes = -1
+        num_objects = -1
+        num_items = -1
+        sum_k = -1
+        for line in lines:
+            if line.startswith('bf_topk_total_memory_bytes:'):
+                total_memory_bytes = int(line.split(':')[1])
+            elif line.startswith('bf_topk_num_objects:'):
+                num_objects = int(line.split(':')[1])
+            elif line.startswith('bf_topk_total_items_added_across_objects:'):
+                num_items = int(line.split(':')[1])
+            elif line.startswith('bf_topk_sum_k_across_objects:'):
+                sum_k = int(line.split(':')[1])
+
+        assert total_memory_bytes == expected_memory
+        assert num_objects == expected_num_objects
+        assert num_items == expected_num_items
+        assert sum_k == expected_sum_k
+
     """
     This method will parse the return of an INFO command and return a python dict where each metric is a key value pair.
     We can pass in specific sections in order to not have the dict store irrelevant fields related to what we want to check.

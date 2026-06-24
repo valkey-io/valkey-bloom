@@ -1,4 +1,6 @@
+use crate::metrics;
 use heavykeeper::CuckooTopK;
+use std::sync::atomic::Ordering;
 
 /// KeySpace Notification Events
 pub const RESERVE_EVENT: &str = "topk.reserve";
@@ -44,6 +46,7 @@ pub struct TopKObject {
     decay: f64,
     seed: u64,
     sketch: CuckooTopK<Vec<u8>>,
+    num_items: u64,
 }
 
 impl TopKObject {
@@ -51,14 +54,49 @@ impl TopKObject {
     /// after the handler has parsed and validated all parameters.
     pub fn new_reserved(k: u32, width: u32, depth: u32, decay: f64, seed: u64) -> TopKObject {
         let sketch = CuckooTopK::with_seed(k as usize, width as usize, depth as usize, decay, seed);
-        TopKObject {
+        let topk = TopKObject {
             k,
             width,
             depth,
             decay,
             seed,
             sketch,
-        }
+            num_items: 0,
+        };
+        topk.topk_object_incr_metrics_on_new_create();
+        topk
+    }
+
+    /// Build a deep copy of `src` for the COPY command. Clones the sketch
+    /// contents (heavy/lobby cells and priority queue) and carries over the
+    /// running item count.
+    pub fn create_copy_from(src: &TopKObject) -> TopKObject {
+        let topk = TopKObject {
+            k: src.k,
+            width: src.width,
+            depth: src.depth,
+            decay: src.decay,
+            seed: src.seed,
+            sketch: src.sketch.clone(),
+            num_items: src.num_items,
+        };
+        topk.topk_object_incr_metrics_on_new_create();
+        topk
+    }
+
+    /// Estimated heap size of this object: wrapper struct + sketch internals
+    /// (cell arrays, decay table, priority queue) + per-item buffer capacity.
+    /// The remaining undercount is allocator overhead and HashMap metadata.
+    pub fn memory_usage(&self) -> usize {
+        std::mem::size_of::<TopKObject>() + self.sketch.mem_bytes_with(|item| item.capacity())
+    }
+
+    /// Increments metrics related to object count, memory, and summed k upon creation of a new object.
+    fn topk_object_incr_metrics_on_new_create(&self) {
+        metrics::TOPK_NUM_OBJECTS.fetch_add(1, Ordering::Relaxed);
+        metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(self.memory_usage(), Ordering::Relaxed);
+        metrics::TOPK_SUM_K_ACROSS_OBJECTS.fetch_add(self.k as u64, Ordering::Relaxed);
+        metrics::TOPK_TOTAL_ITEMS_ADDED_ACROSS_OBJECTS.fetch_add(self.num_items, Ordering::Relaxed);
     }
 
     pub fn k(&self) -> u32 {
@@ -87,7 +125,28 @@ impl TopKObject {
     /// heavy-slot resident displaced by this insertion (if any). At most one
     /// item can be evicted per call.
     pub fn add(&mut self, item: &[u8], increment: u64) -> Option<Vec<u8>> {
-        self.sketch.add_with_evicted(item, increment)
+        // Saturate like the underlying sketch (heavykeeper uses saturating_add),
+        // and feed the gauge the actual delta so Drop's subtraction stays balanced.
+        let new_num_items = self.num_items.saturating_add(increment);
+        let delta = new_num_items - self.num_items;
+        self.num_items = new_num_items;
+        metrics::TOPK_TOTAL_ITEMS_ADDED_ACROSS_OBJECTS.fetch_add(delta, Ordering::Relaxed);
+        // Diffing memory_usage() before/after makes this O(width·depth + k) ×2
+        // instead of O(1).
+        // TODO: have upstream add_with_evicted report whether an item was
+        // inserted (or the memory delta) so we can update the gauge in
+        // O(item bytes) and keep add O(1).
+        let mem_before = self.memory_usage();
+        let evicted = self.sketch.add_with_evicted(item, increment);
+        let mem_after = self.memory_usage();
+        if mem_after >= mem_before {
+            metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
+                .fetch_add(mem_after - mem_before, Ordering::Relaxed);
+        } else {
+            metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
+                .fetch_sub(mem_before - mem_after, Ordering::Relaxed);
+        }
+        evicted
     }
 
     /// Return the estimated count for `item`, or 0 if it has no residual
@@ -108,6 +167,15 @@ impl TopKObject {
             .into_iter()
             .map(|node| (node.item, node.count))
             .collect()
+    }
+}
+
+impl Drop for TopKObject {
+    fn drop(&mut self) {
+        metrics::TOPK_NUM_OBJECTS.fetch_sub(1, Ordering::Relaxed);
+        metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES.fetch_sub(self.memory_usage(), Ordering::Relaxed);
+        metrics::TOPK_SUM_K_ACROSS_OBJECTS.fetch_sub(self.k as u64, Ordering::Relaxed);
+        metrics::TOPK_TOTAL_ITEMS_ADDED_ACROSS_OBJECTS.fetch_sub(self.num_items, Ordering::Relaxed);
     }
 }
 

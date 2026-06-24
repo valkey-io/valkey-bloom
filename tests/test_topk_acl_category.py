@@ -13,7 +13,7 @@ class TestTopkACLCategory(ValkeyBloomTestCaseBase):
             ('TOPK.QUERY reserve_key item', [1]),
             ('TOPK.COUNT reserve_key item', [6]),
             ('TOPK.LIST reserve_key', [b'item']),
-            ('TOPK.INFO reserve_key', 8),
+            ('TOPK.INFO reserve_key', 10),
         ]
         client = self.server.get_new_client()
         # Get a list of all commands with the acl category topk

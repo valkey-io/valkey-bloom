@@ -9,33 +9,26 @@ pub unsafe extern "C" fn topk_free(value: *mut c_void) {
 }
 
 /// # Safety
-/// Approximate memory usage for the MEMORY USAGE command. Currently reports
-/// only the size of the wrapper struct; the heap allocations CuckooTopK
-/// performs internally (lobby + heavy slots) are not yet accounted for.
-/// Refine when TOPK.ADD lands and we have a stable view into the sketch.
+/// Approximate memory usage for the MEMORY USAGE command. Reports the wrapper
+/// struct plus the sketch's heap allocations (lobby/heavy cell arrays, decay
+/// table, priority-queue containers, and the buffers of tracked items). See
+/// `TopKObject::memory_usage` for what the estimate still omits.
 pub unsafe extern "C" fn topk_mem_usage(value: *const c_void) -> usize {
-    let _v = &*value.cast::<TopKObject>();
-    std::mem::size_of::<TopKObject>()
+    let v = &*value.cast::<TopKObject>();
+    v.memory_usage()
 }
 
 /// # Safety
-/// Raw handler for the COPY command. Builds a fresh TopKObject with the same
-/// parameters as the source. The sketch is empty after copy, which is
-/// correct today because we don't persist sketch contents yet — when
-/// TOPK.ADD lands this needs a real deep copy of the heavy/lobby arrays.
+/// Raw handler for the COPY command. Builds a deep copy of the source
+/// TopKObject, duplicating the sketch contents and item count so the copy is
+/// a faithful clone rather than an empty sketch.
 pub unsafe extern "C" fn topk_copy(
     _from_key: *mut RedisModuleString,
     _to_key: *mut RedisModuleString,
     value: *const c_void,
 ) -> *mut c_void {
     let curr = &*value.cast::<TopKObject>();
-    let new_item = TopKObject::new_reserved(
-        curr.k(),
-        curr.width(),
-        curr.depth(),
-        curr.decay(),
-        curr.seed(),
-    );
+    let new_item = TopKObject::create_copy_from(curr);
     let bb = Box::new(new_item);
     Box::into_raw(bb).cast::<libc::c_void>()
 }

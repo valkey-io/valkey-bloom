@@ -1,4 +1,4 @@
-use metrics::bloom_info_handler;
+use metrics::{bloom_info_handler, topk_info_handler};
 use valkey_module::{
     configuration::ConfigurationFlags, valkey_module, Context, InfoContext, Status, ValkeyResult,
     ValkeyString,
@@ -133,7 +133,8 @@ fn topk_query_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 ///
 #[info_command_handler]
 fn info_handler(ctx: &InfoContext, _for_crash_report: bool) -> ValkeyResult<()> {
-    bloom_info_handler(ctx)
+    bloom_info_handler(ctx)?;
+    topk_info_handler(ctx)
 }
 
 //////////////////////////////////////////////////////
