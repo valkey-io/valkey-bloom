@@ -84,13 +84,11 @@ impl TopKObject {
         topk
     }
 
-    /// Estimated total memory (in bytes) of this object: the wrapper struct
-    /// plus the heap the underlying sketch owns (lobby/heavy cell arrays, the
-    /// decay-threshold table, and the priority-queue allocations). Excludes the
-    /// variable byte contents of individual tracked keys, which `mem_bytes`
-    /// does not account for.
+    /// Estimated heap size of this object: wrapper struct + sketch internals
+    /// (cell arrays, decay table, priority queue) + per-item buffer capacity.
+    /// The remaining undercount is allocator overhead and HashMap metadata.
     pub fn memory_usage(&self) -> usize {
-        std::mem::size_of::<TopKObject>() + self.sketch.mem_bytes()
+        std::mem::size_of::<TopKObject>() + self.sketch.mem_bytes_with(|item| item.capacity())
     }
 
     /// Increments metrics related to object count, memory, and summed k upon creation of a new object.
@@ -133,7 +131,22 @@ impl TopKObject {
         let delta = new_num_items - self.num_items;
         self.num_items = new_num_items;
         metrics::TOPK_TOTAL_ITEMS_ADDED_ACROSS_OBJECTS.fetch_add(delta, Ordering::Relaxed);
-        self.sketch.add_with_evicted(item, increment)
+        // Diffing memory_usage() before/after makes this O(width·depth + k) ×2
+        // instead of O(1).
+        // TODO: have upstream add_with_evicted report whether an item was
+        // inserted (or the memory delta) so we can update the gauge in
+        // O(item bytes) and keep add O(1).
+        let mem_before = self.memory_usage();
+        let evicted = self.sketch.add_with_evicted(item, increment);
+        let mem_after = self.memory_usage();
+        if mem_after >= mem_before {
+            metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
+                .fetch_add(mem_after - mem_before, Ordering::Relaxed);
+        } else {
+            metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
+                .fetch_sub(mem_before - mem_after, Ordering::Relaxed);
+        }
+        evicted
     }
 
     /// Return the estimated count for `item`, or 0 if it has no residual

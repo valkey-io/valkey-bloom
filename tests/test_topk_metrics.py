@@ -16,10 +16,12 @@ class TestTopkMetrics(ValkeyBloomTestCaseBase):
 
         # TOPK.ADD counts +1 per item. Three items -> num_items = 3.
         self.client.execute_command('TOPK.ADD key apple banana cherry')
+        key_size = self.client.execute_command('TOPK.INFO key')[9]
         self.verify_topk_metrics(self.client.execute_command("INFO bf"), key_size, 1, 3, 5)
 
         # TOPK.INCRBY counts += increment. +5 and +4 -> num_items = 3 + 9 = 12.
         self.client.execute_command('TOPK.INCRBY key apple 5 banana 4')
+        key_size = self.client.execute_command('TOPK.INFO key')[9]
         self.verify_topk_metrics(self.client.execute_command("INFO bf"), key_size, 1, 12, 5)
 
         # Read-only commands must not move any gauge.
@@ -32,8 +34,8 @@ class TestTopkMetrics(ValkeyBloomTestCaseBase):
         # A second object (k=4) adds to num_objects, memory, and sum_k (5 + 4 = 9).
         # The gauge must equal the sum of both objects' reported sizes.
         assert self.client.execute_command('TOPK.RESERVE key2 4 50 4 0.9 SEED 42') == b'OK'
-        key2_size = self.client.execute_command('TOPK.INFO key2')[9]
         self.client.execute_command('TOPK.ADD key2 x y')
+        key2_size = self.client.execute_command('TOPK.INFO key2')[9]
         self.verify_topk_metrics(self.client.execute_command("INFO bf"), key_size + key2_size, 2, 14, 9)
 
         # Deleting a key removes its full contribution (memory, k=4, its 2 items).
