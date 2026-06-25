@@ -67,6 +67,29 @@ impl TopKObject {
         topk
     }
 
+    /// Create a new TopK object from existing data.
+    pub fn from_existing(
+        k: u32,
+        width: u32,
+        depth: u32,
+        decay: f64,
+        seed: u64,
+        sketch: CuckooTopK<Vec<u8>>,
+        num_items: u64,
+    ) -> TopKObject {
+        let topk = TopKObject {
+            k,
+            width,
+            depth,
+            decay,
+            seed,
+            sketch,
+            num_items,
+        };
+        topk.topk_object_incr_metrics_on_new_create();
+        topk
+    }
+
     /// Build a deep copy of `src` for the COPY command. Clones the sketch
     /// contents (heavy/lobby cells and priority queue) and carries over the
     /// running item count.
@@ -113,6 +136,9 @@ impl TopKObject {
     }
     pub fn seed(&self) -> u64 {
         self.seed
+    }
+    pub fn num_items(&self) -> u64 {
+        self.num_items
     }
     pub fn sketch(&self) -> &CuckooTopK<Vec<u8>> {
         &self.sketch
