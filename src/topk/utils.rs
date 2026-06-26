@@ -157,20 +157,15 @@ impl TopKObject {
         let delta = new_num_items - self.num_items;
         self.num_items = new_num_items;
         metrics::TOPK_TOTAL_ITEMS_ADDED_ACROSS_OBJECTS.fetch_add(delta, Ordering::Relaxed);
-        // Diffing memory_usage() before/after makes this O(width·depth + k) ×2
-        // instead of O(1).
-        // TODO: have upstream add_with_evicted report whether an item was
-        // inserted (or the memory delta) so we can update the gauge in
-        // O(item bytes) and keep add O(1).
-        let mem_before = self.memory_usage();
-        let evicted = self.sketch.add_with_evicted(item, increment);
-        let mem_after = self.memory_usage();
-        if mem_after >= mem_before {
+        let (evicted, inserted) = self.sketch.add_with_evicted(item, increment);
+        let added = if inserted { item.len() } else { 0 };
+        let removed = evicted.as_ref().map_or(0, Vec::len);
+        if added >= removed {
             metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
-                .fetch_add(mem_after - mem_before, Ordering::Relaxed);
+                .fetch_add(2 * (added - removed), Ordering::Relaxed);
         } else {
             metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
-                .fetch_sub(mem_before - mem_after, Ordering::Relaxed);
+                .fetch_sub(2 * (removed - added), Ordering::Relaxed);
         }
         evicted
     }
