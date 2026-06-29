@@ -253,13 +253,15 @@ pub fn topk_incrby(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
 /// Handle TOPK.INFO.
 ///
 /// Syntax:
-///     TOPK.INFO key
+///     TOPK.INFO key [K | WIDTH | DEPTH | DECAY | SIZE | TOTALITEMSADDED]
 ///
-/// Returns the number of required items (k), width, depth, decay, the
-/// estimated memory size (in bytes), and the total number of items added
-/// (total_items_added) for the sketch stored at `key`.
+/// Without a field argument, returns the number of required items (k), width,
+/// depth, decay, the estimated memory size (in bytes), and the total number of
+/// items added for the sketch stored at `key`.
+/// With a field argument, returns only that single value.
 pub fn topk_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
-    if input_args.len() != 2 {
+    let argc = input_args.len();
+    if !(2..=3).contains(&argc) {
         return Err(ValkeyError::WrongArity);
     }
 
@@ -270,6 +272,21 @@ pub fn topk_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
         Ok(None) => return Err(ValkeyError::Str(utils::NOT_FOUND)),
         Err(_) => return Err(ValkeyError::WrongType),
     };
+
+    // A single-field request returns just that value; the full reply emits
+    // every label/value pair in order.
+    if argc == 3 {
+        let value = match input_args[2].to_string_lossy().to_uppercase().as_str() {
+            "K" => ValkeyValue::Integer(topk.k() as i64),
+            "WIDTH" => ValkeyValue::Integer(topk.width() as i64),
+            "DEPTH" => ValkeyValue::Integer(topk.depth() as i64),
+            "DECAY" => ValkeyValue::Float(topk.decay()),
+            "SIZE" => ValkeyValue::Integer(topk.memory_usage() as i64),
+            "TOTALITEMSADDED" => ValkeyValue::Integer(topk.num_items() as i64),
+            _ => return Err(ValkeyError::Str(utils::INVALID_INFO_VALUE)),
+        };
+        return Ok(value);
+    }
 
     let result = vec![
         ValkeyValue::SimpleStringStatic("k"),

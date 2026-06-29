@@ -24,6 +24,7 @@ pub const TOPK_DEPTH_MAX: u32 = u32::MAX;
 /// Client Errors
 pub const ERROR: &str = "ERROR";
 pub const NOT_FOUND: &str = "ERR TopK: key does not exist";
+pub const INVALID_INFO_VALUE: &str = "ERR invalid information value";
 pub const KEY_EXISTS: &str = "BUSYKEY Target key name already exists.";
 pub const BAD_TOPK: &str = "ERR bad topk";
 pub const BAD_WIDTH: &str = "ERR bad width";

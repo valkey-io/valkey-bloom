@@ -78,9 +78,11 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
             ('TOPK.INFO missing', 'TopK: key does not exist'),
             # wrong type
             ('TOPK.INFO strkey', 'WRONGTYPE Operation against a key holding the wrong kind of value'),
-            # wrong number of arguments 
+            # an unrecognized field token is rejected.
+            ('TOPK.INFO dup bogus', 'invalid information value'),
+            # wrong number of arguments: key plus at most one field token.
             ('TOPK.INFO', "wrong number of arguments for 'TOPK.INFO' command"),
-            ('TOPK.INFO dup extra', "wrong number of arguments for 'TOPK.INFO' command"),
+            ('TOPK.INFO dup K extra', "wrong number of arguments for 'TOPK.INFO' command"),
             # key must exist.
             ('TOPK.LIST missing', 'TopK: key does not exist'),
             # wrong type
@@ -181,6 +183,14 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         # 1 + (5+3) + (1+2+3) + (7+2) + 1000000 + (2+3) = 1000029.
         info = info_dict('tk_incr')
         assert info[b'total items added'] == 1000029
+
+        # TOPK.INFO key <field> returns just that single value.
+        assert self.client.execute_command('TOPK.INFO tk5 K') == 10
+        assert self.client.execute_command('TOPK.INFO tk5 WIDTH') == 200
+        assert self.client.execute_command('TOPK.INFO tk5 depth') == 5
+        assert self.client.execute_command('TOPK.INFO tk5 DECAY') == b'0.5'
+        assert self.client.execute_command('TOPK.INFO tk5 SIZE') == info_dict('tk5')[b'size']
+        assert self.client.execute_command('TOPK.INFO tk_incr TOTALITEMSADDED') == 1000029
 
         # TOPK.LIST returns tracked items by descending count, at most k.
         assert self.client.execute_command('TOPK.RESERVE tk_list 3 50 4 0.9 SEED 42') == b'OK'
