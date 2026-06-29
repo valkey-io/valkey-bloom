@@ -111,7 +111,7 @@ impl TopKObject {
     /// (cell arrays, decay table, priority queue) + per-item buffer capacity.
     /// The remaining undercount is allocator overhead and HashMap metadata.
     pub fn memory_usage(&self) -> usize {
-        std::mem::size_of::<TopKObject>() + self.sketch.mem_bytes_with(|item| item.capacity())
+        std::mem::size_of::<TopKObject>() + self.sketch.mem_bytes(|item| item.capacity())
     }
 
     /// Increments metrics related to object count, memory, and summed k upon creation of a new object.

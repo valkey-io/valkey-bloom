@@ -152,7 +152,8 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         for cmd, expected_len in incrby_success_cases:
             assert len(self.client.execute_command(cmd)) == expected_len
 
-        # TOPK.INFO reports k, width, depth, decay, and size of an existing sketch.
+        # TOPK.INFO reports k, width, depth, decay, size, and total items added
+        # for an existing sketch.
         def info_dict(key):
             raw = self.client.execute_command(f'TOPK.INFO {key}')
             it = iter(raw)
@@ -164,6 +165,8 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         assert info[b'decay'] == b'0.9'
         assert info[b'size'] > 0
         assert info[b'size'] <= self.client.execute_command('MEMORY USAGE tk1')
+        # tk1 was re-reserved with no items, so nothing has been added yet.
+        assert info[b'total items added'] == 0
 
         info = info_dict('tk5')
         assert info[b'k'] == 10
@@ -172,6 +175,12 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         assert info[b'decay'] == b'0.5'
         assert info[b'size'] > 0
         assert info[b'size'] <= self.client.execute_command('MEMORY USAGE tk5')
+        assert info[b'total items added'] == 0
+
+        # tk_incr accumulates every increment:
+        # 1 + (5+3) + (1+2+3) + (7+2) + 1000000 + (2+3) = 1000029.
+        info = info_dict('tk_incr')
+        assert info[b'total items added'] == 1000029
 
         # TOPK.LIST returns tracked items by descending count, at most k.
         assert self.client.execute_command('TOPK.RESERVE tk_list 3 50 4 0.9 SEED 42') == b'OK'

@@ -255,8 +255,9 @@ pub fn topk_incrby(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
 /// Syntax:
 ///     TOPK.INFO key
 ///
-/// Returns the number of required items (k), width, depth, decay, and the
-/// estimated memory size (in bytes) of the sketch stored at `key`.
+/// Returns the number of required items (k), width, depth, decay, the
+/// estimated memory size (in bytes), and the total number of items added
+/// (total_items_added) for the sketch stored at `key`.
 pub fn topk_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     if input_args.len() != 2 {
         return Err(ValkeyError::WrongArity);
@@ -281,6 +282,8 @@ pub fn topk_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
         ValkeyValue::Float(topk.decay()),
         ValkeyValue::SimpleStringStatic("size"),
         ValkeyValue::Integer(topk.memory_usage() as i64),
+        ValkeyValue::SimpleStringStatic("total items added"),
+        ValkeyValue::Integer(topk.num_items() as i64),
     ];
     Ok(ValkeyValue::Array(result))
 }
