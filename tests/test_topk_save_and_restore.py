@@ -9,12 +9,10 @@ class TestTopkSaveRestore(ValkeyBloomTestCaseBase):
         assert client.execute_command('TOPK.RESERVE testSave 5 50 4 0.9 SEED 42') == b'OK'
         client.execute_command('TOPK.ADD testSave apple banana cherry')
         client.execute_command('TOPK.INCRBY testSave apple 5 banana 3')
+        info_before = client.execute_command('TOPK.INFO testSave')
         list_before = client.execute_command('TOPK.LIST testSave WITHCOUNT')
+        assert len(info_before) != 0
         item_count_before = self.server.num_keys(client=client)
-        # num_items is persisted in the RDB separately from the sketch
-        assert client.execute_command('TOPK.INFO testSave TOTALITEMSADDED') == 11
-        size_before = client.execute_command('TOPK.INFO testSave SIZE')
-        assert size_before > 0
 
         # save rdb, restart server.
         client.execute_command('BGSAVE')
@@ -29,14 +27,8 @@ class TestTopkSaveRestore(ValkeyBloomTestCaseBase):
         # verify restore results
         item_count_after = self.server.num_keys(client=client)
         assert item_count_after == item_count_before
+        assert client.execute_command('TOPK.INFO testSave') == info_before
         assert client.execute_command('TOPK.LIST testSave WITHCOUNT') == list_before
-        assert client.execute_command('TOPK.INFO testSave K') == 5
-        assert client.execute_command('TOPK.INFO testSave WIDTH') == 50
-        assert client.execute_command('TOPK.INFO testSave DEPTH') == 4
-        assert client.execute_command('TOPK.INFO testSave DECAY') == b'0.9'
-        assert client.execute_command('TOPK.INFO testSave TOTALITEMSADDED') == 11
-        # size may be slightly smaller after restore, as RDB reload rebuilds the sketch
-        assert 0 < client.execute_command('TOPK.INFO testSave SIZE') <= size_before
 
     def test_basic_save_many(self):
         client = self.server.get_new_client()
