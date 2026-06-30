@@ -153,6 +153,12 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         ]
         for cmd, expected_len in incrby_success_cases:
             assert len(self.client.execute_command(cmd)) == expected_len
+        # Total items added is the sum of every increment
+        tk_incr_total = sum(
+            int(inc)
+            for cmd, _ in incrby_success_cases
+            for inc in cmd.split()[3::2]
+        )
 
         # TOPK.INFO reports k, width, depth, decay, size, and total items added
         # for an existing sketch.
@@ -179,10 +185,8 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         assert info[b'Size'] <= self.client.execute_command('MEMORY USAGE tk5')
         assert info[b'Total items added'] == 0
 
-        # tk_incr accumulates every increment:
-        # 1 + (5+3) + (1+2+3) + (7+2) + 1000000 + (2+3) = 1000029.
         info = info_dict('tk_incr')
-        assert info[b'Total items added'] == 1000029
+        assert info[b'Total items added'] == tk_incr_total
 
         # TOPK.INFO key <field> returns just that single value.
         assert self.client.execute_command('TOPK.INFO tk5 K') == 10
@@ -190,7 +194,7 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         assert self.client.execute_command('TOPK.INFO tk5 depth') == 5
         assert self.client.execute_command('TOPK.INFO tk5 DECAY') == b'0.5'
         assert self.client.execute_command('TOPK.INFO tk5 SIZE') == info_dict('tk5')[b'Size']
-        assert self.client.execute_command('TOPK.INFO tk_incr TOTALITEMSADDED') == 1000029
+        assert self.client.execute_command('TOPK.INFO tk_incr TOTALITEMSADDED') == tk_incr_total
 
         # TOPK.LIST returns tracked items by descending count, at most k.
         assert self.client.execute_command('TOPK.RESERVE tk_list 3 50 4 0.9 SEED 42') == b'OK'
