@@ -13,6 +13,10 @@ class TestTopkSaveRestore(ValkeyBloomTestCaseBase):
         list_before = client.execute_command('TOPK.LIST testSave WITHCOUNT')
         assert len(info_before) != 0
         item_count_before = self.server.num_keys(client=client)
+        # cmd debug digest
+        server_digest = client.execute_command('DEBUG', 'DIGEST')
+        assert server_digest != None or 0000000000000000000000000000000000000000
+        object_digest = client.execute_command('DEBUG DIGEST-VALUE testSave')
 
         # save rdb, restart server.
         client.execute_command('BGSAVE')
@@ -21,6 +25,10 @@ class TestTopkSaveRestore(ValkeyBloomTestCaseBase):
 
         assert self.server.is_alive()
         wait_for_equal(lambda: self.server.is_rdb_done_loading(), True)
+        restored_server_digest = client.execute_command('DEBUG', 'DIGEST')
+        restored_object_digest = client.execute_command('DEBUG DIGEST-VALUE testSave')
+        assert restored_server_digest == server_digest
+        assert restored_object_digest == object_digest
         self.server.verify_string_in_logfile("Loading RDB produced by Valkey")
         self.server.verify_string_in_logfile("Done loading RDB, keys loaded: 1, keys expired: 0")
 

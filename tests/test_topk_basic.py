@@ -23,15 +23,24 @@ class TestTopkBasic(ValkeyBloomTestCaseBase):
         assert client.execute_command('TOPK.QUERY tk apple') == [1]
         assert client.execute_command('TOPK.QUERY tk missing') == [0]
 
-    def test_copy(self):
+    def test_copy_and_exists_cmd(self):
         client = self.server.get_new_client()
         assert client.execute_command('TOPK.RESERVE tk 3 50 4 0.9 SEED 42') == b'OK'
         client.execute_command('TOPK.INCRBY tk apple 5 banana 3 cherry 1')
+        # cmd debug digest
+        server_digest = client.execute_command('DEBUG', 'DIGEST')
+        assert server_digest != None or 0000000000000000000000000000000000000000
+        object_digest = client.execute_command('DEBUG DIGEST-VALUE tk')
         # COPY is a deep copy
         assert client.execute_command('COPY tk tk_copy') == 1
+        copied_server_digest = client.execute_command('DEBUG', 'DIGEST')
+        assert copied_server_digest != None or 0000000000000000000000000000000000000000
+        copied_object_digest = client.execute_command('DEBUG DIGEST-VALUE tk_copy')
         assert client.execute_command('EXISTS tk_copy') == 1
         assert client.execute_command('TOPK.LIST tk') == client.execute_command('TOPK.LIST tk_copy')
         assert client.execute_command('TOPK.LIST tk WITHCOUNT') == client.execute_command('TOPK.LIST tk_copy WITHCOUNT')
+        assert server_digest != copied_server_digest
+        assert copied_object_digest == object_digest
 
         for cmd in [
             'TOPK.ADD tk date',
@@ -54,6 +63,8 @@ class TestTopkBasic(ValkeyBloomTestCaseBase):
         before = client.execute_command('TOPK.LIST tk WITHCOUNT')
         client.execute_command('TOPK.INCRBY tk_copy grape 100')
         assert client.execute_command('TOPK.LIST tk WITHCOUNT') == before
+        assert client.execute_command('DEBUG DIGEST-VALUE tk_copy') != \
+            client.execute_command('DEBUG DIGEST-VALUE tk')
 
     def test_module_data_type(self):
         # Validate the name of the Module data type and its encoding.
