@@ -2,10 +2,10 @@ import time
 from valkeytestframework.util.waiters import *
 from valkey import ResponseError
 from valkeytestframework.conftest import resource_port_tracker  # noqa: F401
-from valkey_bloom_test_case import ValkeyBloomTestCaseBase
+from valkey_bloom_test_case import TopkFixedSeedMixin, ValkeyBloomTestCaseBase
 
 
-class TestTopkBasic(ValkeyBloomTestCaseBase):
+class TestTopkBasic(TopkFixedSeedMixin, ValkeyBloomTestCaseBase):
 
     def test_basic(self):
         client = self.server.get_new_client()

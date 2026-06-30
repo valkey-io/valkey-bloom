@@ -404,3 +404,13 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
             for category in cmd[2]:
                 assert category in cmd_info[0][6]
 
+class TopkFixedSeedMixin:
+    """Opt out of the random/fixed-seed parameterization.
+
+    TopK seeds are chosen per command (TOPK.RESERVE ... SEED), not via the
+    bf.bloom-use-random-seed config, so the bloom seed parameterization would
+    only run every test twice with identical behavior. Mixing this in overrides
+    the autouse fixture so those tests run only once."""
+    @pytest.fixture(autouse=True)
+    def use_random_seed_fixture(self):
+        self.use_random_seed = "no"

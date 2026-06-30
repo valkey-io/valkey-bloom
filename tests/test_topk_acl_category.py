@@ -1,8 +1,8 @@
 from valkeytestframework.conftest import resource_port_tracker
-from valkey_bloom_test_case import ValkeyBloomTestCaseBase
+from valkey_bloom_test_case import TopkFixedSeedMixin, ValkeyBloomTestCaseBase
 from valkeytestframework.util.waiters import *
 
-class TestTopkACLCategory(ValkeyBloomTestCaseBase):
+class TestTopkACLCategory(TopkFixedSeedMixin, ValkeyBloomTestCaseBase):
 
     def test_topk_acl_category_permissions(self):
         # List of topk commands and the expected returns if the command is valid.
