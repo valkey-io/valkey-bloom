@@ -1,3 +1,4 @@
+from valkey import ResponseError
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 from valkeytestframework.conftest import resource_port_tracker  # noqa: F401
 from valkeytestframework.util.waiters import *
@@ -91,3 +92,33 @@ class TestTopkSaveRestore(ValkeyBloomTestCaseBase):
         assert self.server.num_keys(client=client) == count
         assert client.execute_command('TOPK.QUERY 0key item0') == [1]
         assert client.execute_command('TOPK.QUERY 499key item499') == [1]
+
+    def test_rdb_restore_non_topk_compatibility(self):
+        # Create an rdb on a module enabled server
+        topk_client = self.server.get_new_client()
+        topk_client.execute_command("TOPK.RESERVE key 5")
+        topk_client.execute_command("TOPK.ADD key item")
+        topk_client.execute_command("set string val")
+        assert self.server.num_keys(client=topk_client) == 2
+        assert topk_client.execute_command("del key") == 1
+        assert self.server.num_keys(client=topk_client) == 1
+        assert topk_client.get("string") == b"val"
+        topk_client.execute_command('BGSAVE')
+        self.server.wait_for_save_done()
+        rdb_file = self.server.args["dbfilename"]
+
+        # Create a server without the module
+        new_server, new_client = self.create_server(testdir=self.testdir, server_path=self.server_path, args={"dbfilename": rdb_file})
+        assert new_server.is_alive()
+        wait_for_equal(lambda: new_server.is_rdb_done_loading(), True)
+
+        # Verification
+        assert new_client.execute_command("info bf") == b''
+        try:
+            new_client.execute_command("topk.reserve test 5")
+            assert False
+        except ResponseError as e:
+            assert "unknown command" in str(e)
+
+        assert self.server.num_keys(client=new_client) == 1
+        assert new_client.get("string") == b"val"
