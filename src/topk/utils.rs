@@ -161,6 +161,8 @@ impl TopKObject {
         let (evicted, inserted) = self.sketch.add_with_evicted(item, increment);
         let added = if inserted { item.len() } else { 0 };
         let removed = evicted.as_ref().map_or(0, Vec::len);
+        // The priority queue stores each item's bytes twice (HashMap key +
+        // item_store), so scale the byte delta by 2.
         if added >= removed {
             metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
                 .fetch_add(2 * (added - removed), Ordering::Relaxed);

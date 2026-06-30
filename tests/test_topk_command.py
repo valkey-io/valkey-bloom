@@ -161,35 +161,35 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
             it = iter(raw)
             return dict(zip(it, it))
         info = info_dict('tk1')
-        assert info[b'k'] == 5
-        assert info[b'width'] == 8
-        assert info[b'depth'] == 7
-        assert info[b'decay'] == b'0.9'
-        assert info[b'size'] > 0
-        assert info[b'size'] <= self.client.execute_command('MEMORY USAGE tk1')
+        assert info[b'K'] == 5
+        assert info[b'Width'] == 8
+        assert info[b'Depth'] == 7
+        assert info[b'Decay'] == b'0.9'
+        assert info[b'Size'] > 0
+        assert info[b'Size'] <= self.client.execute_command('MEMORY USAGE tk1')
         # tk1 was re-reserved with no items, so nothing has been added yet.
-        assert info[b'total items added'] == 0
+        assert info[b'Total items added'] == 0
 
         info = info_dict('tk5')
-        assert info[b'k'] == 10
-        assert info[b'width'] == 200
-        assert info[b'depth'] == 5
-        assert info[b'decay'] == b'0.5'
-        assert info[b'size'] > 0
-        assert info[b'size'] <= self.client.execute_command('MEMORY USAGE tk5')
-        assert info[b'total items added'] == 0
+        assert info[b'K'] == 10
+        assert info[b'Width'] == 200
+        assert info[b'Depth'] == 5
+        assert info[b'Decay'] == b'0.5'
+        assert info[b'Size'] > 0
+        assert info[b'Size'] <= self.client.execute_command('MEMORY USAGE tk5')
+        assert info[b'Total items added'] == 0
 
         # tk_incr accumulates every increment:
         # 1 + (5+3) + (1+2+3) + (7+2) + 1000000 + (2+3) = 1000029.
         info = info_dict('tk_incr')
-        assert info[b'total items added'] == 1000029
+        assert info[b'Total items added'] == 1000029
 
         # TOPK.INFO key <field> returns just that single value.
         assert self.client.execute_command('TOPK.INFO tk5 K') == 10
         assert self.client.execute_command('TOPK.INFO tk5 WIDTH') == 200
         assert self.client.execute_command('TOPK.INFO tk5 depth') == 5
         assert self.client.execute_command('TOPK.INFO tk5 DECAY') == b'0.5'
-        assert self.client.execute_command('TOPK.INFO tk5 SIZE') == info_dict('tk5')[b'size']
+        assert self.client.execute_command('TOPK.INFO tk5 SIZE') == info_dict('tk5')[b'Size']
         assert self.client.execute_command('TOPK.INFO tk_incr TOTALITEMSADDED') == 1000029
 
         # TOPK.LIST returns tracked items by descending count, at most k.
