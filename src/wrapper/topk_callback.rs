@@ -2,6 +2,7 @@ use crate::topk::data_type::ValkeyDataType;
 use crate::topk::utils::TopKObject;
 use std::os::raw::{c_int, c_void};
 use std::ptr::null_mut;
+use valkey_module::digest::Digest;
 use valkey_module::logging;
 use valkey_module::raw;
 use valkey_module::RedisModuleString;
@@ -54,6 +55,14 @@ pub unsafe extern "C" fn topk_copy(
     let new_item = TopKObject::create_copy_from(curr);
     let bb = Box::new(new_item);
     Box::into_raw(bb).cast::<libc::c_void>()
+}
+
+/// # Safety
+/// Raw handler for the TopK digest callback.
+pub unsafe extern "C" fn topk_digest(md: *mut raw::RedisModuleDigest, value: *mut c_void) {
+    let dig = Digest::new(md);
+    let val = &*(value.cast::<TopKObject>());
+    val.debug_digest(dig);
 }
 
 /// # Safety

@@ -5,6 +5,7 @@ use crate::topk::utils::{
 use crate::wrapper::topk_callback;
 use crate::MODULE_NAME;
 use heavykeeper::CuckooTopK;
+use valkey_module::digest::Digest;
 use valkey_module::native_types::ValkeyType;
 use valkey_module::{logging, raw};
 
@@ -20,7 +21,7 @@ pub static TOPK_TYPE: ValkeyType = ValkeyType::new(
         rdb_load: Some(topk_callback::topk_rdb_load),
         rdb_save: Some(topk_callback::topk_rdb_save),
         aof_rewrite: None,
-        digest: None,
+        digest: Some(topk_callback::topk_digest),
 
         mem_usage: Some(topk_callback::topk_mem_usage),
         free: Some(topk_callback::topk_free),
@@ -44,6 +45,7 @@ pub static TOPK_TYPE: ValkeyType = ValkeyType::new(
 
 pub trait ValkeyDataType {
     fn load_from_rdb(rdb: *mut raw::RedisModuleIO, encver: i32) -> Option<TopKObject>;
+    fn debug_digest(&self, dig: Digest);
 }
 
 impl ValkeyDataType for TopKObject {
@@ -99,5 +101,13 @@ impl ValkeyDataType for TopKObject {
             num_items,
         );
         Some(item)
+    }
+
+    /// Function that is used to generate a digest on the Topk Object.
+    fn debug_digest(&self, mut dig: Digest) {
+        dig.add_long_long(self.seed() as i64);
+        dig.add_long_long(self.num_items() as i64);
+        dig.add_string_buffer(&self.sketch().to_bytes());
+        dig.end_sequence();
     }
 }
