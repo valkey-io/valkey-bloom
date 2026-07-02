@@ -1,7 +1,7 @@
-from valkey_bloom_test_case import TopkFixedSeedMixin, ValkeyBloomTestCaseBase
+from valkey_bloom_test_case import SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase
 from valkeytestframework.conftest import resource_port_tracker  # noqa: F401
 
-class TestTopkCommand(TopkFixedSeedMixin, ValkeyBloomTestCaseBase):
+class TestTopkCommand(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
 
     def test_topk_command_arity(self):
         self.verify_command_arity('TOPK.RESERVE', -1)

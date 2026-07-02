@@ -1,9 +1,9 @@
 from valkey import ResponseError
-from valkey_bloom_test_case import TopkFixedSeedMixin, ValkeyBloomTestCaseBase
+from valkey_bloom_test_case import SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase
 from valkeytestframework.conftest import resource_port_tracker  # noqa: F401
 from valkeytestframework.util.waiters import *
 
-class TestTopkSaveRestore(TopkFixedSeedMixin, ValkeyBloomTestCaseBase):
+class TestTopkSaveRestore(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
 
     def test_basic_save_and_restore(self):
         client = self.server.get_new_client()

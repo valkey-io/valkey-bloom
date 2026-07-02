@@ -435,13 +435,15 @@ def setup_replication_servers(case, use_random_seed='no'):
         case.server, case.client = case.create_server(testdir=case.testdir, server_path=server_path, args=case.args)
 
 
-class TopkFixedSeedMixin:
+class SkipSeedParameterizationMixin:
     """Opt out of the random/fixed-seed parameterization.
 
-    TopK seeds are chosen per command (TOPK.RESERVE ... SEED), not via the
-    bf.bloom-use-random-seed config, so the bloom seed parameterization would
-    only run every test twice with identical behavior. Mixing this in overrides
-    the autouse fixture so those tests run only once."""
+    The bloom seed parameterization runs every test twice, once per value of
+    the bf.bloom-use-random-seed config. Data types that don't derive their
+    behavior from that config (e.g. TopK, whose seed is chosen per command via
+    TOPK.RESERVE ... SEED) would just run every test twice with identical
+    behavior. Mixing this in overrides the autouse fixture so those tests run
+    only once with a fixed seed."""
     @pytest.fixture(autouse=True)
     def use_random_seed_fixture(self):
         self.use_random_seed = "no"

@@ -2,9 +2,9 @@ import pytest, os
 from valkey import ResponseError
 from valkeytestframework.valkey_test_case import ReplicationTestCase
 from valkeytestframework.conftest import resource_port_tracker  # noqa: F401
-from valkey_bloom_test_case import setup_replication_servers, TopkFixedSeedMixin
+from valkey_bloom_test_case import setup_replication_servers, SkipSeedParameterizationMixin
 
-class TestTopkReplication(TopkFixedSeedMixin, ReplicationTestCase):
+class TestTopkReplication(SkipSeedParameterizationMixin, ReplicationTestCase):
 
     @pytest.fixture(autouse=True)
     def setup_test(self, setup):

@@ -1,8 +1,8 @@
-from valkey_bloom_test_case import TopkFixedSeedMixin, ValkeyBloomTestCaseBase
+from valkey_bloom_test_case import SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase
 from valkeytestframework.conftest import resource_port_tracker  # noqa: F401
 from valkeytestframework.util.waiters import *
 
-class TestTopkMetrics(TopkFixedSeedMixin, ValkeyBloomTestCaseBase):
+class TestTopkMetrics(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
 
     def test_basic_command_metrics(self):
         # Metrics start at 0.
