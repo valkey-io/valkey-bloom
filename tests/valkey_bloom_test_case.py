@@ -404,3 +404,46 @@ class ValkeyBloomTestCaseBase(ValkeyTestCase):
             for category in cmd[2]:
                 assert category in cmd_info[0][6]
 
+def setup_replication_servers(case, use_random_seed='no'):
+    """Shared primary/replica server setup for the bloom and topk replication tests."""
+    use_external = os.environ.get("VALKEY_EXTERNAL_SERVER", "false").lower() == "true"
+
+    if use_external:
+        master_host = os.environ.get("VALKEY_HOST", "localhost")
+        master_port = int(os.environ.get("VALKEY_PORT", "6379"))
+        case.server, case.client = case.create_server(
+            testdir=case.testdir,
+            bind_ip=master_host,
+            port=master_port,
+            external_server=True
+        )
+
+        replica_host = os.environ.get("VALKEY_REPLICA_HOST", "localhost")
+        replica_port = int(os.environ.get("VALKEY_REPLICA_PORT", "6380"))
+        replica_server, replica_client = case.create_server(
+            testdir=case.testdir,
+            bind_ip=replica_host,
+            port=replica_port,
+            external_server=True
+        )
+
+        case.replicas = [replica_server]
+        case.num_replicas = 1
+    else:
+        case.args = {"enable-debug-command": "yes", 'loadmodule': os.getenv('MODULE_PATH'), 'bf.bloom-use-random-seed': use_random_seed}
+        server_path = f"{os.path.dirname(os.path.realpath(__file__))}/build/binaries/{os.environ['SERVER_VERSION']}/valkey-server"
+        case.server, case.client = case.create_server(testdir=case.testdir, server_path=server_path, args=case.args)
+
+
+class SkipSeedParameterizationMixin:
+    """Opt out of the random/fixed-seed parameterization.
+
+    The bloom seed parameterization runs every test twice, once per value of
+    the bf.bloom-use-random-seed config. Data types that don't derive their
+    behavior from that config (e.g. TopK, whose seed is chosen per command via
+    TOPK.RESERVE ... SEED) would just run every test twice with identical
+    behavior. Mixing this in overrides the autouse fixture so those tests run
+    only once with a fixed seed."""
+    @pytest.fixture(autouse=True)
+    def use_random_seed_fixture(self):
+        self.use_random_seed = "no"

@@ -1,10 +1,16 @@
+use crate::topk::utils::{
+    TopKObject, TOPK_DEPTH_MAX, TOPK_DEPTH_MIN, TOPK_K_MAX, TOPK_K_MIN, TOPK_WIDTH_MAX,
+    TOPK_WIDTH_MIN,
+};
 use crate::wrapper::topk_callback;
+use crate::MODULE_NAME;
+use heavykeeper::CuckooTopK;
+use valkey_module::digest::Digest;
 use valkey_module::native_types::ValkeyType;
-use valkey_module::raw;
+use valkey_module::{logging, raw};
 
 /// Module data type encoding version for TopK. Bump this whenever the
-/// on-disk layout changes. RDB save/load callbacks are intentionally left
-/// `None` until TOPK.ADD lands and we can round-trip sketch contents.
+/// on-disk layout changes.
 const TOPK_TYPE_ENCODING_VERSION: i32 = 1;
 
 pub static TOPK_TYPE: ValkeyType = ValkeyType::new(
@@ -12,12 +18,10 @@ pub static TOPK_TYPE: ValkeyType = ValkeyType::new(
     TOPK_TYPE_ENCODING_VERSION,
     raw::RedisModuleTypeMethods {
         version: raw::REDISMODULE_TYPE_METHOD_VERSION as u64,
-        // RDB, AOF, digest, and defrag are wired up alongside TOPK.ADD when
-        // we have sketch contents to persist and a stable layout to walk.
-        rdb_load: None,
-        rdb_save: None,
+        rdb_load: Some(topk_callback::topk_rdb_load),
+        rdb_save: Some(topk_callback::topk_rdb_save),
         aof_rewrite: None,
-        digest: None,
+        digest: Some(topk_callback::topk_digest),
 
         mem_usage: Some(topk_callback::topk_mem_usage),
         free: Some(topk_callback::topk_free),
@@ -38,3 +42,72 @@ pub static TOPK_TYPE: ValkeyType = ValkeyType::new(
         copy2: None,
     },
 );
+
+pub trait ValkeyDataType {
+    fn load_from_rdb(rdb: *mut raw::RedisModuleIO, encver: i32) -> Option<TopKObject>;
+    fn debug_digest(&self, dig: Digest);
+}
+
+impl ValkeyDataType for TopKObject {
+    /// Callback to load and parse RDB data of a TopK item and create it.
+    fn load_from_rdb(rdb: *mut raw::RedisModuleIO, encver: i32) -> Option<TopKObject> {
+        if encver > TOPK_TYPE_ENCODING_VERSION {
+            logging::log_warning(format!("{}: Cannot load topk-type data type of version {} because it is greater than the loaded module's topk-type supported version {}", MODULE_NAME, encver, TOPK_TYPE_ENCODING_VERSION).as_str());
+            return None;
+        }
+        let Ok(seed) = raw::load_unsigned(rdb) else {
+            return None;
+        };
+        let Ok(num_items) = raw::load_unsigned(rdb) else {
+            return None;
+        };
+        let Ok(sketch_bytes) = raw::load_string_buffer(rdb) else {
+            return None;
+        };
+        let sketch = match CuckooTopK::<Vec<u8>>::from_bytes(sketch_bytes.as_ref(), seed) {
+            Ok(sketch) => sketch,
+            Err(err) => {
+                logging::log_warning(format!("Failed to restore topk object: {}", err).as_str());
+                return None;
+            }
+        };
+        let k = sketch.top_items() as u64;
+        let width = sketch.width() as u64;
+        let depth = sketch.depth() as u64;
+        if !(TOPK_K_MIN as u64..=TOPK_K_MAX as u64).contains(&k) {
+            logging::log_warning("Failed to restore topk object: k out of range");
+            return None;
+        }
+        if !(TOPK_WIDTH_MIN as u64..=TOPK_WIDTH_MAX as u64).contains(&width) {
+            logging::log_warning("Failed to restore topk object: width out of range");
+            return None;
+        }
+        if !(TOPK_DEPTH_MIN as u64..=TOPK_DEPTH_MAX as u64).contains(&depth) {
+            logging::log_warning("Failed to restore topk object: depth out of range");
+            return None;
+        }
+        let decay = sketch.decay();
+        if !(decay > 0.0 && decay < 1.0) {
+            logging::log_warning("Failed to restore topk object: decay out of range");
+            return None;
+        }
+        let item = TopKObject::from_existing(
+            k as u32,
+            width as u32,
+            depth as u32,
+            decay,
+            seed,
+            sketch,
+            num_items,
+        );
+        Some(item)
+    }
+
+    /// Function that is used to generate a digest on the Topk Object.
+    fn debug_digest(&self, mut dig: Digest) {
+        dig.add_long_long(self.seed() as i64);
+        dig.add_long_long(self.num_items() as i64);
+        dig.add_string_buffer(&self.sketch().to_bytes());
+        dig.end_sequence();
+    }
+}

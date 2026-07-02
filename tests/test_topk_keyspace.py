@@ -1,7 +1,7 @@
-from valkey_bloom_test_case import ValkeyBloomTestCaseBase
+from valkey_bloom_test_case import SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase
 from valkeytestframework.conftest import resource_port_tracker
 
-class TestTopkKeyEventNotifications(ValkeyBloomTestCaseBase):
+class TestTopkKeyEventNotifications(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
 
     def test_keyspace_topk_commands(self):
         self.create_subscribe_clients()

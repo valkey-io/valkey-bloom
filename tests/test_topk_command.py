@@ -1,7 +1,7 @@
-from valkey_bloom_test_case import ValkeyBloomTestCaseBase
+from valkey_bloom_test_case import SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase
 from valkeytestframework.conftest import resource_port_tracker  # noqa: F401
 
-class TestTopkCommand(ValkeyBloomTestCaseBase):
+class TestTopkCommand(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
 
     def test_topk_command_arity(self):
         self.verify_command_arity('TOPK.RESERVE', -1)
@@ -78,9 +78,11 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
             ('TOPK.INFO missing', 'TopK: key does not exist'),
             # wrong type
             ('TOPK.INFO strkey', 'WRONGTYPE Operation against a key holding the wrong kind of value'),
-            # wrong number of arguments 
+            # an unrecognized field token is rejected.
+            ('TOPK.INFO dup bogus', 'invalid information value'),
+            # wrong number of arguments: key plus at most one field token.
             ('TOPK.INFO', "wrong number of arguments for 'TOPK.INFO' command"),
-            ('TOPK.INFO dup extra', "wrong number of arguments for 'TOPK.INFO' command"),
+            ('TOPK.INFO dup K extra', "wrong number of arguments for 'TOPK.INFO' command"),
             # key must exist.
             ('TOPK.LIST missing', 'TopK: key does not exist'),
             # wrong type
@@ -151,27 +153,48 @@ class TestTopkCommand(ValkeyBloomTestCaseBase):
         ]
         for cmd, expected_len in incrby_success_cases:
             assert len(self.client.execute_command(cmd)) == expected_len
+        # Total items added is the sum of every increment
+        tk_incr_total = sum(
+            int(inc)
+            for cmd, _ in incrby_success_cases
+            for inc in cmd.split()[3::2]
+        )
 
-        # TOPK.INFO reports k, width, depth, decay, and size of an existing sketch.
+        # TOPK.INFO reports k, width, depth, decay, size, and total items added
+        # for an existing sketch.
         def info_dict(key):
             raw = self.client.execute_command(f'TOPK.INFO {key}')
             it = iter(raw)
             return dict(zip(it, it))
         info = info_dict('tk1')
-        assert info[b'k'] == 5
-        assert info[b'width'] == 8
-        assert info[b'depth'] == 7
-        assert info[b'decay'] == b'0.9'
-        assert info[b'size'] > 0
-        assert info[b'size'] <= self.client.execute_command('MEMORY USAGE tk1')
+        assert info[b'K'] == 5
+        assert info[b'Width'] == 8
+        assert info[b'Depth'] == 7
+        assert info[b'Decay'] == b'0.9'
+        assert info[b'Size'] > 0
+        assert info[b'Size'] <= self.client.execute_command('MEMORY USAGE tk1')
+        # tk1 was re-reserved with no items, so nothing has been added yet.
+        assert info[b'Total items added'] == 0
 
         info = info_dict('tk5')
-        assert info[b'k'] == 10
-        assert info[b'width'] == 200
-        assert info[b'depth'] == 5
-        assert info[b'decay'] == b'0.5'
-        assert info[b'size'] > 0
-        assert info[b'size'] <= self.client.execute_command('MEMORY USAGE tk5')
+        assert info[b'K'] == 10
+        assert info[b'Width'] == 200
+        assert info[b'Depth'] == 5
+        assert info[b'Decay'] == b'0.5'
+        assert info[b'Size'] > 0
+        assert info[b'Size'] <= self.client.execute_command('MEMORY USAGE tk5')
+        assert info[b'Total items added'] == 0
+
+        info = info_dict('tk_incr')
+        assert info[b'Total items added'] == tk_incr_total
+
+        # TOPK.INFO key <field> returns just that single value.
+        assert self.client.execute_command('TOPK.INFO tk5 K') == 10
+        assert self.client.execute_command('TOPK.INFO tk5 WIDTH') == 200
+        assert self.client.execute_command('TOPK.INFO tk5 depth') == 5
+        assert self.client.execute_command('TOPK.INFO tk5 DECAY') == b'0.5'
+        assert self.client.execute_command('TOPK.INFO tk5 SIZE') == info_dict('tk5')[b'Size']
+        assert self.client.execute_command('TOPK.INFO tk_incr TOTALITEMSADDED') == tk_incr_total
 
         # TOPK.LIST returns tracked items by descending count, at most k.
         assert self.client.execute_command('TOPK.RESERVE tk_list 3 50 4 0.9 SEED 42') == b'OK'

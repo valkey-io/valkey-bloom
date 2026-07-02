@@ -24,6 +24,7 @@ pub const TOPK_DEPTH_MAX: u32 = u32::MAX;
 /// Client Errors
 pub const ERROR: &str = "ERROR";
 pub const NOT_FOUND: &str = "ERR TopK: key does not exist";
+pub const INVALID_INFO_VALUE: &str = "ERR invalid information value";
 pub const KEY_EXISTS: &str = "BUSYKEY Target key name already exists.";
 pub const BAD_TOPK: &str = "ERR bad topk";
 pub const BAD_WIDTH: &str = "ERR bad width";
@@ -67,6 +68,29 @@ impl TopKObject {
         topk
     }
 
+    /// Create a new TopK object from existing data.
+    pub fn from_existing(
+        k: u32,
+        width: u32,
+        depth: u32,
+        decay: f64,
+        seed: u64,
+        sketch: CuckooTopK<Vec<u8>>,
+        num_items: u64,
+    ) -> TopKObject {
+        let topk = TopKObject {
+            k,
+            width,
+            depth,
+            decay,
+            seed,
+            sketch,
+            num_items,
+        };
+        topk.topk_object_incr_metrics_on_new_create();
+        topk
+    }
+
     /// Build a deep copy of `src` for the COPY command. Clones the sketch
     /// contents (heavy/lobby cells and priority queue) and carries over the
     /// running item count.
@@ -88,7 +112,7 @@ impl TopKObject {
     /// (cell arrays, decay table, priority queue) + per-item buffer capacity.
     /// The remaining undercount is allocator overhead and HashMap metadata.
     pub fn memory_usage(&self) -> usize {
-        std::mem::size_of::<TopKObject>() + self.sketch.mem_bytes_with(|item| item.capacity())
+        std::mem::size_of::<TopKObject>() + self.sketch.mem_bytes(|item| item.capacity())
     }
 
     /// Increments metrics related to object count, memory, and summed k upon creation of a new object.
@@ -114,6 +138,9 @@ impl TopKObject {
     pub fn seed(&self) -> u64 {
         self.seed
     }
+    pub fn num_items(&self) -> u64 {
+        self.num_items
+    }
     pub fn sketch(&self) -> &CuckooTopK<Vec<u8>> {
         &self.sketch
     }
@@ -131,20 +158,17 @@ impl TopKObject {
         let delta = new_num_items - self.num_items;
         self.num_items = new_num_items;
         metrics::TOPK_TOTAL_ITEMS_ADDED_ACROSS_OBJECTS.fetch_add(delta, Ordering::Relaxed);
-        // Diffing memory_usage() before/after makes this O(width·depth + k) ×2
-        // instead of O(1).
-        // TODO: have upstream add_with_evicted report whether an item was
-        // inserted (or the memory delta) so we can update the gauge in
-        // O(item bytes) and keep add O(1).
-        let mem_before = self.memory_usage();
-        let evicted = self.sketch.add_with_evicted(item, increment);
-        let mem_after = self.memory_usage();
-        if mem_after >= mem_before {
+        let (evicted, inserted) = self.sketch.add_with_evicted(item, increment);
+        let added = if inserted { item.len() } else { 0 };
+        let removed = evicted.as_ref().map_or(0, Vec::len);
+        // The priority queue stores each item's bytes twice (HashMap key +
+        // item_store), so scale the byte delta by 2.
+        if added >= removed {
             metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
-                .fetch_add(mem_after - mem_before, Ordering::Relaxed);
+                .fetch_add(2 * (added - removed), Ordering::Relaxed);
         } else {
             metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
-                .fetch_sub(mem_before - mem_after, Ordering::Relaxed);
+                .fetch_sub(2 * (removed - added), Ordering::Relaxed);
         }
         evicted
     }

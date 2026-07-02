@@ -1,8 +1,8 @@
 from valkeytestframework.conftest import resource_port_tracker
-from valkey_bloom_test_case import ValkeyBloomTestCaseBase
+from valkey_bloom_test_case import SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase
 from valkeytestframework.util.waiters import *
 
-class TestTopkACLCategory(ValkeyBloomTestCaseBase):
+class TestTopkACLCategory(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
 
     def test_topk_acl_category_permissions(self):
         # List of topk commands and the expected returns if the command is valid.
@@ -13,7 +13,7 @@ class TestTopkACLCategory(ValkeyBloomTestCaseBase):
             ('TOPK.QUERY reserve_key item', [1]),
             ('TOPK.COUNT reserve_key item', [6]),
             ('TOPK.LIST reserve_key', [b'item']),
-            ('TOPK.INFO reserve_key', 10),
+            ('TOPK.INFO reserve_key', 12),
         ]
         client = self.server.get_new_client()
         # Get a list of all commands with the acl category topk
