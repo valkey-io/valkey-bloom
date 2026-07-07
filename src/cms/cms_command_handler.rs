@@ -9,8 +9,8 @@ enum Replications {
 }
 
 enum Operation {
-    Initialization {},
-    Increment {},
+    Initialization,
+    Increment,
 }
 
 fn replicate_and_notify_events(
@@ -20,7 +20,7 @@ fn replicate_and_notify_events(
     args: Replications,
 ) {
     match operation {
-        Operation::Initialization {} => match args {
+        Operation::Initialization => match args {
             Replications::ReplicateArgsDim { width, depth } => {
                 let width_val = ValkeyString::create_from_slice(
                     std::ptr::null_mut(),
@@ -51,7 +51,7 @@ fn replicate_and_notify_events(
                 ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::INITBYPROB_EVENT, key_name);
             }
         },
-        Operation::Increment {} => {
+        Operation::Increment => {
             ctx.replicate_verbatim();
             ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::INCR_EVENT, key_name);
         }
@@ -94,12 +94,7 @@ pub fn cms_initialize_by_dimensions(ctx: &Context, args: Vec<ValkeyString>) -> V
             match filter_key.set_value(&CMS_TYPE, cms) {
                 Ok(()) => {
                     let replications = Replications::ReplicateArgsDim { width, depth };
-                    replicate_and_notify_events(
-                        ctx,
-                        key,
-                        Operation::Initialization {},
-                        replications,
-                    );
+                    replicate_and_notify_events(ctx, key, Operation::Initialization, replications);
                     VALKEY_OK
                 }
                 Err(_) => Err(ValkeyError::Str(utils::ERROR)),
@@ -154,12 +149,7 @@ pub fn cms_initialize_by_probability(ctx: &Context, args: Vec<ValkeyString>) -> 
                         fp_rate,
                     };
 
-                    replicate_and_notify_events(
-                        ctx,
-                        key,
-                        Operation::Initialization {},
-                        replications,
-                    );
+                    replicate_and_notify_events(ctx, key, Operation::Initialization, replications);
                     VALKEY_OK
                 }
                 Err(_) => Err(ValkeyError::Str(utils::ERROR)),
