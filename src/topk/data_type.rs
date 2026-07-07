@@ -34,7 +34,7 @@ pub static TOPK_TYPE: ValkeyType = ValkeyType::new(
         free_effort: Some(topk_callback::topk_free_effort),
         unlink: None,
         copy: Some(topk_callback::topk_copy),
-        defrag: None,
+        defrag: Some(topk_callback::topk_defrag),
 
         mem_usage2: None,
         free_effort2: None,

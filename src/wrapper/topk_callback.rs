@@ -1,11 +1,15 @@
+use crate::configs;
+use crate::metrics;
 use crate::topk::data_type::ValkeyDataType;
 use crate::topk::utils::TopKObject;
 use std::os::raw::{c_int, c_void};
 use std::ptr::null_mut;
+use std::sync::atomic::Ordering;
+use valkey_module::defrag::Defrag;
 use valkey_module::digest::Digest;
 use valkey_module::logging;
 use valkey_module::raw;
-use valkey_module::RedisModuleString;
+use valkey_module::{RedisModuleDefragCtx, RedisModuleString};
 
 /// # Safety
 pub unsafe extern "C" fn topk_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_void) {
@@ -74,4 +78,48 @@ pub unsafe extern "C" fn topk_free_effort(
     _value: *const c_void,
 ) -> usize {
     1
+}
+
+/// Reallocation callback passed to the heavykeeper sketch. Routes each block
+/// through Valkey's defrag allocator; a null result means "not relocated", so
+/// we return the original pointer.
+fn topk_realloc(ptr: *mut u8, _size: usize, _align: usize) -> *mut u8 {
+    let defrag = Defrag::new(core::ptr::null_mut());
+    let new = unsafe { defrag.alloc(ptr as *mut c_void) };
+    if new.is_null() {
+        metrics::TOPK_DEFRAG_MISSES.fetch_add(1, Ordering::Relaxed);
+        ptr
+    } else {
+        metrics::TOPK_DEFRAG_HITS.fetch_add(1, Ordering::Relaxed);
+        new as *mut u8
+    }
+}
+
+/// # Safety
+/// Raw handler for the TopK object's defrag callback. A TopKObject holds one
+/// sketch inline, so we defrag its heap allocations and then the object itself
+/// in a single pass, always returning 0 (complete).
+pub unsafe extern "C" fn topk_defrag(
+    defrag_ctx: *mut RedisModuleDefragCtx,
+    _from_key: *mut RedisModuleString,
+    value: *mut *mut c_void,
+) -> i32 {
+    if !configs::TOPK_DEFRAG.load(Ordering::Relaxed) {
+        return 0;
+    }
+    // Relocate the sketch's internal heap allocations.
+    let topk_object: &mut TopKObject = &mut *(*value).cast::<TopKObject>();
+    topk_object
+        .sketch_mut()
+        .realloc_large_heap_allocated_objects(topk_realloc);
+    // Relocate the TopKObject allocation itself.
+    let defrag = Defrag::new(defrag_ctx);
+    let val = defrag.alloc(*value);
+    if !val.is_null() {
+        metrics::TOPK_DEFRAG_HITS.fetch_add(1, Ordering::Relaxed);
+        *value = val;
+    } else {
+        metrics::TOPK_DEFRAG_MISSES.fetch_add(1, Ordering::Relaxed);
+    }
+    0
 }
