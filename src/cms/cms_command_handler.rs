@@ -3,29 +3,24 @@ use valkey_module::{Context, NotifyEvent, ValkeyError, ValkeyResult, ValkeyStrin
 use crate::cms::data_type::CMS_TYPE;
 use crate::cms::utils::{self, CMSObject};
 
-struct ReplicateArgs {
-    //seed: [u8; 32],
-    args: Replications,
-}
-
 enum Replications {
     ReplicateArgsDim { width: u64, depth: u64 },
     ReplicateArgsProb { error_rate: f64, fp_rate: f64 },
 }
 
+enum Operation {
+    Initialization {},
+    Increment {},
+}
+
 fn replicate_and_notify_events(
     ctx: &Context,
     key_name: &ValkeyString,
-    init_operation: bool,
-    incr_operation: bool,
-    args: ReplicateArgs,
+    operation: Operation,
+    args: Replications,
 ) {
-    if init_operation {
-        //For later when we need seeding discussions (cms.merge)
-        // let seed_str = ValkeyString::create_from_slice(std::ptr::null_mut(), "SEED".as_bytes());
-        // let seed_val = ValkeyString::create_from_slice(std::ptr::null_mut(), &args.seed);
-
-        match args.args {
+    match operation {
+        Operation::Initialization {} => match args {
             Replications::ReplicateArgsDim { width, depth } => {
                 let width_val = ValkeyString::create_from_slice(
                     std::ptr::null_mut(),
@@ -55,10 +50,11 @@ fn replicate_and_notify_events(
                 ctx.replicate("CMS.INITBYPROB", cmd.as_slice());
                 ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::INITBYPROB_EVENT, key_name);
             }
+        },
+        Operation::Increment {} => {
+            ctx.replicate_verbatim();
+            ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::INCR_EVENT, key_name);
         }
-    } else if incr_operation {
-        ctx.replicate_verbatim();
-        ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::INCR_EVENT, key_name);
     }
 }
 
@@ -97,9 +93,13 @@ pub fn cms_initialize_by_dimensions(ctx: &Context, args: Vec<ValkeyString>) -> V
 
             match filter_key.set_value(&CMS_TYPE, cms) {
                 Ok(()) => {
-                    let r = Replications::ReplicateArgsDim { width, depth };
-                    let replicate_args = ReplicateArgs { args: r };
-                    replicate_and_notify_events(ctx, key, true, false, replicate_args);
+                    let replications = Replications::ReplicateArgsDim { width, depth };
+                    replicate_and_notify_events(
+                        ctx,
+                        key,
+                        Operation::Initialization {},
+                        replications,
+                    );
                     VALKEY_OK
                 }
                 Err(_) => Err(ValkeyError::Str(utils::ERROR)),
@@ -149,12 +149,17 @@ pub fn cms_initialize_by_probability(ctx: &Context, args: Vec<ValkeyString>) -> 
 
             match filter_key.set_value(&CMS_TYPE, cms) {
                 Ok(()) => {
-                    let r = Replications::ReplicateArgsProb {
+                    let replications = Replications::ReplicateArgsProb {
                         error_rate,
                         fp_rate,
                     };
-                    let replicate_args = ReplicateArgs { args: r };
-                    replicate_and_notify_events(ctx, key, true, false, replicate_args);
+
+                    replicate_and_notify_events(
+                        ctx,
+                        key,
+                        Operation::Initialization {},
+                        replications,
+                    );
                     VALKEY_OK
                 }
                 Err(_) => Err(ValkeyError::Str(utils::ERROR)),

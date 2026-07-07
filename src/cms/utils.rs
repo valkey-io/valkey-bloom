@@ -44,6 +44,7 @@ pub struct CMSObject {
 }
 
 impl CMSObject {
+    //TODO: Are there any MAX ranges that we should have for configuration?
     pub fn new_by_dimension(width: u64, depth: u64) -> Result<CMSObject, CMSError> {
         if width < 1 {
             return Err(CMSError::InvalidWidth);
