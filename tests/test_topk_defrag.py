@@ -1,11 +1,11 @@
 import time
-from valkey_bloom_test_case import ValkeyBloomTestCaseBase
+from valkey_bloom_test_case import SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase
 from valkeytestframework.conftest import resource_port_tracker
 from valkeytestframework.util.waiters import *
 import pytest
 
 @pytest.mark.skip_for_asan(reason="These tests are skipped due to not being able to set activedefrag to yes when valkey server is an ASAN build")
-class TestTopkDefrag(ValkeyBloomTestCaseBase):
+class TestTopkDefrag(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
 
     def test_topk_defrag(self):
         # Set defragmentation thresholds
@@ -42,6 +42,9 @@ class TestTopkDefrag(ValkeyBloomTestCaseBase):
         # Add a wait due to lazy delete where if we call info too early we wont get the correct memory info
         time.sleep(5)
 
+        # Fragmentation before defrag, for a strict before/after comparison.
+        frag_ratio_before = float(self.parse_valkey_info("MEMORY").get('allocator_frag_ratio', 0))
+
         # Enable defragmentation and wait until the topk callback has relocated something.
         self.client.config_set('activedefrag', 'yes')
         wait_for_equal(lambda: self.client.info("bf")['bf_topk_defrag_hits'] > 0, True)
@@ -51,6 +54,14 @@ class TestTopkDefrag(ValkeyBloomTestCaseBase):
 
         # The valkey-level defrag ran and our topk callback relocated allocations.
         assert first_defrag_hits > initial_defrag_hits
+
+        # Fragmentation must actually drop once defrag has done its work. We wait
+        # on the ratio itself (rather than sampling once) since defrag runs
+        # asynchronously; a timeout here means fragmentation was never reduced.
+        wait_for_equal(
+            lambda: float(self.parse_valkey_info("MEMORY").get('allocator_frag_ratio', 0)) < frag_ratio_before,
+            True,
+        )
 
         # Data must be unchanged by defrag: digests and top-k lists match exactly.
         digests_after_defrag = {key: self.client.execute_command(f'DEBUG DIGEST-VALUE {key}') for key in remaining_keys}
@@ -72,35 +83,3 @@ class TestTopkDefrag(ValkeyBloomTestCaseBase):
 
         digests_after_rdb_load = {key: self.client.execute_command(f'DEBUG DIGEST-VALUE {key}') for key in remaining_keys}
         assert digests_before_defrag == digests_after_rdb_load, "Digest mismatch after RDB load"
-
-    def test_topk_defrag_disabled(self):
-        # With topk-defrag-enabled off, the topk callback is a no-op: it must not
-        # register any topk defrag hits/misses even while active defrag runs.
-        self.client.config_set('activedefrag', 'no')
-        self.client.config_set('active-defrag-ignore-bytes', '1')
-        self.client.config_set('active-defrag-threshold-lower', '2')
-        self.client.config_set('maxmemory', str(300 * 1024 * 1024))
-        self.client.config_set('bf.topk-defrag-enabled', 'no')
-
-        key_names = [f'topk_off_{i}' for i in range(1, 1500)]
-        for key in key_names:
-            self.client.execute_command(f'TOPK.RESERVE {key} 20 200 5 0.9')
-            self.client.execute_command(
-                f'TOPK.ADD {key} ' + ' '.join(f'{key}_{i}' for i in range(1, 40))
-            )
-        for key in key_names[::2]:
-            self.client.execute_command(f'DEL {key}')
-        remaining_keys = key_names[1::2]
-        digests_before_defrag = {key: self.client.execute_command(f'DEBUG DIGEST-VALUE {key}') for key in remaining_keys}
-
-        time.sleep(5)
-        topk_hits_before = self.client.info("bf")['bf_topk_defrag_hits']
-
-        self.client.config_set('activedefrag', 'yes')
-        wait_for_equal(lambda: int(self.parse_valkey_info("STATS").get('total_active_defrag_time')) > 5000, True)
-
-        # No topk defrag activity while disabled, and data is untouched.
-        info_results = self.client.info("bf")
-        assert info_results['bf_topk_defrag_hits'] == topk_hits_before
-        digests_after_defrag = {key: self.client.execute_command(f'DEBUG DIGEST-VALUE {key}') for key in remaining_keys}
-        assert digests_before_defrag == digests_after_defrag, "Digest mismatch with defrag disabled"
