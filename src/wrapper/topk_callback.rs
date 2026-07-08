@@ -2,6 +2,7 @@ use crate::configs;
 use crate::metrics;
 use crate::topk::data_type::ValkeyDataType;
 use crate::topk::utils::TopKObject;
+use heavykeeper::Reallocator;
 use std::os::raw::{c_int, c_void};
 use std::ptr::null_mut;
 use std::sync::atomic::Ordering;
@@ -80,18 +81,30 @@ pub unsafe extern "C" fn topk_free_effort(
     1
 }
 
-/// Reallocation callback passed to the heavykeeper sketch. Routes each block
-/// through Valkey's defrag allocator; a null result means "not relocated", so
-/// we return the original pointer.
-fn topk_realloc(ptr: *mut u8, _size: usize, _align: usize) -> *mut u8 {
-    let defrag = Defrag::new(core::ptr::null_mut());
-    let new = unsafe { defrag.alloc(ptr as *mut c_void) };
-    if new.is_null() {
-        metrics::TOPK_DEFRAG_MISSES.fetch_add(1, Ordering::Relaxed);
-        ptr
-    } else {
-        metrics::TOPK_DEFRAG_HITS.fetch_add(1, Ordering::Relaxed);
-        new as *mut u8
+/// Reallocator passed to the heavykeeper sketch during defrag. Routes each
+/// block through Valkey's defrag allocator; a null result means "not
+/// relocated", so we keep the original allocation.
+///
+/// Assumes `align_of::<T>() <= 16`, the alignment the defrag allocator
+/// guarantees. All element types the sketch passes through today
+/// satisfy this; revisit if a more strictly aligned type is added.
+struct Defragger;
+
+impl Reallocator for Defragger {
+    fn realloc<T>(&mut self, boxed: Box<[T]>) -> Box<[T]> {
+        let len = boxed.len();
+        if len == 0 || core::mem::size_of::<T>() == 0 {
+            return boxed;
+        }
+        let old = Box::into_raw(boxed) as *mut c_void;
+        let new = unsafe { Defrag::new(core::ptr::null_mut()).alloc(old) };
+        if new.is_null() {
+            metrics::TOPK_DEFRAG_MISSES.fetch_add(1, Ordering::Relaxed);
+            unsafe { Box::from_raw(core::ptr::slice_from_raw_parts_mut(old as *mut T, len)) }
+        } else {
+            metrics::TOPK_DEFRAG_HITS.fetch_add(1, Ordering::Relaxed);
+            unsafe { Box::from_raw(core::ptr::slice_from_raw_parts_mut(new as *mut T, len)) }
+        }
     }
 }
 
@@ -111,7 +124,7 @@ pub unsafe extern "C" fn topk_defrag(
     let topk_object: &mut TopKObject = &mut *(*value).cast::<TopKObject>();
     topk_object
         .sketch_mut()
-        .realloc_large_heap_allocated_objects(topk_realloc);
+        .realloc_large_heap_allocated_objects(&mut Defragger);
     // Relocate the TopKObject allocation itself.
     let defrag = Defrag::new(defrag_ctx);
     let val = defrag.alloc(*value);
