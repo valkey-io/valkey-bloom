@@ -104,6 +104,16 @@ fn cms_initbyprob_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResul
     cms_command_handler::cms_initialize_by_probability(ctx, args)
 }
 
+/// Command handler for CMS.INCRBY <key> <item> <increment> [<item> <increment> ...]
+fn cms_incrby_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    cms_command_handler::cms_increment_by(ctx, args)
+}
+
+/// Command handler for CMS.QUERY <key> <item> [<item> ...]
+fn cms_query_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    cms_command_handler::cms_query(ctx, args)
+}
+
 ///
 /// Module Info
 ///
@@ -140,6 +150,8 @@ valkey_module! {
         ["BF.LOAD", bloom_load_command, "write deny-oom", 1, 1, 1, "write bloom"],
         ["CMS.INITBYDIM", cms_initbydim_command, "write fast deny-oom", 1, 1, 1, "fast write cms"],
         ["CMS.INITBYPROB", cms_initbyprob_command, "write fast deny-oom", 1, 1, 1, "fast write cms"],
+        ["CMS.INCRBY", cms_incrby_command, "write fast deny-oom", 1, 1, 1, "write cms"],
+        ["CMS.QUERY", cms_query_command, "readonly fast", 1, 1, 1, "read cms"],
     ],
     configurations: [
         i64: [

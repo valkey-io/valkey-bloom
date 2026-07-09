@@ -11,6 +11,7 @@ pub const ERROR_RATE_RANGE: &str = "ERR error rate should be between 0 and 1";
 pub const BAD_PROBABILITY: &str = "ERR bad probability";
 pub const PROBABILITY_RANGE: &str = "ERR probability rate should be between 0 and 1";
 pub const KEY_EXISTS: &str = "ERR Target key name already exists.";
+pub const BAD_INCREMENT: &str = "ERR bad increment";
 
 ///Keyspace Notification Events
 pub const INITBYPROB_EVENT: &str = "countminsketch.initbyprob";
@@ -100,6 +101,15 @@ impl CMSObject {
     pub fn total(&self) -> u64 {
         self.total
     }
+
+    pub fn increment_by(&mut self, item: &String, increment: u64) -> u64 {
+        self.cms.increment_item(item, increment);
+        self.cms.estimate_item(item)
+    }
+
+    pub fn estimate(&self, item: &String) -> u64 {
+        self.cms.estimate_item(item)
+    }
 }
 
 struct CMS {
@@ -117,5 +127,13 @@ impl CMS {
     pub fn new_by_dimensions(width: usize, depth: usize) -> Result<CMS, CMSError> {
         let cms = CountMinSketch::with_dimensions(width, depth);
         Ok(CMS { sketch: cms })
+    }
+
+    pub fn increment_item(&mut self, item: &String, increment: u64) {
+        self.sketch.add(item.as_bytes(), increment)
+    }
+
+    pub fn estimate_item(&self, item: &String) -> u64 {
+        self.sketch.estimate(item.as_bytes())
     }
 }
