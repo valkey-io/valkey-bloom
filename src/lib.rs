@@ -177,6 +177,7 @@ valkey_module! {
             ["bloom-capacity", &*configs::BLOOM_CAPACITY, configs::BLOOM_CAPACITY_DEFAULT, configs::BLOOM_CAPACITY_MIN, configs::BLOOM_CAPACITY_MAX, ConfigurationFlags::DEFAULT, None],
             ["bloom-expansion", &*configs::BLOOM_EXPANSION, configs::BLOOM_EXPANSION_DEFAULT, 0, configs::BLOOM_EXPANSION_MAX as i64, ConfigurationFlags::DEFAULT, None],
             ["bloom-memory-usage-limit", &*configs::BLOOM_MEMORY_LIMIT_PER_OBJECT, configs::BLOOM_MEMORY_LIMIT_PER_OBJECT_DEFAULT, configs::BLOOM_MEMORY_LIMIT_PER_OBJECT_MIN, configs::BLOOM_MEMORY_LIMIT_PER_OBJECT_MAX, ConfigurationFlags::DEFAULT, None],
+            ["topk-memory-usage-limit", &*configs::TOPK_MEMORY_LIMIT_PER_OBJECT, configs::TOPK_MEMORY_LIMIT_PER_OBJECT_DEFAULT, configs::TOPK_MEMORY_LIMIT_PER_OBJECT_MIN, configs::TOPK_MEMORY_LIMIT_PER_OBJECT_MAX, ConfigurationFlags::DEFAULT, None],
         ],
         string: [
             ["bloom-fp-rate", &*configs::BLOOM_FP_RATE, configs::BLOOM_FP_RATE_DEFAULT, ConfigurationFlags::DEFAULT, None, Some(Box::new(configs::on_string_config_set))],

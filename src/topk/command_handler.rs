@@ -141,6 +141,12 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
         Err(_) => return Err(ValkeyError::WrongType),
     };
 
+    // Reject before new_reserved allocates if the sketch would exceed the
+    // per-object memory limit.
+    if !TopKObject::validate_size(k, width, depth) {
+        return Err(ValkeyError::Str(utils::EXCEEDS_MAX_TOPK_SIZE));
+    }
+
     let seed = user_seed.unwrap_or_else(random_seed);
 
     let topk = TopKObject::new_reserved(k, width, depth, decay, seed);
