@@ -83,11 +83,8 @@ pub unsafe extern "C" fn topk_free_effort(
 
 /// Reallocator passed to the heavykeeper sketch during defrag. Routes each
 /// block through Valkey's defrag allocator; a null result means "not
-/// relocated", so we keep the original allocation.
-///
-/// Assumes `align_of::<T>() <= 16`, the alignment the defrag allocator
-/// guarantees. All element types the sketch passes through today
-/// satisfy this; revisit if a more strictly aligned type is added.
+/// relocated", so we keep the original allocation. Assumes `align_of::<T>()
+/// <= 16`, which the defrag allocator guarantees and every sketch type meets.
 struct Defragger;
 
 impl Reallocator for Defragger {

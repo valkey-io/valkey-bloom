@@ -73,7 +73,25 @@ class TestTopkDefrag(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
         info_results = self.client.info("bf")
         assert info_results['bf_topk_defrag_hits'] + info_results['bf_topk_defrag_misses'] > 0
 
-        # Round-trip through RDB and confirm the defragged objects still match.
+        # A defragged object must still behave correctly under writes.
+        sample_keys = remaining_keys[:20]
+        evicted_any = False
+        for key in sample_keys:
+            # 'hot' is new to this sketch; repeated adds beat the count-1 residents.
+            result = self.client.execute_command(f'TOPK.ADD {key} ' + ' '.join(['hot'] * 10))
+            assert len(result) == 10, f"unexpected TOPK.ADD reply for {key}: {result}"
+            evicted_any = evicted_any or any(item is not None for item in result)
+            # 'hot' is now tracked, and the sketch still holds no more than k items.
+            assert self.client.execute_command(f'TOPK.QUERY {key} hot') == [1], f"hot not tracked in {key}"
+            listed = self.client.execute_command(f'TOPK.LIST {key}')
+            assert len(listed) <= 20, f"{key} exceeds k after post-defrag adds: {len(listed)}"
+        assert evicted_any, "no eviction observed on any defragged object"
+
+        # Snapshot the post-write state so the RDB round-trip is checked against
+        # the objects as they stand now.
+        digests_after_writes = {key: self.client.execute_command(f'DEBUG DIGEST-VALUE {key}') for key in remaining_keys}
+
+        # Round-trip through RDB and confirm the defragged, mutated objects survive.
         self.client.execute_command('BGSAVE')
         self.server.wait_for_save_done()
 
@@ -82,4 +100,4 @@ class TestTopkDefrag(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
         wait_for_equal(lambda: self.server.is_rdb_done_loading(), True)
 
         digests_after_rdb_load = {key: self.client.execute_command(f'DEBUG DIGEST-VALUE {key}') for key in remaining_keys}
-        assert digests_before_defrag == digests_after_rdb_load, "Digest mismatch after RDB load"
+        assert digests_after_writes == digests_after_rdb_load, "Digest mismatch after RDB load"
