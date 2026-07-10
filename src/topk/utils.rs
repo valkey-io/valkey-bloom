@@ -1,6 +1,6 @@
 use crate::configs;
 use crate::metrics;
-use heavykeeper::CuckooTopK;
+use heavykeeper::{CuckooTopK, Reallocator};
 use std::sync::atomic::Ordering;
 
 /// KeySpace Notification Events
@@ -113,6 +113,15 @@ impl TopKObject {
     /// The remaining undercount is allocator overhead and HashMap metadata.
     pub fn memory_usage(&self) -> usize {
         std::mem::size_of::<TopKObject>() + self.sketch.mem_bytes(|item| item.capacity())
+    }
+
+    /// Relocate the sketch's heap allocations through `reallocator` (for active
+    /// defrag) and reconcile the memory gauge. 
+    pub fn defrag_sketch<R: Reallocator>(&mut self, reallocator: &mut R) {
+        let before = self.memory_usage();
+        self.sketch.realloc_large_heap_allocated_objects(reallocator);
+        let after = self.memory_usage();
+        metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES.fetch_sub(before - after, Ordering::Relaxed);
     }
 
     /// Bytes the sketch allocates up front: `width` + `width * depth` cells
