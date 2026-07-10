@@ -229,7 +229,7 @@ pub unsafe extern "C" fn bloom_defrag(
     let bloom_object: &mut BloomObject = &mut *(*value).cast::<BloomObject>();
 
     let num_filters = bloom_object.num_filters();
-    let filters_capacity = bloom_object.filters().capacity();
+    let predefrag_filters_capacity = bloom_object.filters().capacity();
 
     // While we are within a timeframe decided from should_stop_defrag and not over the number of filters defrag the next filter
     while !defrag.should_stop_defrag() && cursor < num_filters as u64 {
@@ -317,10 +317,7 @@ pub unsafe extern "C" fn bloom_defrag(
     }
     // As we drop some capcity we need to change the memory usage to avoid showing a higher memory usage than what is really used.
     // This will be the difference in capacity and number of filters only * size of the box of bloom filters.
-    metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_sub(
-        (filters_capacity - num_filters) * std::mem::size_of::<Box<BloomFilter>>(),
-        std::sync::atomic::Ordering::Relaxed,
-    );
+    bloom_object.decrement_metrics_on_defrag(predefrag_filters_capacity);
     // Finally, attempt to defragment the BloomObject itself
     let val = defrag.alloc(*value);
     if !val.is_null() {

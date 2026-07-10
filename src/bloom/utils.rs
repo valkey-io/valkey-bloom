@@ -446,6 +446,14 @@ impl BloomObject {
         );
     }
 
+    pub fn decrement_metrics_on_defrag(&self, predefrag_filters_capacity: usize) {
+        metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_sub(
+            (predefrag_filters_capacity - self.num_filters())
+                * std::mem::size_of::<Box<BloomFilter>>(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+
     /// Deserialize a byte array to bloom filter.
     /// We will need to handle any current or previous version and deserializing the bytes into a bloom object of the running Module's current version `BLOOM_OBJECT_VERSION`.
     pub fn decode_object(
