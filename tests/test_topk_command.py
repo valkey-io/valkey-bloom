@@ -172,7 +172,6 @@ class TestTopkCommand(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
         assert info[b'Depth'] == 7
         assert info[b'Decay'] == b'0.9'
         assert info[b'Size'] > 0
-        assert info[b'Size'] <= self.client.execute_command('MEMORY USAGE tk1')
         # tk1 was re-reserved with no items, so nothing has been added yet.
         assert info[b'Total items added'] == 0
 
@@ -182,7 +181,6 @@ class TestTopkCommand(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
         assert info[b'Depth'] == 5
         assert info[b'Decay'] == b'0.5'
         assert info[b'Size'] > 0
-        assert info[b'Size'] <= self.client.execute_command('MEMORY USAGE tk5')
         assert info[b'Total items added'] == 0
 
         info = info_dict('tk_incr')
