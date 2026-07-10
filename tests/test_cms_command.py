@@ -41,6 +41,13 @@ class TestCMSCommand(ValkeyBloomTestCaseBase):
             ('CMS.INITBYPROB key 0.01', 'wrong number of arguments for \'CMS.INITBYPROB\' command'),
             ('CMS.INITBYPROB key 0.01 0.01 extra', 'wrong number of arguments for \'CMS.INITBYPROB\' command'),
 
+            ('CMS.INCRBY', 'wrong number of arguments for \'CMS.INCRBY\' command'),
+            ('CMS.INCRBY key', 'wrong number of arguments for \'CMS.INCRBY\' command'),
+            ('CMS.INCRBY key item', 'wrong number of arguments for \'CMS.INCRBY\' command'),
+            ('CMS.INCRBY key item 1 item2', 'wrong number of arguments for \'CMS.INCRBY\' command'),
+
+            ('CMS.QUERY', 'wrong number of arguments for \'CMS.QUERY\' command'),
+            ('CMS.QUERY key', 'wrong number of arguments for \'CMS.QUERY\' command'),
          
         ]
 
