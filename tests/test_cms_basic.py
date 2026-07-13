@@ -13,6 +13,7 @@ class TestCMSBasic(ValkeyBloomTestCaseBase):
     def test_basic_dim(self):
         client = self.server.get_new_client()
         module_loaded = False
+        module_list_data = client.execute_command('MODULE LIST')      
         for module in module_list_data:
             if (module[b'name'] == b'bf'):
                 module_loaded = True
@@ -25,7 +26,7 @@ class TestCMSBasic(ValkeyBloomTestCaseBase):
         #Create CMS by Dimensions, add item, estimate the item, increment, estimate
         assert client.execute_command('CMS.INITBYDIM sketch1 10 5') == b'OK'
         assert client.execute_command('CMS.QUERY sketch1 item1') == 0
-        assert client.execute_command('CMS.INCRBY sketch1 item1 1 item2 1') == 1
+        assert client.execute_command('CMS.INCRBY sketch1 item1 1 item2 1') == [1]
 
         #CMS guarantees that we have the frequency at LEAST the size of the increment for the item
         assert client.execute_command('CMS.QUERY sketch1 item1') >= 1
@@ -35,6 +36,7 @@ class TestCMSBasic(ValkeyBloomTestCaseBase):
     def test_basic_prob(self):
         client = self.server.get_new_client()
         module_loaded = False
+        module_list_data = client.execute_command('MODULE LIST')      
         for module in module_list_data:
             if (module[b'name'] == b'bf'):
                 module_loaded = True
@@ -47,7 +49,7 @@ class TestCMSBasic(ValkeyBloomTestCaseBase):
         #Create CMS by Dimensions, add item, estimate the item, increment, estimate
         assert client.execute_command('CMS.INITBYPROB sketch1 0.001 0.01') == b'OK'
         assert client.execute_command('CMS.QUERY sketch1 item1') == 0
-        assert client.execute_command('CMS.INCRBY sketch1 item1 1 item2 1') == 1
+        assert client.execute_command('CMS.INCRBY sketch1 item1 1 item2 1') == [1]
 
         #CMS guarantees that we have the frequency at LEAST the size of the increment for the item
         assert client.execute_command('CMS.QUERY sketch1 item1') >= 1
@@ -70,8 +72,8 @@ class TestCMSBasic(ValkeyBloomTestCaseBase):
         assert client.execute_command('CMS.INITBYDIM sketch1 5 3') == b'OK'
         assert client.execute_command('CMS.INITBYDIM sketch2 10 4') == b'OK'
         
-        assert client.execute_command('CMS.INCRBY sketch1 val1 1') == 1
-        assert client.execute_command('CMS.INCRBY sketch2 val2 2') == 2
+        assert client.execute_command('CMS.INCRBY sketch1 val1 1') == [1]
+        assert client.execute_command('CMS.INCRBY sketch2 val2 2') == [2]
         
         assert client.execute_command('TOUCH sketch1 sketch2') == 2
         assert client.execute_command('TOUCH sketch3') == 0
