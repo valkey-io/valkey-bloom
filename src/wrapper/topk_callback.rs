@@ -117,10 +117,11 @@ pub unsafe extern "C" fn topk_defrag(
     if !configs::TOPK_DEFRAG.load(Ordering::Relaxed) {
         return 0;
     }
-    // Defrag the sketch's internal heap allocations (reconciles the memory
-    // gauge for any spare Vec capacity trimmed during defrag).
+    // Defrag the sketch's internal heap allocations.
     let topk_object: &mut TopKObject = &mut *(*value).cast::<TopKObject>();
-    topk_object.defrag_sketch(&mut Defragger);
+    topk_object
+        .sketch_mut()
+        .realloc_large_heap_allocated_objects(&mut Defragger);
     // Attempt to defrag the TopKObject allocation itself.
     let defrag = Defrag::new(defrag_ctx);
     let val = defrag.alloc(*value);
