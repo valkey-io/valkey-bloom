@@ -29,6 +29,8 @@ class TestCMSCommand(ValkeyBloomTestCaseBase):
             ('CMS.INITBYPROB newsketch 0.01 0', 'probability rate should be between 0 and 1'),
             ('CMS.INITBYPROB newsketch 0.01 1', 'probability rate should be between 0 and 1'),
 
+            ('CMS.INCRBY sketch item abc', 'bad increment'),
+            ('CMS.INCRBY sketch item -1', 'bad increment'),
 
             # wrong number of arguments
             ('CMS.INITBYDIM', 'wrong number of arguments for \'CMS.INITBYDIM\' command'),
