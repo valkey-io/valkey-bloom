@@ -25,11 +25,11 @@ class TestCMSBasic(ValkeyBloomTestCaseBase):
         assert all(item in command_cmd_result for item in cms_cmds)
         #Create CMS by Dimensions, add item, estimate the item, increment, estimate
         assert client.execute_command('CMS.INITBYDIM sketch1 10 5') == b'OK'
-        assert client.execute_command('CMS.QUERY sketch1 item1') == 0
-        assert client.execute_command('CMS.INCRBY sketch1 item1 1 item2 1') == [1]
+        assert client.execute_command('CMS.QUERY sketch1 item1') == [0]
+        assert client.execute_command('CMS.INCRBY sketch1 item1 1 item2 1') == [1, 1]
 
         #CMS guarantees that we have the frequency at LEAST the size of the increment for the item
-        assert client.execute_command('CMS.QUERY sketch1 item1') >= 1
+        assert client.execute_command('CMS.QUERY sketch1 item1')[0] >= 1
 
 
 
@@ -48,11 +48,11 @@ class TestCMSBasic(ValkeyBloomTestCaseBase):
         assert all(item in command_cmd_result for item in cms_cmds)
         #Create CMS by Dimensions, add item, estimate the item, increment, estimate
         assert client.execute_command('CMS.INITBYPROB sketch1 0.001 0.01') == b'OK'
-        assert client.execute_command('CMS.QUERY sketch1 item1') == 0
-        assert client.execute_command('CMS.INCRBY sketch1 item1 1 item2 1') == [1]
+        assert client.execute_command('CMS.QUERY sketch1 item1') == [0]
+        assert client.execute_command('CMS.INCRBY sketch1 item1 1 item2 1') == [1, 1]
 
         #CMS guarantees that we have the frequency at LEAST the size of the increment for the item
-        assert client.execute_command('CMS.QUERY sketch1 item1') >= 1
+        assert client.execute_command('CMS.QUERY sketch1 item1')[0] >= 1
 
     def test_module_data_type(self):
         # Validate the name of the Module data type.
