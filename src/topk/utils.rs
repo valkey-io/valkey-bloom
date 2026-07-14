@@ -1,3 +1,4 @@
+use crate::configs;
 use crate::metrics;
 use heavykeeper::CuckooTopK;
 use std::sync::atomic::Ordering;
@@ -9,11 +10,6 @@ pub const DEFAULT_WIDTH: u32 = 8;
 pub const DEFAULT_DEPTH: u32 = 7;
 pub const DEFAULT_DECAY: f64 = 0.9;
 
-/// Per-argument bounds.
-/// The minimums are 1,The maximums are placeholders covering the
-/// full u32 range until topk-specific configs are introduced; tighten them
-/// once dedicated config knobs land.
-// TODO: replace these with configurable bounds once topk configs exist.
 pub const TOPK_K_MIN: u32 = 1;
 pub const TOPK_K_MAX: u32 = u32::MAX;
 pub const TOPK_WIDTH_MIN: u32 = 1;
@@ -36,6 +32,7 @@ pub const TOPK_LARGER_THAN_0: &str = "ERR (topk should be larger than 0)";
 pub const WIDTH_LARGER_THAN_0: &str = "ERR (width should be larger than 0)";
 pub const DEPTH_LARGER_THAN_0: &str = "ERR (depth should be larger than 0)";
 pub const DECAY_RANGE: &str = "ERR (0 < decay < 1)";
+pub const EXCEEDS_MAX_TOPK_SIZE: &str = "ERR operation exceeds topk object memory limit";
 
 /// TopKObject wraps the underlying CuckooTopK sketch together with the
 /// parameters used to construct it.
@@ -113,6 +110,25 @@ impl TopKObject {
     /// The remaining undercount is allocator overhead and HashMap metadata.
     pub fn memory_usage(&self) -> usize {
         std::mem::size_of::<TopKObject>() + self.sketch.mem_bytes(|item| item.capacity())
+    }
+
+    /// Bytes the sketch allocates up front.
+    pub fn estimated_size(k: u32, width: u32, depth: u32) -> u64 {
+        let (k, width, depth) = (k as u64, width as u64, depth as u64);
+        // Saturate: products can overflow u64 at u32::MAX, and wrapping would
+        // let an oversized sketch slip under the limit.
+        let heavy = width.saturating_mul(depth).saturating_mul(16); // heavy cells: width × depth × 16 bytes
+        (std::mem::size_of::<TopKObject>() as u64) // wrapper struct
+            .saturating_add(width.saturating_mul(16)) // lobby cells: width × 16 bytes
+            .saturating_add(heavy)
+            .saturating_add(1024 * 8) // decay table: 1024 entries × 8 bytes
+            .saturating_add(k.saturating_mul(128)) // priority queue: ~128 bytes per k entry
+    }
+
+    /// Whether these params fit within the configured topk-memory-usage-limit.
+    pub fn validate_size(k: u32, width: u32, depth: u32) -> bool {
+        let size_limit = configs::TOPK_MEMORY_LIMIT_PER_OBJECT.load(Ordering::Relaxed) as u64;
+        Self::estimated_size(k, width, depth) <= size_limit
     }
 
     /// Increments metrics related to object count, memory, and summed k upon creation of a new object.

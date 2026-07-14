@@ -1,11 +1,16 @@
+use crate::configs;
+use crate::metrics;
 use crate::topk::data_type::ValkeyDataType;
 use crate::topk::utils::TopKObject;
+use heavykeeper::Reallocator;
 use std::os::raw::{c_int, c_void};
 use std::ptr::null_mut;
+use std::sync::atomic::Ordering;
+use valkey_module::defrag::Defrag;
 use valkey_module::digest::Digest;
 use valkey_module::logging;
 use valkey_module::raw;
-use valkey_module::RedisModuleString;
+use valkey_module::{RedisModuleDefragCtx, RedisModuleString};
 
 /// # Safety
 pub unsafe extern "C" fn topk_rdb_save(rdb: *mut raw::RedisModuleIO, value: *mut c_void) {
@@ -74,4 +79,60 @@ pub unsafe extern "C" fn topk_free_effort(
     _value: *const c_void,
 ) -> usize {
     1
+}
+
+/// Reallocator passed to the heavykeeper sketch during defrag. Routes each
+/// block through Valkey's defrag allocator; a null result means "not
+/// relocated", so we keep the original allocation. Assumes `align_of::<T>()
+/// <= 16`, which the defrag allocator guarantees and every sketch type meets.
+struct Defragger;
+
+impl Reallocator for Defragger {
+    fn realloc<T>(&mut self, boxed: Box<[T]>) -> Box<[T]> {
+        let len = boxed.len();
+        if len == 0 || core::mem::size_of::<T>() == 0 {
+            return boxed;
+        }
+        let old = Box::into_raw(boxed) as *mut c_void;
+        let new = unsafe { Defrag::new(core::ptr::null_mut()).alloc(old) };
+        if new.is_null() {
+            metrics::TOPK_DEFRAG_MISSES.fetch_add(1, Ordering::Relaxed);
+            unsafe { Box::from_raw(core::ptr::slice_from_raw_parts_mut(old as *mut T, len)) }
+        } else {
+            metrics::TOPK_DEFRAG_HITS.fetch_add(1, Ordering::Relaxed);
+            unsafe { Box::from_raw(core::ptr::slice_from_raw_parts_mut(new as *mut T, len)) }
+        }
+    }
+}
+
+/// # Safety
+/// Raw handler for the TopK object's defrag callback. A TopKObject holds one
+/// sketch inline, so we defrag its heap allocations and then the object itself
+/// in a single pass, always returning 0 (complete).
+pub unsafe extern "C" fn topk_defrag(
+    defrag_ctx: *mut RedisModuleDefragCtx,
+    _from_key: *mut RedisModuleString,
+    value: *mut *mut c_void,
+) -> i32 {
+    if !configs::TOPK_DEFRAG.load(Ordering::Relaxed) {
+        return 0;
+    }
+    // Defrag the sketch's internal heap allocations.
+    // The internal vecs shrink after defrag but are reallocated to their original
+    // capacity (k) on the next add. Since memory usage is calculated from capacity,
+    // this will cause a temporary overcount until the next add restores the capacity.
+    let topk_object: &mut TopKObject = &mut *(*value).cast::<TopKObject>();
+    topk_object
+        .sketch_mut()
+        .realloc_large_heap_allocated_objects(&mut Defragger);
+    // Attempt to defrag the TopKObject allocation itself.
+    let defrag = Defrag::new(defrag_ctx);
+    let val = defrag.alloc(*value);
+    if !val.is_null() {
+        metrics::TOPK_DEFRAG_HITS.fetch_add(1, Ordering::Relaxed);
+        *value = val;
+    } else {
+        metrics::TOPK_DEFRAG_MISSES.fetch_add(1, Ordering::Relaxed);
+    }
+    0
 }

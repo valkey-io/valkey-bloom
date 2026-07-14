@@ -209,3 +209,27 @@ class TestTopkBasic(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
         for item, estimate in zip(items, estimates):
             assert estimate <= true_counts[item], f'{item}: {estimate} > {true_counts[item]}'
 
+    def test_memory_usage_cmd(self):
+        assert self.client.execute_command('TOPK.RESERVE tk 5 50 4 0.9 SEED 42') == b'OK'
+        self.client.execute_command('TOPK.ADD tk apple banana cherry')
+        info = self.client.execute_command('TOPK.INFO tk')
+        info_size = dict(zip(info[::2], info[1::2]))[b'Size']
+        assert self.client.execute_command('MEMORY USAGE tk') >= info_size and info_size > 0
+
+    def test_too_large_topk_obj(self):
+        obj_exceeds_size_err = "operation exceeds topk object memory limit"
+        # Normal sizes are within the default 128MB limit.
+        assert self.client.execute_command('TOPK.RESERVE tk_ok 5 200 5 0.9') == b'OK'
+
+        # A huge width*depth is rejected before allocating.
+        self.verify_error_response(self.client, 'TOPK.RESERVE tk_big 5 4000000000 1000 0.9', obj_exceeds_size_err)
+        assert self.client.execute_command('EXISTS tk_big') == 0
+
+        # A huge k is also rejected (the priority queue reserves capacity k).
+        self.verify_error_response(self.client, 'TOPK.RESERVE tk_big_k 4000000000 50 4 0.9', obj_exceeds_size_err)
+        assert self.client.execute_command('EXISTS tk_big_k') == 0
+
+        # Lowering the limit rejects a sketch that was previously allowed.
+        self.client.config_set('bf.topk-memory-usage-limit', '10000')
+        self.verify_error_response(self.client, 'TOPK.RESERVE tk_small 5 200 5 0.9', obj_exceeds_size_err)
+
