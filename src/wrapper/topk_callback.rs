@@ -118,6 +118,9 @@ pub unsafe extern "C" fn topk_defrag(
         return 0;
     }
     // Defrag the sketch's internal heap allocations.
+    // The internal vecs shrink after defrag but are reallocated to their original
+    // capacity (k) on the next add. Since memory usage is calculated from capacity,
+    // this will cause a temporary overcount until the next add restores the capacity.
     let topk_object: &mut TopKObject = &mut *(*value).cast::<TopKObject>();
     topk_object
         .sketch_mut()
