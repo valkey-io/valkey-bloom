@@ -21,7 +21,7 @@ pub static TOPK_TYPE: ValkeyType = ValkeyType::new(
         version: raw::REDISMODULE_TYPE_METHOD_VERSION as u64,
         rdb_load: Some(topk_callback::topk_rdb_load),
         rdb_save: Some(topk_callback::topk_rdb_save),
-        aof_rewrite: None,
+        aof_rewrite: Some(topk_callback::topk_aof_rewrite),
         digest: Some(topk_callback::topk_digest),
 
         mem_usage: Some(topk_callback::topk_mem_usage),
