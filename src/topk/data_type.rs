@@ -1,13 +1,14 @@
-use crate::topk::utils::{
-    TopKObject, TOPK_DEPTH_MAX, TOPK_DEPTH_MIN, TOPK_K_MAX, TOPK_K_MIN, TOPK_WIDTH_MAX,
-    TOPK_WIDTH_MIN,
-};
+use crate::topk::utils::TopKObject;
 use crate::wrapper::topk_callback;
 use crate::MODULE_NAME;
 use heavykeeper::CuckooTopK;
 use valkey_module::digest::Digest;
 use valkey_module::native_types::ValkeyType;
 use valkey_module::{logging, raw};
+
+/// Used for decoding and encoding `TopKObject`. Currently used in AOF Rewrite.
+/// Bump this when the serialized object layout changes.
+pub const TOPK_OBJECT_VERSION: u8 = 1;
 
 /// Module data type encoding version for TopK. Bump this whenever the
 /// on-disk layout changes.
@@ -71,36 +72,13 @@ impl ValkeyDataType for TopKObject {
                 return None;
             }
         };
-        let k = sketch.top_items() as u64;
-        let width = sketch.width() as u64;
-        let depth = sketch.depth() as u64;
-        if !(TOPK_K_MIN as u64..=TOPK_K_MAX as u64).contains(&k) {
-            logging::log_warning("Failed to restore topk object: k out of range");
-            return None;
+        match TopKObject::from_serialized_bytes(seed, num_items, sketch, false) {
+            Ok(item) => Some(item),
+            Err(err) => {
+                logging::log_warning(format!("Failed to restore topk object: {}", err).as_str());
+                None
+            }
         }
-        if !(TOPK_WIDTH_MIN as u64..=TOPK_WIDTH_MAX as u64).contains(&width) {
-            logging::log_warning("Failed to restore topk object: width out of range");
-            return None;
-        }
-        if !(TOPK_DEPTH_MIN as u64..=TOPK_DEPTH_MAX as u64).contains(&depth) {
-            logging::log_warning("Failed to restore topk object: depth out of range");
-            return None;
-        }
-        let decay = sketch.decay();
-        if !(decay > 0.0 && decay < 1.0) {
-            logging::log_warning("Failed to restore topk object: decay out of range");
-            return None;
-        }
-        let item = TopKObject::from_existing(
-            k as u32,
-            width as u32,
-            depth as u32,
-            decay,
-            seed,
-            sketch,
-            num_items,
-        );
-        Some(item)
     }
 
     /// Function that is used to generate a digest on the Topk Object.

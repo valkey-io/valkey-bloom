@@ -1,5 +1,6 @@
 use crate::configs;
 use crate::metrics;
+use crate::topk::data_type::TOPK_OBJECT_VERSION;
 use heavykeeper::CuckooTopK;
 use std::sync::atomic::Ordering;
 
@@ -33,6 +34,8 @@ pub const WIDTH_LARGER_THAN_0: &str = "ERR (width should be larger than 0)";
 pub const DEPTH_LARGER_THAN_0: &str = "ERR (depth should be larger than 0)";
 pub const DECAY_RANGE: &str = "ERR (0 < decay < 1)";
 pub const EXCEEDS_MAX_TOPK_SIZE: &str = "ERR operation exceeds topk object memory limit";
+pub const DECODE_TOPK_OBJECT_FAILED: &str = "ERR topk object decoding failed";
+pub const DECODE_UNSUPPORTED_VERSION: &str = "ERR topk object decoding failed. Unsupported version";
 
 /// TopKObject wraps the underlying CuckooTopK sketch together with the
 /// parameters used to construct it.
@@ -162,6 +165,76 @@ impl TopKObject {
     }
     pub fn sketch_mut(&mut self) -> &mut CuckooTopK<Vec<u8>> {
         &mut self.sketch
+    }
+
+    /// Serialize the object into a byte array.
+    pub fn encode_object(&self) -> Vec<u8> {
+        let sketch_bytes = self.sketch.to_bytes();
+        let mut out = Vec::with_capacity(1 + 8 + 8 + sketch_bytes.len());
+        out.push(TOPK_OBJECT_VERSION);
+        out.extend_from_slice(&self.seed.to_le_bytes());
+        out.extend_from_slice(&self.num_items.to_le_bytes());
+        out.extend_from_slice(&sketch_bytes);
+        out
+    }
+
+    /// Validate the params recovered from a decoded sketch and build the object.
+    /// Shared by the RDB load path and [`decode_object`]. `validate_size_limit`
+    /// gates the memory check; the RDB path passes `false` so a tightened limit
+    /// can't reject already-persisted objects on load.
+    pub fn from_serialized_bytes(
+        seed: u64,
+        num_items: u64,
+        sketch: CuckooTopK<Vec<u8>>,
+        validate_size_limit: bool,
+    ) -> Result<TopKObject, &'static str> {
+        let k = sketch.top_items() as u64;
+        let width = sketch.width() as u64;
+        let depth = sketch.depth() as u64;
+        if !(TOPK_K_MIN as u64..=TOPK_K_MAX as u64).contains(&k) {
+            return Err(BAD_TOPK);
+        }
+        if !(TOPK_WIDTH_MIN as u64..=TOPK_WIDTH_MAX as u64).contains(&width) {
+            return Err(BAD_WIDTH);
+        }
+        if !(TOPK_DEPTH_MIN as u64..=TOPK_DEPTH_MAX as u64).contains(&depth) {
+            return Err(BAD_DEPTH);
+        }
+        let decay = sketch.decay();
+        if !(decay > 0.0 && decay < 1.0) {
+            return Err(DECAY_RANGE);
+        }
+        if validate_size_limit && !Self::validate_size(k as u32, width as u32, depth as u32) {
+            return Err(EXCEEDS_MAX_TOPK_SIZE);
+        }
+        Ok(TopKObject::from_existing(
+            k as u32,
+            width as u32,
+            depth as u32,
+            decay,
+            seed,
+            sketch,
+            num_items,
+        ))
+    }
+
+    /// Deserialize a byte array to TopK object
+    pub fn decode_object(
+        blob: &[u8],
+        validate_size_limit: bool,
+    ) -> Result<TopKObject, &'static str> {
+        // Header: 1 version byte + 8 seed + 8 num_items.
+        if blob.len() < 17 {
+            return Err(DECODE_TOPK_OBJECT_FAILED);
+        }
+        if blob[0] != TOPK_OBJECT_VERSION {
+            return Err(DECODE_UNSUPPORTED_VERSION);
+        }
+        let seed = u64::from_le_bytes(blob[1..9].try_into().expect("8 bytes"));
+        let num_items = u64::from_le_bytes(blob[9..17].try_into().expect("8 bytes"));
+        let sketch = CuckooTopK::<Vec<u8>>::from_bytes(&blob[17..], seed)
+            .map_err(|_| DECODE_TOPK_OBJECT_FAILED)?;
+        Self::from_serialized_bytes(seed, num_items, sketch, validate_size_limit)
     }
 
     /// Add `increment` occurrences of `item` to the sketch and return the
