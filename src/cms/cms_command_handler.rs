@@ -30,7 +30,7 @@ fn replicate_and_notify_events(
                     std::ptr::null_mut(),
                     depth.to_string().as_bytes(),
                 );
-                let cmd = vec![&width_val, &depth_val];
+                let cmd = vec![&key_name, &width_val, &depth_val];
                 ctx.replicate("CMS.INITBYDIM", cmd.as_slice());
                 ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::INITBYDIM_EVENT, key_name);
             }
@@ -46,7 +46,7 @@ fn replicate_and_notify_events(
                     std::ptr::null_mut(),
                     fp_rate.to_string().as_bytes(),
                 );
-                let cmd = vec![&error_val, &fp_val];
+                let cmd = vec![&key_name, &error_val, &fp_val];
                 ctx.replicate("CMS.INITBYPROB", cmd.as_slice());
                 ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::INITBYPROB_EVENT, key_name);
             }
