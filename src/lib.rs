@@ -128,6 +128,11 @@ fn topk_query_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     topk_command_handler::topk_query(ctx, &args)
 }
 
+/// Command handler for TOPK.LOAD <key> data
+fn topk_load_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    topk_command_handler::topk_load(ctx, &args)
+}
+
 ///
 /// Module Info
 ///
@@ -171,6 +176,7 @@ valkey_module! {
         ["TOPK.LIST", topk_list_command, "readonly", 1, 1, 1, "read topk"],
         ["TOPK.COUNT", topk_count_command, "readonly fast", 1, 1, 1, "fast read topk"],
         ["TOPK.QUERY", topk_query_command, "readonly fast", 1, 1, 1, "fast read topk"],
+        ["TOPK.LOAD", topk_load_command, "write deny-oom", 1, 1, 1, "write topk"],
     ],
     configurations: [
         i64: [
