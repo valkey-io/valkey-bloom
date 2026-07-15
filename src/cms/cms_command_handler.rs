@@ -198,13 +198,13 @@ pub fn cms_increment_by(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult 
         None => Err(ValkeyError::nonexistent_key()),
         Some(v) => {
             for (item, increment) in pairs {
-                let key = &item.to_string_lossy();
+                let item = &item.to_string_lossy();
                 let parsed_value = &increment.to_string_lossy().parse::<u64>();
                 let value = match parsed_value {
                     Ok(v) => v,
                     Err(_) => return Err(ValkeyError::Str(utils::BAD_INCREMENT)),
                 };
-                let count = v.increment_by(key, value.to_owned());
+                let count = v.increment_by(item, value.to_owned());
                 results.push(ValkeyValue::Integer(count as i64));
             }
             replicate_and_notify_events(ctx, key, Operation::Increment);
@@ -229,7 +229,7 @@ pub fn cms_query(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     };
 
     match cms {
-        None => Err(ValkeyError::Str("No CMS Exists")),
+        None => Err(ValkeyError::nonexistent_key()),
         Some(v) => {
             let estimates: Vec<ValkeyValue> = args[2..]
                 .iter()
