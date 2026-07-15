@@ -7,6 +7,8 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
 
     def test_basic_aofrewrite_and_restore(self):
         client = self.server.get_new_client()
+        # Disable the RDB preamble so the rewrite emits BF.LOAD commands.
+        client.config_set('aof-use-rdb-preamble', 'no')
         # Enable AOF before adding data
         client.config_set('appendonly', 'yes')
         # Wait for any initial AOF rewrite to complete
@@ -48,6 +50,8 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         client.execute_command('DEL testSave')
 
     def test_aofrewrite_bloomfilter_metrics(self):
+        # Disable the RDB preamble so the rewrite emits BF.LOAD commands.
+        self.client.config_set('aof-use-rdb-preamble', 'no')
         # Enable AOF before adding data
         self.client.config_set('appendonly', 'yes')
         # Wait for any initial AOF rewrite to complete
