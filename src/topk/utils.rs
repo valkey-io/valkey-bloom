@@ -504,4 +504,80 @@ mod tests {
         assert_eq!(a.seed(), b.seed());
         assert_eq!(a.list(), b.list());
     }
+
+    #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
+    fn test_topk_encode_and_decode(seed: u64) {
+        let mut topk = TopKObject::new_reserved(5, 50, 4, 0.9, seed);
+        for (item, incr) in [
+            (b"apple".as_slice(), 10),
+            (b"banana".as_slice(), 7),
+            (b"cherry".as_slice(), 3),
+            (b"date".as_slice(), 12),
+            (b"elderberry".as_slice(), 5),
+            (b"fig".as_slice(), 8),
+        ] {
+            topk.add(item, incr);
+        }
+
+        let blob = topk.encode_object();
+        let decoded = TopKObject::decode_object(&blob, false).expect("round trip should succeed");
+
+        assert_eq!(decoded.k(), topk.k());
+        assert_eq!(decoded.width(), topk.width());
+        assert_eq!(decoded.depth(), topk.depth());
+        assert_eq!(decoded.decay(), topk.decay());
+        assert_eq!(decoded.seed(), topk.seed());
+        assert_eq!(decoded.num_items(), topk.num_items());
+        assert_eq!(decoded.list(), topk.list());
+        // The sketch bytes must match exactly so DEBUG DIGEST-VALUE agrees.
+        assert_eq!(decoded.sketch().to_bytes(), topk.sketch().to_bytes());
+    }
+
+    #[test]
+    fn test_topk_encode_and_decode_empty_object() {
+        // A freshly reserved object with no items round-trips too.
+        let topk = TopKObject::new_reserved(3, 16, 4, 0.9, 42);
+        let blob = topk.encode_object();
+        let decoded = TopKObject::decode_object(&blob, false).expect("round trip should succeed");
+        assert_eq!(decoded.num_items(), 0);
+        assert_eq!(decoded.sketch().to_bytes(), topk.sketch().to_bytes());
+    }
+
+    #[test]
+    fn test_topk_decode_when_bytes_is_truncated_should_failed() {
+        // A blob shorter than the 17-byte header is rejected.
+        assert_eq!(
+            TopKObject::decode_object(&[], false).err(),
+            Some(DECODE_TOPK_OBJECT_FAILED)
+        );
+        assert_eq!(
+            TopKObject::decode_object(&[TOPK_OBJECT_VERSION; 10], false).err(),
+            Some(DECODE_TOPK_OBJECT_FAILED)
+        );
+    }
+
+    #[test]
+    fn test_topk_decode_when_unsupported_version_should_failed() {
+        // A valid blob with a bumped version byte is rejected.
+        let topk = TopKObject::new_reserved(3, 16, 4, 0.9, 42);
+        let mut blob = topk.encode_object();
+        blob[0] = TOPK_OBJECT_VERSION.wrapping_add(1);
+        assert_eq!(
+            TopKObject::decode_object(&blob, false).err(),
+            Some(DECODE_UNSUPPORTED_VERSION)
+        );
+    }
+
+    #[test]
+    fn test_topk_decode_when_wrong_seed_should_failed() {
+        // The sketch header carries a hasher probe keyed by the seed, so decoding
+        // with a seed that does not match the one baked into the blob fails.
+        let topk = TopKObject::new_reserved(3, 16, 4, 0.9, 42);
+        let mut blob = topk.encode_object();
+        blob[1..9].copy_from_slice(&99u64.to_le_bytes());
+        assert_eq!(
+            TopKObject::decode_object(&blob, false).err(),
+            Some(DECODE_TOPK_OBJECT_FAILED)
+        );
+    }
 }
