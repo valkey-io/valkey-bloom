@@ -544,7 +544,7 @@ mod tests {
     }
 
     #[test]
-    fn test_topk_decode_when_bytes_is_truncated_should_failed() {
+    fn test_topk_decode_when_bytes_is_truncated_should_fail() {
         // A blob shorter than the 17-byte header is rejected.
         assert_eq!(
             TopKObject::decode_object(&[], false).err(),
@@ -557,7 +557,7 @@ mod tests {
     }
 
     #[test]
-    fn test_topk_decode_when_unsupported_version_should_failed() {
+    fn test_topk_decode_when_unsupported_version_should_fail() {
         // A valid blob with a bumped version byte is rejected.
         let topk = TopKObject::new_reserved(3, 16, 4, 0.9, 42);
         let mut blob = topk.encode_object();
@@ -569,7 +569,7 @@ mod tests {
     }
 
     #[test]
-    fn test_topk_decode_when_wrong_seed_should_failed() {
+    fn test_topk_decode_when_wrong_seed_should_fail() {
         // The sketch header carries a hasher probe keyed by the seed, so decoding
         // with a seed that does not match the one baked into the blob fails.
         let topk = TopKObject::new_reserved(3, 16, 4, 0.9, 42);
