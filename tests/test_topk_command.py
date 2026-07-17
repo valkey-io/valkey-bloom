@@ -17,7 +17,6 @@ class TestTopkCommand(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
         assert self.client.execute_command('TOPK.RESERVE dup 5') == b'OK'
         assert self.client.execute_command('SET strkey hello') == b'OK'
         basic_error_test_cases = [
-            # ---- TOPK.RESERVE ----
             # re-reserving an existing key: params are immutable.
             ('TOPK.RESERVE dup 5', 'BUSYKEY Target key name already exists.'),
             # wrong type
@@ -106,6 +105,15 @@ class TestTopkCommand(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
             # wrong number of arguments: needs key plus at least one item.
             ('TOPK.QUERY', "wrong number of arguments for 'TOPK.QUERY' command"),
             ('TOPK.QUERY dup', "wrong number of arguments for 'TOPK.QUERY' command"),
+            # loading over an existing key is rejected before decode.
+            ('TOPK.LOAD dup blob', 'BUSYKEY Target key name already exists.'),
+            ('TOPK.LOAD strkey blob', 'WRONGTYPE Operation against a key holding the wrong kind of value'),
+            # a blob that is not valid TopK serialization is rejected.
+            ('TOPK.LOAD newkey garbage', 'topk object decoding failed'),
+            # wrong number of arguments.
+            ('TOPK.LOAD', "wrong number of arguments for 'TOPK.LOAD' command"),
+            ('TOPK.LOAD key', "wrong number of arguments for 'TOPK.LOAD' command"),
+            ('TOPK.LOAD key blob extra', "wrong number of arguments for 'TOPK.LOAD' command"),
         ]
         for cmd, expected_err_reply in basic_error_test_cases:
             self.verify_error_response(self.client, cmd, expected_err_reply)
