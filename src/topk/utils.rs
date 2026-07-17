@@ -218,21 +218,42 @@ impl TopKObject {
         ))
     }
 
-    /// Deserialize a byte array to TopK object
+    /// Deserialize a byte array to TopK object. When `validate_size_limit` is
+    /// true, peeks at the sketch header to reject oversized params before
+    /// `from_bytes` allocates (the priority-queue capacity is unbounded otherwise).
     pub fn decode_object(
         blob: &[u8],
         validate_size_limit: bool,
     ) -> Result<TopKObject, &'static str> {
-        // Header: 1 version byte + 8 seed + 8 num_items.
         if blob.len() < 17 {
             return Err(DECODE_TOPK_OBJECT_FAILED);
         }
         if blob[0] != TOPK_OBJECT_VERSION {
             return Err(DECODE_UNSUPPORTED_VERSION);
         }
+
+        let sketch_blob = &blob[17..];
+
+        // Pre-validate: peek width/depth/top_items from the sketch header.
+        if validate_size_limit {
+            const SKETCH_PARAMS_END: usize = 4 + 1 + 1 + 8 + 8 + 8 + 8 + 8; // 46
+            if sketch_blob.len() < SKETCH_PARAMS_END {
+                return Err(DECODE_TOPK_OBJECT_FAILED);
+            }
+            let width = u64::from_le_bytes(sketch_blob[14..22].try_into().expect("8 bytes"));
+            let depth = u64::from_le_bytes(sketch_blob[22..30].try_into().expect("8 bytes"));
+            let k = u64::from_le_bytes(sketch_blob[38..46].try_into().expect("8 bytes"));
+            let width_u32 = u32::try_from(width).unwrap_or(u32::MAX);
+            let depth_u32 = u32::try_from(depth).unwrap_or(u32::MAX);
+            let k_u32 = u32::try_from(k).unwrap_or(u32::MAX);
+            if !Self::validate_size(k_u32, width_u32, depth_u32) {
+                return Err(EXCEEDS_MAX_TOPK_SIZE);
+            }
+        }
+
         let seed = u64::from_le_bytes(blob[1..9].try_into().expect("8 bytes"));
         let num_items = u64::from_le_bytes(blob[9..17].try_into().expect("8 bytes"));
-        let sketch = CuckooTopK::<Vec<u8>>::from_bytes(&blob[17..], seed)
+        let sketch = CuckooTopK::<Vec<u8>>::from_bytes(sketch_blob, seed)
             .map_err(|_| DECODE_TOPK_OBJECT_FAILED)?;
         Self::from_serialized_bytes(seed, num_items, sketch, validate_size_limit)
     }
@@ -578,6 +599,31 @@ mod tests {
         assert_eq!(
             TopKObject::decode_object(&blob, false).err(),
             Some(DECODE_TOPK_OBJECT_FAILED)
+        );
+    }
+
+    #[test]
+    fn test_topk_decode_when_size_exceeds_limit_should_fail() {
+        // A normally-sized object passes the pre-allocation size check.
+        let topk = TopKObject::new_reserved(5, 50, 4, 0.9, 42);
+        assert!(TopKObject::decode_object(&topk.encode_object(), true).is_ok());
+
+        // Tampered top_items (k) at sketch offset 38..46 (blob 55..63): rejected
+        // before from_bytes reserves the priority-queue capacity.
+        let mut blob = topk.encode_object();
+        blob[55..63].copy_from_slice(&(u32::MAX as u64).to_le_bytes());
+        assert_eq!(
+            TopKObject::decode_object(&blob, true).err(),
+            Some(EXCEEDS_MAX_TOPK_SIZE)
+        );
+
+        // Tampered width and depth: blow past the limit.
+        let mut blob = topk.encode_object();
+        blob[31..39].copy_from_slice(&1_000_000u64.to_le_bytes());
+        blob[39..47].copy_from_slice(&1_000_000u64.to_le_bytes());
+        assert_eq!(
+            TopKObject::decode_object(&blob, true).err(),
+            Some(EXCEEDS_MAX_TOPK_SIZE)
         );
     }
 }
