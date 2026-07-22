@@ -213,7 +213,7 @@ class TestTopkBasic(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
         assert self.client.execute_command('TOPK.RESERVE tk 5 50 4 0.9 SEED 42') == b'OK'
         self.client.execute_command('TOPK.ADD tk apple banana cherry')
         info = self.client.execute_command('TOPK.INFO tk')
-        info_size = dict(zip(info[::2], info[1::2]))[b'Size']
+        info_size = dict(zip(info[::2], info[1::2]))[b'size']
         assert self.client.execute_command('MEMORY USAGE tk') >= info_size and info_size > 0
 
     def test_too_large_topk_obj(self):

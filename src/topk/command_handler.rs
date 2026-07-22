@@ -339,17 +339,17 @@ pub fn topk_info(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     }
 
     let result = vec![
-        ValkeyValue::SimpleStringStatic("K"),
+        ValkeyValue::SimpleStringStatic("k"),
         ValkeyValue::Integer(topk.k() as i64),
-        ValkeyValue::SimpleStringStatic("Width"),
+        ValkeyValue::SimpleStringStatic("width"),
         ValkeyValue::Integer(topk.width() as i64),
-        ValkeyValue::SimpleStringStatic("Depth"),
+        ValkeyValue::SimpleStringStatic("depth"),
         ValkeyValue::Integer(topk.depth() as i64),
-        ValkeyValue::SimpleStringStatic("Decay"),
+        ValkeyValue::SimpleStringStatic("decay"),
         ValkeyValue::Float(topk.decay()),
-        ValkeyValue::SimpleStringStatic("Size"),
+        ValkeyValue::SimpleStringStatic("size"),
         ValkeyValue::Integer(topk.memory_usage() as i64),
-        ValkeyValue::SimpleStringStatic("Total items added"),
+        ValkeyValue::SimpleStringStatic("total items added"),
         ValkeyValue::Integer(topk.num_items() as i64),
     ];
     Ok(ValkeyValue::Array(result))
