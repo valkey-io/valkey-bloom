@@ -1,6 +1,7 @@
 use crate::topk::data_type::TOPK_TYPE;
 use crate::topk::utils;
 use crate::topk::utils::TopKObject;
+use crate::wrapper::must_obey_client;
 use valkey_module::NotifyEvent;
 use valkey_module::{Context, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue, VALKEY_OK};
 
@@ -13,46 +14,60 @@ struct ReplicateArgs {
     seed: u64,
 }
 
+/// The write operation being propagated to replicas and published as a keyspace event.
+/// Each variant controls which command is propagated and which event is emitted.
+enum ReplicationOp {
+    /// TOPK.RESERVE: replayed as a deterministic TOPK.RESERVE on replicas.
+    Reserve(ReplicateArgs),
+    /// TOPK.ADD / TOPK.INCRBY: replicated verbatim and publishes `topk.add`,
+    /// safe because they are deterministic once the replica is seeded
+    /// identically via the replicated TOPK.RESERVE.
+    Add,
+    /// TOPK.LOAD (generated during AOF rewrite): replicated verbatim since the
+    /// serialized blob already carries the full sketch, and publishes the
+    /// `topk.reserve` event because it creates the object on the replica.
+    Load,
+}
+
 /// Helper function to replicate mutative commands to the replica nodes and publish keyspace events.
-/// There are two main cases for replication:
-/// - RESERVE operation: replays a deterministic TOPK.RESERVE on replicas.
-/// - ADD operation: covers TOPK.ADD and TOPK.INCRBY; both replicate verbatim and publish
-///   the same `topk.add` event, safe because they are deterministic once the
-///   replica is seeded identically via the replicated TOPK.RESERVE.
-fn replicate_and_notify_events(
-    ctx: &Context,
-    key_name: &ValkeyString,
-    reserve_operation: bool,
-    add_operation: bool,
-    args: Option<ReplicateArgs>,
-) {
-    if reserve_operation {
-        let args = args.expect("reserve replication requires ReplicateArgs");
-        let k_val =
-            ValkeyString::create_from_slice(std::ptr::null_mut(), args.k.to_string().as_bytes());
-        let width_val = ValkeyString::create_from_slice(
-            std::ptr::null_mut(),
-            args.width.to_string().as_bytes(),
-        );
-        let depth_val = ValkeyString::create_from_slice(
-            std::ptr::null_mut(),
-            args.depth.to_string().as_bytes(),
-        );
-        let decay_val = ValkeyString::create_from_slice(
-            std::ptr::null_mut(),
-            args.decay.to_string().as_bytes(),
-        );
-        let seed_str = ValkeyString::create_from_slice(std::ptr::null_mut(), "SEED".as_bytes());
-        let seed_val =
-            ValkeyString::create_from_slice(std::ptr::null_mut(), args.seed.to_string().as_bytes());
-        let cmd = vec![
-            key_name, &k_val, &width_val, &depth_val, &decay_val, &seed_str, &seed_val,
-        ];
-        ctx.replicate("TOPK.RESERVE", cmd.as_slice());
-        ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::RESERVE_EVENT, key_name);
-    } else if add_operation {
-        ctx.replicate_verbatim();
-        ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::ADD_EVENT, key_name);
+fn replicate_and_notify_events(ctx: &Context, key_name: &ValkeyString, op: ReplicationOp) {
+    match op {
+        ReplicationOp::Reserve(args) => {
+            let k_val = ValkeyString::create_from_slice(
+                std::ptr::null_mut(),
+                args.k.to_string().as_bytes(),
+            );
+            let width_val = ValkeyString::create_from_slice(
+                std::ptr::null_mut(),
+                args.width.to_string().as_bytes(),
+            );
+            let depth_val = ValkeyString::create_from_slice(
+                std::ptr::null_mut(),
+                args.depth.to_string().as_bytes(),
+            );
+            let decay_val = ValkeyString::create_from_slice(
+                std::ptr::null_mut(),
+                args.decay.to_string().as_bytes(),
+            );
+            let seed_str = ValkeyString::create_from_slice(std::ptr::null_mut(), "SEED".as_bytes());
+            let seed_val = ValkeyString::create_from_slice(
+                std::ptr::null_mut(),
+                args.seed.to_string().as_bytes(),
+            );
+            let cmd = vec![
+                key_name, &k_val, &width_val, &depth_val, &decay_val, &seed_str, &seed_val,
+            ];
+            ctx.replicate("TOPK.RESERVE", cmd.as_slice());
+            ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::RESERVE_EVENT, key_name);
+        }
+        ReplicationOp::Add => {
+            ctx.replicate_verbatim();
+            ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::ADD_EVENT, key_name);
+        }
+        ReplicationOp::Load => {
+            ctx.replicate_verbatim();
+            ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::RESERVE_EVENT, key_name);
+        }
     }
 }
 
@@ -159,7 +174,36 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
                 decay,
                 seed,
             };
-            replicate_and_notify_events(ctx, key_name, true, false, Some(replicate_args));
+            replicate_and_notify_events(ctx, key_name, ReplicationOp::Reserve(replicate_args));
+            VALKEY_OK
+        }
+        Err(_) => Err(ValkeyError::Str(utils::ERROR)),
+    }
+}
+
+/// Function that implements logic to handle the TOPK.LOAD command.
+pub fn topk_load(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
+    let argc = input_args.len();
+    if argc != 3 {
+        return Err(ValkeyError::WrongArity);
+    }
+
+    let key_name = &input_args[1];
+    let blob = input_args[2].as_slice();
+
+    let key = ctx.open_key_writable(key_name);
+    match key.get_value::<TopKObject>(&TOPK_TYPE) {
+        Ok(Some(_)) => return Err(ValkeyError::Str(utils::KEY_EXISTS)),
+        Ok(None) => {}
+        Err(_) => return Err(ValkeyError::WrongType),
+    };
+
+    let validate_size_limit = !must_obey_client(ctx);
+    let topk = TopKObject::decode_object(blob, validate_size_limit).map_err(ValkeyError::Str)?;
+
+    match key.set_value(&TOPK_TYPE, topk) {
+        Ok(()) => {
+            replicate_and_notify_events(ctx, key_name, ReplicationOp::Load);
             VALKEY_OK
         }
         Err(_) => Err(ValkeyError::Str(utils::ERROR)),
@@ -205,7 +249,7 @@ pub fn topk_add(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     let items = &input_args[2..];
     let result = add_with_increments(topk, items.iter().map(|item| (item.as_slice(), 1)));
 
-    replicate_and_notify_events(ctx, key_name, false, true, None);
+    replicate_and_notify_events(ctx, key_name, ReplicationOp::Add);
     Ok(ValkeyValue::Array(result))
 }
 
@@ -252,7 +296,7 @@ pub fn topk_incrby(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
             .map(|(item, increment)| (item.as_slice(), *increment)),
     );
 
-    replicate_and_notify_events(ctx, key_name, false, true, None);
+    replicate_and_notify_events(ctx, key_name, ReplicationOp::Add);
     Ok(ValkeyValue::Array(result))
 }
 

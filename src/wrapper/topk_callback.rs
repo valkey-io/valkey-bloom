@@ -3,7 +3,8 @@ use crate::metrics;
 use crate::topk::data_type::ValkeyDataType;
 use crate::topk::utils::TopKObject;
 use heavykeeper::Reallocator;
-use std::os::raw::{c_int, c_void};
+use std::ffi::CString;
+use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
 use std::sync::atomic::Ordering;
 use valkey_module::defrag::Defrag;
@@ -29,6 +30,26 @@ pub unsafe extern "C" fn topk_rdb_load(rdb: *mut raw::RedisModuleIO, encver: c_i
         logging::log_warning("Failed to restore topk object.");
         null_mut()
     }
+}
+
+/// # Safety
+pub unsafe extern "C" fn topk_aof_rewrite(
+    aof: *mut raw::RedisModuleIO,
+    key: *mut RedisModuleString,
+    value: *mut c_void,
+) {
+    let v = &*value.cast::<TopKObject>();
+    let blob = v.encode_object();
+    let cmd = CString::new("TOPK.LOAD").unwrap();
+    let fmt = CString::new("sb").unwrap();
+    raw::RedisModule_EmitAOF.unwrap()(
+        aof,
+        cmd.as_ptr(),
+        fmt.as_ptr(),
+        key,
+        blob.as_ptr().cast::<c_char>(),
+        blob.len(),
+    );
 }
 
 /// # Safety

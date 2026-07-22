@@ -1233,7 +1233,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bf_decode_when_unsupported_version_should_failed() {
+    fn test_bf_decode_when_unsupported_version_should_fail() {
         // arrange: prepare bloom filter
         let mut bf =
             BloomObject::new_reserved(0.5_f64, 0.5_f64, 1000_i64, 2, (None, true), true).unwrap();
@@ -1256,7 +1256,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bf_decode_when_bytes_is_empty_should_failed() {
+    fn test_bf_decode_when_bytes_is_empty_should_fail() {
         // arrange: prepare bloom filter
         let mut bf =
             BloomObject::new_reserved(0.5_f64, 0.5_f64, 1000_i64, 2, (None, true), true).unwrap();
@@ -1277,7 +1277,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bf_decode_when_bytes_is_exceed_limit_should_failed() {
+    fn test_bf_decode_when_bytes_is_exceed_limit_should_fail() {
         // arrange: prepare bloom filter
         let mut bf =
             BloomObject::new_reserved(0.5_f64, 0.5_f64, 1000_i64, 2, (None, true), true).unwrap();

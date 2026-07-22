@@ -3,7 +3,7 @@ from valkey import ResponseError
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 from valkey_test_case import ValkeyServerHandle
 from valkeytestframework.conftest import resource_port_tracker
-from valkeytestframework.util.waiters import *
+from valkeytestframework.util.waiters import wait_for_equal
 
 class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
 
