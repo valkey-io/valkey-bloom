@@ -235,14 +235,34 @@ impl TopKObject {
         let sketch_blob = &blob[17..];
 
         // Pre-validate: peek width/depth/top_items from the sketch header.
+        // Offsets derived from CuckooTopK::to_bytes / serialization::read_header
+        // and read_params in the heavykeeper crate (src/cuckoo.rs, src/serialization.rs).
         if validate_size_limit {
-            const SKETCH_PARAMS_END: usize = 4 + 1 + 1 + 8 + 8 + 8 + 8 + 8; // 46
+            // Each of width/depth/decay/top_items is serialized as a little-endian u64.
+            const FIELD: usize = std::mem::size_of::<u64>();
+            // magic(4) + variant(1) + version(1) + hasher_probe(8) = 14
+            const WIDTH_OFFSET: usize = 14;
+            const DEPTH_OFFSET: usize = WIDTH_OFFSET + FIELD;
+            const TOP_ITEMS_OFFSET: usize = DEPTH_OFFSET + FIELD + FIELD;
+            const SKETCH_PARAMS_END: usize = TOP_ITEMS_OFFSET + FIELD;
             if sketch_blob.len() < SKETCH_PARAMS_END {
                 return Err(DECODE_TOPK_OBJECT_FAILED);
             }
-            let width = u64::from_le_bytes(sketch_blob[14..22].try_into().expect("8 bytes"));
-            let depth = u64::from_le_bytes(sketch_blob[22..30].try_into().expect("8 bytes"));
-            let k = u64::from_le_bytes(sketch_blob[38..46].try_into().expect("8 bytes"));
+            let width = u64::from_le_bytes(
+                sketch_blob[WIDTH_OFFSET..WIDTH_OFFSET + FIELD]
+                    .try_into()
+                    .expect("8 bytes"),
+            );
+            let depth = u64::from_le_bytes(
+                sketch_blob[DEPTH_OFFSET..DEPTH_OFFSET + FIELD]
+                    .try_into()
+                    .expect("8 bytes"),
+            );
+            let k = u64::from_le_bytes(
+                sketch_blob[TOP_ITEMS_OFFSET..TOP_ITEMS_OFFSET + FIELD]
+                    .try_into()
+                    .expect("8 bytes"),
+            );
             let width_u32 = u32::try_from(width).unwrap_or(u32::MAX);
             let depth_u32 = u32::try_from(depth).unwrap_or(u32::MAX);
             let k_u32 = u32::try_from(k).unwrap_or(u32::MAX);
