@@ -1,7 +1,7 @@
 import time
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 from valkeytestframework.conftest import resource_port_tracker
-from valkeytestframework.util.waiters import *
+from valkeytestframework.util.waiters import wait_for_equal
 
 DEFAULT_BLOOM_FILTER_SIZE = 384
 DEFAULT_BLOOM_FILTER_CAPACITY = 100

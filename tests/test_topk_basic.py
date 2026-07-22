@@ -1,5 +1,5 @@
 import time
-from valkeytestframework.util.waiters import *
+from valkeytestframework.util.waiters import wait_for_equal
 from valkey import ResponseError
 from valkeytestframework.conftest import resource_port_tracker  # noqa: F401
 from valkey_bloom_test_case import SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase

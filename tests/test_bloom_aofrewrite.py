@@ -1,4 +1,5 @@
-from valkeytestframework.util.waiters import *
+import time
+from valkeytestframework.util.waiters import wait_for_equal
 from valkeytestframework.valkey_test_case import ValkeyAction
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 from valkeytestframework.conftest import resource_port_tracker

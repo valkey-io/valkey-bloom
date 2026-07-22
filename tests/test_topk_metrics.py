@@ -1,6 +1,6 @@
 from valkey_bloom_test_case import SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase
 from valkeytestframework.conftest import resource_port_tracker  # noqa: F401
-from valkeytestframework.util.waiters import *
+from valkeytestframework.util.waiters import wait_for_equal
 
 class TestTopkMetrics(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
 

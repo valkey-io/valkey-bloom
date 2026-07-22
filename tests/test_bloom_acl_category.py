@@ -1,6 +1,6 @@
 from valkeytestframework.conftest import resource_port_tracker
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
-from valkeytestframework.util.waiters import *
+from valkeytestframework.util.waiters import wait_for_equal
 
 class TestBloomACLCategory(ValkeyBloomTestCaseBase):
 
