@@ -1,4 +1,3 @@
-import time
 from valkeytestframework.util.waiters import wait_for_equal
 from valkeytestframework.valkey_test_case import ValkeyAction
 from valkey_bloom_test_case import SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase
@@ -32,8 +31,6 @@ class TestTopkAofRewrite(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase)
         # save aof, restart server
         client.bgrewriteaof()
         self.server.wait_for_action_done(ValkeyAction.AOF_REWRITE)
-        # Keep the server running for 1 second more to have a larger uptime.
-        time.sleep(1)
         # Add appendonly to server args so it loads AOF on restart
         self.server.args['appendonly'] = 'yes'
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
