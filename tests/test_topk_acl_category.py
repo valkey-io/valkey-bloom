@@ -53,11 +53,11 @@ class TestTopkACLCategory(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase
         # List of topk commands and their acl categories
         topk_commands = [
             ('TOPK.RESERVE', [b'write', b'denyoom', b'module', b'fast'], [b'@write', b'@fast', b'@topk']),
-            ('TOPK.ADD', [b'write', b'denyoom', b'module', b'fast'], [b'@write', b'@fast', b'@topk']),
-            ('TOPK.INCRBY', [b'write', b'denyoom', b'module', b'fast'], [b'@write', b'@fast', b'@topk']),
+            ('TOPK.ADD', [b'write', b'denyoom', b'module'], [b'@write', b'@topk']),
+            ('TOPK.INCRBY', [b'write', b'denyoom', b'module'], [b'@write', b'@topk']),
             ('TOPK.INFO', [b'readonly', b'module', b'fast'], [b'@read', b'@fast', b'@topk']),
             ('TOPK.LIST', [b'readonly', b'module'], [b'@read', b'@topk']),
-            ('TOPK.COUNT', [b'readonly', b'module', b'fast'], [b'@read', b'@fast', b'@topk']),
-            ('TOPK.QUERY', [b'readonly', b'module', b'fast'], [b'@read', b'@fast', b'@topk']),
+            ('TOPK.COUNT', [b'readonly', b'module'], [b'@read', b'@topk']),
+            ('TOPK.QUERY', [b'readonly', b'module'], [b'@read', b'@topk']),
         ]
         self.verify_command_acl_categories(topk_commands)
