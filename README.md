@@ -1,12 +1,18 @@
 # valkey-bloom
 
-Valkey-Bloom (BSD-3-Clause) is a Rust based Valkey-Module which brings a Bloom Filter (Module) data type into Valkey and supports versions >= 8.0. With this, users can create bloom filters (space efficient probabilistic data structures) to add elements, check whether elements exists, auto scale their filters, customize bloom filter properties, perform RDB Save and load operations, etc.
+Valkey-Bloom (BSD-3-Clause) is a Rust based Valkey-Module which brings a Bloom Filter and a Top-K (Module) data type into Valkey and supports versions >= 8.0.
+
+With Bloom Filters, users can create space efficient probabilistic data structures to add elements, check whether elements exist, auto scale their filters, customize bloom filter properties, perform RDB Save and load operations, etc.
+
+With Top-K, users can create probabilistic data structures to track the most frequent items in a data stream. Users can add items (with optional increment weights), query whether items are currently in the top-k set, retrieve estimated counts, list the current top-k items ranked by frequency, customize sketch properties, perform RDB Save and load operations, etc.
 
 Valkey-Bloom is built using `bloomfilter::Bloom` (https://crates.io/crates/bloomfilter which has a BSD-2-Clause license).
 
 It is API compatible with the bloom filter command syntax of the official Valkey client libraries including valkey-py, valkey-java, valkey-go (as well as the equivalent Redis libraries)
 
 ## Supported commands
+
+### Bloom Filter
 ```
 BF.EXISTS
 BF.ADD
@@ -17,6 +23,18 @@ BF.RESERVE
 BF.INFO
 BF.INSERT
 BF.LOAD
+```
+
+### Top-K
+```
+TOPK.RESERVE
+TOPK.ADD
+TOPK.INCRBY
+TOPK.QUERY
+TOPK.COUNT
+TOPK.LIST
+TOPK.INFO
+TOPK.LOAD
 ```
 
 ## Build instructions
