@@ -1,0 +1,24 @@
+{
+    "TOPK.LOAD": {
+        "summary": "Restores a Top-K sketch in a single operation. The command is only generated during AOF Rewrite of Top-K sketches",
+        "complexity": "O(N), where N is the size of the serialized sketch",
+        "group": "topk",
+        "module_since": "TBD",
+        "arity": 3,
+        "acl_categories": [
+            "WRITE",
+            "TOPK"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "dump",
+                "type": "string"
+            }
+        ]
+    }
+}

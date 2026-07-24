@@ -1,0 +1,25 @@
+{
+    "TOPK.COUNT": {
+        "summary": "Returns the estimated count for one or more items in a Top-K sketch",
+        "complexity": "O(N) where N is the number of items",
+        "group": "topk",
+        "module_since": "TBD",
+        "arity": -3,
+        "acl_categories": [
+            "READ",
+            "TOPK"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "item",
+                "type": "string",
+                "multiple": true
+            }
+        ]
+    }
+}

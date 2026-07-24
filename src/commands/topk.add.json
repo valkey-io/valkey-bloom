@@ -1,0 +1,25 @@
+{
+    "TOPK.ADD": {
+        "summary": "Adds one or more items to a Top-K sketch",
+        "complexity": "O(N * k) where N is the number of items and k is the depth",
+        "group": "topk",
+        "module_since": "TBD",
+        "arity": -3,
+        "acl_categories": [
+            "WRITE",
+            "TOPK"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "item",
+                "type": "string",
+                "multiple": true
+            }
+        ]
+    }
+}
