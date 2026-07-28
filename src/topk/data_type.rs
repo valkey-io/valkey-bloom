@@ -3,6 +3,7 @@ use crate::wrapper::topk_callback;
 use crate::MODULE_NAME;
 use heavykeeper::CuckooTopK;
 use valkey_module::digest::Digest;
+type Sketch = CuckooTopK<Vec<u8>, u32, u32>;
 use valkey_module::native_types::ValkeyType;
 use valkey_module::{logging, raw};
 
@@ -65,7 +66,7 @@ impl ValkeyDataType for TopKObject {
         let Ok(sketch_bytes) = raw::load_string_buffer(rdb) else {
             return None;
         };
-        let sketch = match CuckooTopK::<Vec<u8>>::from_bytes(sketch_bytes.as_ref(), seed) {
+        let sketch = match Sketch::from_bytes(sketch_bytes.as_ref(), seed) {
             Ok(sketch) => sketch,
             Err(err) => {
                 logging::log_warning(format!("Failed to restore topk object: {}", err).as_str());
