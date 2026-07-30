@@ -6,6 +6,7 @@
         "module_since": "TBD",
         "arity": -3,
         "acl_categories": [
+            "FAST",
             "WRITE",
             "TOPK"
         ],

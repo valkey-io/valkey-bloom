@@ -170,12 +170,12 @@ valkey_module! {
         ["BF.LOAD", bloom_load_command, "write deny-oom", 1, 1, 1, "write bloom"],
         // TOPK Commands
         ["TOPK.RESERVE", topk_reserve_command, "write fast deny-oom", 1, 1, 1, "fast write topk"],
-        ["TOPK.ADD", topk_add_command, "write deny-oom", 1, 1, 1, "write topk"],
-        ["TOPK.INCRBY", topk_incrby_command, "write deny-oom", 1, 1, 1, "write topk"],
+        ["TOPK.ADD", topk_add_command, "write fast deny-oom", 1, 1, 1, "fast write topk"],
+        ["TOPK.INCRBY", topk_incrby_command, "write fast deny-oom", 1, 1, 1, "fast write topk"],
         ["TOPK.INFO", topk_info_command, "readonly fast", 1, 1, 1, "fast read topk"],
         ["TOPK.LIST", topk_list_command, "readonly", 1, 1, 1, "read topk"],
-        ["TOPK.COUNT", topk_count_command, "readonly", 1, 1, 1, "read topk"],
-        ["TOPK.QUERY", topk_query_command, "readonly", 1, 1, 1, "read topk"],
+        ["TOPK.COUNT", topk_count_command, "readonly fast", 1, 1, 1, "fast read topk"],
+        ["TOPK.QUERY", topk_query_command, "readonly fast", 1, 1, 1, "fast read topk"],
         ["TOPK.LOAD", topk_load_command, "write deny-oom", 1, 1, 1, "write topk"],
     ],
     configurations: [

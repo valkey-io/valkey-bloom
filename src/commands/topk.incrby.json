@@ -1,11 +1,12 @@
 {
     "TOPK.INCRBY": {
         "summary": "Increases the count of one or more items in a Top-K sketch by the specified increments",
-        "complexity": "O(N * k * incr) where N is the number of items, k is the depth, and incr is the increment",
+        "complexity": "O(N * (k + incr)) where N is the number of items, k is the depth, and incr is the increment",
         "group": "topk",
         "module_since": "TBD",
         "arity": -4,
         "acl_categories": [
+            "FAST",
             "WRITE",
             "TOPK"
         ],
