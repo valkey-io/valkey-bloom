@@ -25,9 +25,9 @@ Start a Valkey CLI session:
 valkey-cli
 ```
 
-## Bloom Filter
+## Step 3: Use a Bloom Filter
 
-### Step 3: Create a Bloom Filter
+### Step 3a: Create a Bloom Filter
 
 Create a bloom filter using the BF.ADD, BF.INSERT, BF.RESERVE or BF.MADD commands. For example:
 
@@ -38,7 +38,7 @@ BF.ADD filter-key item-val
 - `filter-key` is the name of the bloom filter we will be operating on
 - `item-val` is the item we are inserting into the bloom filter
 
-### Step 4: Insert some more items
+### Step 3b: Insert some more items
 
 To insert items on an already created filter, use the `BF.ADD`, `BF.MADD` or `BF.INSERT` commands:
 
@@ -49,7 +49,7 @@ BF.MADD filter-key example1 example2
 
 Replace the example with the actual items you want to add.
 
-### Step 5: Check if items are present
+### Step 3c: Check if items are present
 
 Now that you've created a bloom filter and inserted items, you can check what items have been added. Use the `BF.EXISTS` or `BF.MEXISTS` commands to check for items:
 
@@ -59,9 +59,9 @@ BF.EXISTS filter-key example
 
 This command checks if an item is present in a bloom filter. Bloom filters can have false positives, but no false negatives. This means that if the BF.EXISTS command returns 0, then the item is not present. But if the BF.EXISTS command returns 1, there is a possibility (determined by false positive rate) that the item is not actually present.
 
-## Top-K
+## Step 4: Use a Top-K Sketch
 
-### Step 3: Create a Top-K Sketch
+### Step 4a: Create a Top-K Sketch
 
 Create a Top-K sketch using the `TOPK.RESERVE` command. For example:
 
@@ -72,7 +72,7 @@ TOPK.RESERVE topk-key 3
 - `topk-key` is the name of the Top-K sketch we will be operating on
 - `3` is the number of top items (k) to track
 
-### Step 4: Add items
+### Step 4b: Add items
 
 To add items to the sketch, use the `TOPK.ADD` or `TOPK.INCRBY` commands:
 
@@ -81,7 +81,7 @@ TOPK.ADD topk-key apple banana cherry apple apple banana
 TOPK.INCRBY topk-key apple 5 banana 3
 ```
 
-### Step 5: Query the Top-K Sketch
+### Step 4c: Query the Top-K Sketch
 
 Use the `TOPK.QUERY`, `TOPK.COUNT`, or `TOPK.LIST` commands to query the sketch:
 
