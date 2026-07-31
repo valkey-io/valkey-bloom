@@ -1,6 +1,6 @@
 # Quick Start
 
-Follow these steps to set up, build, and run the Valkey server with the valkey-bloom module. This guide covers both Bloom Filter and Top-K data types.
+Follow these steps to set up, build, and run the Valkey server with the valkey-bloom module. This guide will walk you through creating a Bloom Filter and a Top-K sketch, inserting items, and querying them.
 
 ## Step 1: Install Valkey and valkey-bloom
 
