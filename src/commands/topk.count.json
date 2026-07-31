@@ -1,6 +1,6 @@
 {
     "TOPK.COUNT": {
-        "summary": "Returns the estimated count for one or more items in a Top-K sketch",
+        "summary": "Returns the estimated count for one or more items in a Top-K sketch. The returned count may be lower than the true count but never higher due to the decaying nature of the sketch",
         "complexity": "O(N) where N is the number of items",
         "group": "topk",
         "module_since": "TBD",

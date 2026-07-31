@@ -21,19 +21,23 @@
                 "type": "integer"
             },
             {
-                "name": "width",
-                "type": "integer",
-                "optional": true
-            },
-            {
-                "name": "depth",
-                "type": "integer",
-                "optional": true
-            },
-            {
-                "name": "decay",
-                "type": "float",
-                "optional": true
+                "name": "params",
+                "type": "block",
+                "optional": true,
+                "arguments": [
+                    {
+                        "name": "width",
+                        "type": "integer"
+                    },
+                    {
+                        "name": "depth",
+                        "type": "integer"
+                    },
+                    {
+                        "name": "decay",
+                        "type": "float"
+                    }
+                ]
             },
             {
                 "token": "SEED",

@@ -1,6 +1,6 @@
 {
     "TOPK.INCRBY": {
-        "summary": "Increases the count of one or more items in a Top-K sketch by the specified increments",
+        "summary": "Increases the count of one or more items in a Top-K sketch by the specified increments. If an item enters the Top-K sketch, the item that is expelled (if any) is returned",
         "complexity": "O(N * (k + incr)) where N is the number of items, k is the depth, and incr is the increment",
         "group": "topk",
         "module_since": "TBD",

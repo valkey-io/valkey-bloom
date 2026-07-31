@@ -1,6 +1,6 @@
 {
     "TOPK.ADD": {
-        "summary": "Adds one or more items to a Top-K sketch",
+        "summary": "Adds one or more items to a Top-K sketch. If an item enters the Top-K sketch, the item that is expelled (if any) is returned",
         "complexity": "O(N * k) where N is the number of items and k is the depth",
         "group": "topk",
         "module_since": "TBD",
