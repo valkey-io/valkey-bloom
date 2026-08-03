@@ -4,12 +4,15 @@ use valkey_module::{
     ValkeyString,
 };
 pub mod bloom;
+pub mod cms;
 pub mod configs;
 pub mod metrics;
 pub mod wrapper;
 use crate::bloom::command_handler;
 use crate::bloom::data_type::BLOOM_TYPE;
 use crate::bloom::utils::valid_server_version;
+use crate::cms::cms_command_handler;
+use crate::cms::data_type::CMS_TYPE;
 use valkey_module::ModuleOptions;
 use valkey_module_macros::info_command_handler;
 
@@ -91,6 +94,16 @@ fn bloom_load_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     command_handler::bloom_filter_load(ctx, &args)
 }
 
+/// Command handler for CMS.INITBYDIM <key> <width> <depth>
+fn cms_initbydim_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    cms_command_handler::cms_initialize_by_dimensions(ctx, args)
+}
+
+/// Command handler for CMS.INITBYPROB <key> <error> <probability>
+fn cms_initbyprob_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    cms_command_handler::cms_initialize_by_probability(ctx, args)
+}
+
 ///
 /// Module Info
 ///
@@ -107,11 +120,13 @@ valkey_module! {
     allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [
         BLOOM_TYPE,
+        CMS_TYPE
     ],
     init: initialize,
     deinit: deinitialize,
     acl_categories: [
         "bloom",
+        "cms",
     ]
     commands: [
         ["BF.ADD", bloom_add_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
@@ -122,7 +137,9 @@ valkey_module! {
         ["BF.RESERVE", bloom_reserve_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
         ["BF.INFO", bloom_info_command, "readonly fast", 1, 1, 1, "fast read bloom"],
         ["BF.INSERT", bloom_insert_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
-        ["BF.LOAD", bloom_load_command, "write deny-oom", 1, 1, 1, "write bloom"]
+        ["BF.LOAD", bloom_load_command, "write deny-oom", 1, 1, 1, "write bloom"],
+        ["CMS.INITBYDIM", cms_initbydim_command, "write fast deny-oom", 1, 1, 1, "fast write cms"],
+        ["CMS.INITBYPROB", cms_initbyprob_command, "write fast deny-oom", 1, 1, 1, "fast write cms"],
     ],
     configurations: [
         i64: [
