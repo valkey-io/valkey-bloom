@@ -1,8 +1,8 @@
 use crate::hash_composition::HashComposer;
 use crate::priority_queue::TopKQueue;
+use crate::serialization::*;
 use ahash::RandomState;
-use rand::rngs::SmallRng;
-use rand::{RngCore, SeedableRng};
+use fastrand::Rng;
 use std::borrow::Borrow;
 use std::clone::Clone;
 use std::fmt::Debug;
@@ -10,6 +10,9 @@ use std::hash::Hash;
 use thiserror::Error;
 
 const DECAY_LOOKUP_SIZE: usize = 1024;
+
+/// Variant tag for `TopK` in the serialized header.
+const VARIANT: u8 = 0;
 
 #[derive(Default, Clone, Debug)]
 struct Bucket {
@@ -66,6 +69,9 @@ pub enum BuilderError {
     MissingField { field: String },
 }
 
+/// See [`DeserializeError`].
+pub type TopKDeserializeError = DeserializeError;
+
 #[derive(Clone)]
 pub struct TopK<T: Ord + Clone + Hash> {
     top_items: usize,
@@ -79,7 +85,7 @@ pub struct TopK<T: Ord + Clone + Hash> {
     buckets: Vec<Vec<Bucket>>,
     priority_queue: TopKQueue<T>,
     hasher: RandomState,
-    random: SmallRng,
+    random: Rng,
 }
 
 pub struct Builder<T> {
@@ -117,7 +123,14 @@ impl<T: Ord + Clone + Hash> TopK<T> {
     // New constructor that takes a seed
     pub fn with_seed(k: usize, width: usize, depth: usize, decay: f64, seed: u64) -> Self {
         let hasher = RandomState::with_seeds(seed, seed, seed, seed);
-        Self::with_components(k, width, depth, decay, hasher, SmallRng::seed_from_u64(seed))
+        Self::with_components(
+            k,
+            width,
+            depth,
+            decay,
+            hasher,
+            Rng::with_seed(seed),
+        )
     }
 
     pub fn with_hasher(
@@ -127,7 +140,14 @@ impl<T: Ord + Clone + Hash> TopK<T> {
         decay: f64,
         hasher: RandomState,
     ) -> Self {
-        Self::with_components(k, width, depth, decay, hasher, SmallRng::seed_from_u64(0))
+        Self::with_components(
+            k,
+            width,
+            depth,
+            decay,
+            hasher,
+            Rng::with_seed(0),
+        )
     }
 
     fn with_components(
@@ -136,7 +156,7 @@ impl<T: Ord + Clone + Hash> TopK<T> {
         depth: usize,
         decay: f64,
         hasher: RandomState,
-        rng: SmallRng,
+        rng: Rng,
     ) -> Self {
         // Pre-allocate with capacity to avoid resizing
         let mut buckets = Vec::with_capacity(depth);
@@ -310,7 +330,7 @@ impl<T: Ord + Clone + Hash> TopK<T> {
                 while remaining_incr > 0 {
                     let current_count = self.buckets[i][bucket_idx].count;
                     let decay_threshold = self.decay_threshold(current_count);
-                    let rand = self.random.next_u64();
+                    let rand = self.random.u64(..);
                     let bucket = &mut self.buckets[i][bucket_idx];
                     if rand < decay_threshold {
                         bucket.count = bucket.count.saturating_sub(1);
@@ -457,6 +477,127 @@ impl<T: Ord + Clone + Hash> TopK<T> {
     }
 }
 
+/// Parse a `CELL_SIZE`-aligned slice into `depth` rows of `width` buckets.
+fn parse_buckets(slice: &[u8], width: usize) -> Vec<Vec<Bucket>> {
+    slice
+        .chunks_exact(width * CELL_SIZE)
+        .map(|row| {
+            row.chunks_exact(CELL_SIZE)
+                .map(|chunk| Bucket {
+                    fingerprint: u64::from_le_bytes(chunk[0..8].try_into().expect("8 bytes")),
+                    count: u64::from_le_bytes(chunk[8..16].try_into().expect("8 bytes")),
+                })
+                .collect()
+        })
+        .collect()
+}
+
+impl TopK<Vec<u8>> {
+    /// Serialize the sketch to a byte stream. Layout (little-endian):
+    ///
+    /// ```text
+    /// magic: [u8; 4]  (b"HVYK")
+    /// variant: u8
+    /// version: u8
+    /// hasher_probe: u64  (SERIALIZE_HASHER_PROBE hashed with the sketch's hasher)
+    /// width, depth, decay(bits), top_items: u64 each
+    /// buckets:  depth  x  width  x (fingerprint: u64, count: u64)
+    /// pq_len: u64
+    /// pq:       pq_len       x (key_len: u64, key bytes, count: u64)
+    /// rng_state: 32 bytes
+    /// ```
+    ///
+    /// The seed is not stored; the hasher is rebuilt from the seed passed to
+    /// [`from_bytes`](TopK::from_bytes). A `hasher_probe` guards against a wrong
+    /// seed: it is the hash of a fixed value, re-checked on load. The RNG
+    /// position is stored (`rng_state`) and restored exactly.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let cell_count = self.depth * self.width;
+        let pq_len = self.priority_queue.len();
+        let mut out = Vec::with_capacity(
+            MAGIC.len() + 2 + 8 * 6 + cell_count * CELL_SIZE + pq_len * 24 + RNG_STATE_SIZE,
+        );
+
+        out.extend_from_slice(&MAGIC);
+        out.push(VARIANT);
+        out.push(VERSION);
+        out.extend_from_slice(&self.hasher.hash_one(SERIALIZE_HASHER_PROBE).to_le_bytes());
+        out.extend_from_slice(&(self.width as u64).to_le_bytes());
+        out.extend_from_slice(&(self.depth as u64).to_le_bytes());
+        out.extend_from_slice(&self.decay.to_bits().to_le_bytes());
+        out.extend_from_slice(&(self.top_items as u64).to_le_bytes());
+
+        for bucket in self.buckets.iter().flatten() {
+            out.extend_from_slice(&bucket.fingerprint.to_le_bytes());
+            out.extend_from_slice(&bucket.count.to_le_bytes());
+        }
+
+        // Serialize in insertion-`sequence` order (not count order) so restore
+        // preserves the count-tie ordering; see `TopKQueue::iter_by_sequence`.
+        out.extend_from_slice(&(pq_len as u64).to_le_bytes());
+        for (item, count) in self.priority_queue.iter_by_sequence() {
+            out.extend_from_slice(&(item.len() as u64).to_le_bytes());
+            out.extend_from_slice(item);
+            out.extend_from_slice(&count.to_le_bytes());
+        }
+        out.extend_from_slice(&self.random.get_seed().to_le_bytes());
+
+        out
+    }
+
+    /// Reconstruct a sketch from [`to_bytes`](TopK::to_bytes) output.
+    /// `seed` must match the sketch's original seed; the hasher rebuilt from it.
+    pub fn from_bytes(bytes: &[u8], seed: u64) -> Result<Self, TopKDeserializeError> {
+        let mut reader = ByteReader::new(bytes);
+        reader.read_header(VARIANT, seed)?;
+
+        let (width, depth, decay, top_items) = reader.read_params()?;
+
+        // `take` checks the bytes exist before `parse_buckets` allocates, so a
+        // corrupt params can't force a huge allocation.
+        let cell_count =
+            width
+                .checked_mul(depth)
+                .ok_or_else(|| TopKDeserializeError::InvalidField {
+                    field: "width*depth",
+                    detail: format!("overflows usize ({width} * {depth})"),
+                })?;
+        let bucket_bytes = cell_count.checked_mul(CELL_SIZE).ok_or_else(|| {
+            TopKDeserializeError::InvalidField {
+                field: "buckets",
+                detail: format!("size overflows usize (width*depth={cell_count})"),
+            }
+        })?;
+        let buckets = parse_buckets(reader.take(bucket_bytes, "buckets")?, width);
+
+        let pq_len = reader.take_usize("priority_queue length")?;
+        if pq_len > top_items {
+            return Err(TopKDeserializeError::LengthMismatch {
+                field: "priority queue",
+                actual: pq_len,
+                expected: top_items,
+            });
+        }
+
+        // The `top_items` reserve is an unbounded-header OOM tradeoff; see
+        // `CuckooTopK::from_bytes`.
+        let mut sketch = Self::with_seed(top_items, width, depth, decay, seed);
+        sketch.buckets = buckets;
+
+        for _ in 0..pq_len {
+            let key_len = reader.take_usize("priority_queue key length")?;
+            let item = reader.take(key_len, "priority_queue key")?.to_vec();
+            let count = reader.take_u64("priority_queue count")?;
+            sketch.priority_queue.upsert(item, count);
+        }
+
+        sketch.random = Rng::with_seed(reader.take_u64("rng_state")?);
+
+        reader.finish()?;
+        Ok(sketch)
+    }
+}
+
 impl<T: Ord + Clone + Hash + Debug> TopK<T> {
     pub fn debug(&self) {
         println!("width: {}", self.width);
@@ -571,7 +712,7 @@ impl<T: Ord + Clone + Hash> Builder<T> {
             }
         });
 
-        let rng = SmallRng::seed_from_u64(self.seed.unwrap_or(0));
+        let rng = Rng::with_seed(self.seed.unwrap_or(0));
 
         Ok(TopK::with_components(k, width, depth, decay, hasher, rng))
     }
@@ -1374,7 +1515,10 @@ mod tests {
             9,
             "Item1 bucket count should be 9 after decay"
         );
-        assert!(!topk.contains(&item2), "Item2 should not be in the bucket yet");
+        assert!(
+            !topk.contains(&item2),
+            "Item2 should not be in the bucket yet"
+        );
         assert_eq!(
             topk.bucket_count(&item2),
             0,
@@ -1487,7 +1631,7 @@ mod tests {
 
     /// Tests that decay probability scaling uses the full u64 range
     ///
-    /// The decay roll is `rng.next_u64() < threshold`. With decay = 1.0 the
+    /// The decay roll is `rng.u64(..) < threshold`. With decay = 1.0 the
     /// threshold must span the full u64 range (`u64::MAX`) so that decay
     /// fires for every possible RNG value.
     #[test]
@@ -1559,5 +1703,122 @@ mod tests {
         topk.add_with_evicted(&b"hot".to_vec(), 50);
         topk.add_with_evicted(&b"warm".to_vec(), 30);
         assert_eq!(topk.add_with_evicted(&b"cold".to_vec(), 10), (None, false));
+    }
+
+    #[test]
+    fn test_serialize_roundtrip_preserves_state() {
+        let mut original = TopK::<Vec<u8>>::with_seed(50, 64, 4, 0.9, 42);
+        for i in 0u32..200 {
+            original.add(&format!("key-{i}").into_bytes(), (i as u64) + 1);
+        }
+        let restored = TopK::<Vec<u8>>::from_bytes(&original.to_bytes(), 42).expect("round-trips");
+
+        assert_eq!(restored.width, original.width);
+        assert_eq!(restored.depth, original.depth);
+        assert_eq!(restored.decay, original.decay);
+        assert_eq!(restored.top_items, original.top_items);
+        assert_eq!(restored.list(), original.list());
+        for i in 0u32..200 {
+            let key = format!("key-{i}").into_bytes();
+            assert_eq!(
+                restored.count(&key),
+                original.count(&key),
+                "count mismatch for {key:?}"
+            );
+            assert_eq!(
+                restored.bucket_count(&key),
+                original.bucket_count(&key),
+                "bucket_count mismatch for {key:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_serialize_roundtrip_empty_sketch() {
+        let original = TopK::<Vec<u8>>::with_seed(10, 64, 4, 0.9, 7);
+        let restored = TopK::<Vec<u8>>::from_bytes(&original.to_bytes(), 7).expect("round-trips");
+        assert_eq!(restored.list(), original.list());
+        assert!(restored.list().is_empty());
+    }
+
+    // Error paths are covered by the `ByteReader` tests in `serialization.rs`.
+    // This pins the wiring: another variant's payload must be rejected.
+    #[test]
+    fn test_deserialize_rejects_other_variant() {
+        let other = crate::BucketedTopK::<Vec<u8>>::with_seed(10, 64, 4, 0.9, 42).to_bytes();
+        let Err(err) = TopK::<Vec<u8>>::from_bytes(&other, 42) else {
+            panic!("another variant's payload must fail");
+        };
+        assert!(matches!(err, TopKDeserializeError::WrongVariant { .. }));
+    }
+
+    /// Regression: a restored sketch must resume the RNG where the original
+    /// left off, or identical follow-up traffic makes them diverge (the
+    /// primary/replica full-sync case).
+    #[test]
+    fn test_serialize_preserves_rng_position_no_divergence() {
+        // Small width + high decay churn forces the decay path to consume RNG.
+        let mut original = TopK::<Vec<u8>>::with_seed(20, 16, 2, 0.9, 42);
+        for i in 0u32..500 {
+            original.add(&format!("warmup-{}", i % 40).into_bytes(), 3);
+        }
+
+        let mut restored =
+            TopK::<Vec<u8>>::from_bytes(&original.to_bytes(), 42).expect("round-trips");
+
+        // Feed identical follow-up traffic to both copies.
+        for i in 0u32..500 {
+            let key = format!("live-{}", i % 40).into_bytes();
+            original.add(&key, 3);
+            restored.add(&key, 3);
+        }
+
+        // Full state (incl. rng_state) is more sensitive than `list()` alone.
+        assert_eq!(
+            restored.to_bytes(),
+            original.to_bytes(),
+            "restored sketch diverged from original after identical traffic"
+        );
+    }
+
+    #[test]
+    fn test_serialize_appends_rng_state() {
+        let empty = TopK::<Vec<u8>>::with_seed(10, 64, 4, 0.9, 42);
+        let bytes = empty.to_bytes();
+        // Header (magic + variant + version + probe + 4 u64s) + buckets + pq_len + rng state.
+        let header = MAGIC.len() + 2 + 8 * 5;
+        let cells = 64 * 4 * CELL_SIZE;
+        let pq_len = 8;
+        assert_eq!(bytes.len(), header + cells + pq_len + RNG_STATE_SIZE);
+    }
+
+    /// Regression: equal-count items must keep their order across a round-trip.
+    /// `a` is inserted first but has the lower count at snapshot time; count-order
+    /// serialization would flip the tie once follow-up traffic levels the counts.
+    #[test]
+    fn test_serialize_preserves_pq_tie_order() {
+        // Wide sketch so fingerprints don't collide and counts stay exact.
+        let mut original = TopK::<Vec<u8>>::with_seed(4, 1024, 4, 0.9, 42);
+        original.add(b"a".as_slice(), 10); // inserted first (lower sequence)
+        original.add(b"b".as_slice(), 20); // inserted second, higher count
+
+        let mut restored =
+            TopK::<Vec<u8>>::from_bytes(&original.to_bytes(), 42).expect("round-trips");
+
+        // Identical follow-up traffic levels the counts, forming a tie.
+        original.add(b"a".as_slice(), 10);
+        restored.add(b"a".as_slice(), 10);
+
+        let order = |s: &TopK<Vec<u8>>| s.list().into_iter().map(|n| n.item).collect::<Vec<_>>();
+        assert_eq!(
+            order(&restored),
+            order(&original),
+            "equal-count items must keep their order across a round-trip"
+        );
+        assert_eq!(
+            restored.to_bytes(),
+            original.to_bytes(),
+            "restored sketch diverged from original after identical traffic"
+        );
     }
 }

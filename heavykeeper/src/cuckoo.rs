@@ -12,13 +12,16 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 use ahash::RandomState;
-use rand::rngs::SmallRng;
-use rand::{RngCore, SeedableRng};
+use fastrand::Rng;
 use thiserror::Error;
 
 use crate::priority_queue::TopKQueue;
+use crate::serialization::*;
 
 const DECAY_LOOKUP_SIZE: usize = 1024;
+
+/// Variant tag for `CuckooTopK` in the serialized header.
+const VARIANT: u8 = 2;
 
 /// Default upper bound on the cuckoo kick chain. Higher values raise the
 /// effective load factor of the heavy slots (fewer silent drops on
@@ -57,6 +60,9 @@ pub enum CuckooMergeError {
     IncompatibleHasher,
 }
 
+/// See [`DeserializeError`].
+pub type CuckooDeserializeError = DeserializeError;
+
 #[derive(Error, Debug)]
 pub enum CuckooBuilderError {
     #[error("Missing required field: {field}")]
@@ -87,13 +93,6 @@ impl<T: Ord> PartialOrd for CuckooNode<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Default, Debug)]
-struct Cell {
-    fingerprint: u64,
-    count: u64,
 }
 
 fn precompute_decay_thresholds(decay: f64, num_entries: usize) -> Box<[u64]> {
@@ -132,7 +131,7 @@ pub struct CuckooTopK<T: Ord + Clone + Hash> {
     decay_thresholds: Box<[u64]>,
     priority_queue: TopKQueue<T>,
     hasher: RandomState,
-    rng: SmallRng,
+    rng: Rng,
     min_pq_count: u64,
     top_items: usize,
     max_kicks: usize,
@@ -159,7 +158,7 @@ impl<T: Ord + Clone + Hash> CuckooTopK<T> {
             depth,
             decay,
             hasher,
-            SmallRng::seed_from_u64(seed),
+            Rng::with_seed(seed),
             DEFAULT_MAX_CUCKOO_KICKS,
         )
     }
@@ -181,7 +180,7 @@ impl<T: Ord + Clone + Hash> CuckooTopK<T> {
             depth,
             decay,
             hasher,
-            SmallRng::seed_from_u64(0),
+            Rng::with_seed(0),
             DEFAULT_MAX_CUCKOO_KICKS,
         )
     }
@@ -197,7 +196,7 @@ impl<T: Ord + Clone + Hash> CuckooTopK<T> {
         depth: usize,
         decay: f64,
         hasher: RandomState,
-        rng: SmallRng,
+        rng: Rng,
         max_kicks: usize,
     ) -> Self {
         let width_mask = if width > 1 && width.is_power_of_two() {
@@ -716,7 +715,7 @@ impl<T: Ord + Clone + Hash> CuckooTopK<T> {
         while remaining > 0 {
             let current_count = self.lobbies[bucket].count;
             let threshold = self.decay_threshold(current_count);
-            if self.rng.next_u64() < threshold {
+            if self.rng.u64(..) < threshold {
                 let lobby = &mut self.lobbies[bucket];
                 lobby.count = lobby.count.saturating_sub(1);
                 if lobby.count == 0 {
@@ -769,6 +768,140 @@ impl<T: Ord + Clone + Hash> CuckooTopK<T> {
         self.min_pq_count = self.priority_queue.min_count();
         let inserted = evicted.is_some() || had_room;
         (evicted, inserted)
+    }
+}
+
+impl CuckooTopK<Vec<u8>> {
+    /// Serialize the sketch to a byte stream. Layout (little-endian):
+    ///
+    /// ```text
+    /// magic: [u8; 4]  (b"HVYK")
+    /// variant: u8
+    /// version: u8
+    /// hasher_probe: u64  (SERIALIZE_HASHER_PROBE hashed with the sketch's hasher)
+    /// width, depth, decay(bits), top_items, max_kicks: u64 each
+    /// lobbies:  width        x (fingerprint: u64, count: u64)
+    /// heavy:    width*depth  x (fingerprint: u64, count: u64)
+    /// pq_len: u64
+    /// pq:       pq_len       x (key_len: u64, key bytes, count: u64)
+    /// rng_state: 32 bytes
+    /// ```
+    ///
+    /// The seed is not stored; the hasher is rebuilt from the seed passed to
+    /// [`from_bytes`](CuckooTopK::from_bytes). A `hasher_probe` guards against a
+    /// wrong seed: it is the hash of a fixed value, re-checked on load. The RNG
+    /// position is stored (`rng_state`) and restored exactly.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let cell_count = self.lobbies.len() + self.heavy.len();
+        let pq_len = self.priority_queue.len();
+        // Capacity hint: header (magic + variant + version + probe + 5 u64s) + cells + pq_len u64 + pq estimate + rng.
+        let mut out = Vec::with_capacity(
+            MAGIC.len() + 2 + 8 * 7 + cell_count * CELL_SIZE + pq_len * 24 + RNG_STATE_SIZE,
+        );
+
+        out.extend_from_slice(&MAGIC);
+        out.push(VARIANT);
+        out.push(VERSION);
+        out.extend_from_slice(&self.hasher.hash_one(SERIALIZE_HASHER_PROBE).to_le_bytes());
+        out.extend_from_slice(&(self.width as u64).to_le_bytes());
+        out.extend_from_slice(&(self.depth as u64).to_le_bytes());
+        out.extend_from_slice(&self.decay.to_bits().to_le_bytes());
+        out.extend_from_slice(&(self.top_items as u64).to_le_bytes());
+        out.extend_from_slice(&(self.max_kicks as u64).to_le_bytes());
+
+        for cell in self.lobbies.iter().chain(self.heavy.iter()) {
+            out.extend_from_slice(&cell.fingerprint.to_le_bytes());
+            out.extend_from_slice(&cell.count.to_le_bytes());
+        }
+
+        out.extend_from_slice(&(pq_len as u64).to_le_bytes());
+        for (item, count) in self.priority_queue.iter_by_sequence() {
+            out.extend_from_slice(&(item.len() as u64).to_le_bytes());
+            out.extend_from_slice(item);
+            out.extend_from_slice(&count.to_le_bytes());
+        }
+        out.extend_from_slice(&self.rng.get_seed().to_le_bytes());
+
+        out
+    }
+
+    /// Reconstruct a sketch from [`to_bytes`](CuckooTopK::to_bytes) output.
+    /// `seed` must match the sketch's original seed; the hasher rebuilt from it.
+    pub fn from_bytes(bytes: &[u8], seed: u64) -> Result<Self, CuckooDeserializeError> {
+        let mut reader = ByteReader::new(bytes);
+        reader.read_header(VARIANT, seed)?;
+
+        let (width, depth, decay, top_items) = reader.read_params()?;
+        let max_kicks = reader.take_usize("max_kicks")?;
+        if max_kicks < 1 {
+            return Err(CuckooDeserializeError::InvalidField {
+                field: "max_kicks",
+                detail: format!("must be >= 1, got {max_kicks}"),
+            });
+        }
+
+        let expected_heavy =
+            width
+                .checked_mul(depth)
+                .ok_or_else(|| CuckooDeserializeError::InvalidField {
+                    field: "width*depth",
+                    detail: format!("overflows usize ({width} * {depth})"),
+                })?;
+
+        // Cells: `take` checks the bytes exist before `parse_cells` allocates,
+        // so a corrupt params can't force a huge allocation.
+        let lobby_bytes =
+            width
+                .checked_mul(CELL_SIZE)
+                .ok_or_else(|| CuckooDeserializeError::InvalidField {
+                    field: "lobbies",
+                    detail: format!("size overflows usize (width={width})"),
+                })?;
+        let lobbies = parse_cells(reader.take(lobby_bytes, "lobbies")?);
+        let heavy_bytes = expected_heavy.checked_mul(CELL_SIZE).ok_or_else(|| {
+            CuckooDeserializeError::InvalidField {
+                field: "heavy",
+                detail: format!("size overflows usize (width*depth={expected_heavy})"),
+            }
+        })?;
+        let heavy = parse_cells(reader.take(heavy_bytes, "heavy")?);
+
+        // Priority queue: a length prefix, then variable-length entries.
+        let pq_len = reader.take_usize("priority_queue length")?;
+        if pq_len > top_items {
+            return Err(CuckooDeserializeError::LengthMismatch {
+                field: "priority queue",
+                actual: pq_len,
+                expected: top_items,
+            });
+        }
+
+        // Rebuild the seed-derived state, then graft the cells and queue on top.
+        // Reserve the original `top_items` capacity so a round-trip is identical
+        // in size to the original.
+        //
+        // OOM TRADEOFF: unlike the cell/key allocations (gated by `take`), this
+        // is sized by the unbounded `top_items` header, so a tampered stream
+        // could force a huge reserve. Fine for restoring our own dumps (RDB); if
+        // ever fed untrusted bytes, bound `top_items` first.
+        let mut sketch = Self::with_seed(top_items, width, depth, decay, seed);
+        sketch.max_kicks = max_kicks;
+        sketch.lobbies = lobbies;
+        sketch.heavy = heavy;
+
+        for _ in 0..pq_len {
+            let key_len = reader.take_usize("priority_queue key length")?;
+            let item = reader.take(key_len, "priority_queue key")?.to_vec();
+            let count = reader.take_u64("priority_queue count")?;
+            sketch.priority_queue.upsert(item, count);
+        }
+        sketch.min_pq_count = sketch.priority_queue.min_count();
+
+        // Restore the RNG position.
+        sketch.rng = Rng::with_seed(reader.take_u64("rng_state")?);
+
+        reader.finish()?;
+        Ok(sketch)
     }
 }
 
@@ -866,7 +999,7 @@ impl<T: Ord + Clone + Hash> CuckooBuilder<T> {
                 RandomState::new()
             }
         });
-        let rng = SmallRng::seed_from_u64(self.seed.unwrap_or(0));
+        let rng = Rng::with_seed(self.seed.unwrap_or(0));
         Ok(CuckooTopK::with_components(
             k, width, depth, decay, hasher, rng, max_kicks,
         ))
@@ -890,8 +1023,14 @@ mod tests {
     fn test_query_alias_delegates_to_contains() {
         let mut topk: CuckooTopK<Vec<u8>> = CuckooTopK::new(10, 64, 3, 0.9);
         topk.add(b"alpha".as_slice(), 5);
-        assert_eq!(topk.query(b"alpha".as_slice()), topk.contains(b"alpha".as_slice()));
-        assert_eq!(topk.query(b"missing".as_slice()), topk.contains(b"missing".as_slice()));
+        assert_eq!(
+            topk.query(b"alpha".as_slice()),
+            topk.contains(b"alpha".as_slice())
+        );
+        assert_eq!(
+            topk.query(b"missing".as_slice()),
+            topk.contains(b"missing".as_slice())
+        );
     }
 
     #[test]
@@ -1445,5 +1584,146 @@ mod tests {
         topk.add("foo", 5);
         assert!(topk.contains_top_k("foo"));
         assert!(!topk.contains_top_k("bar"));
+    }
+
+    #[test]
+    fn test_serialize_roundtrip_preserves_state() {
+        let mut original = CuckooTopK::<Vec<u8>>::with_seed(50, 64, 4, 0.9, 42);
+        for i in 0u32..200 {
+            original.add(&format!("key-{i}").into_bytes(), (i as u64) + 1);
+        }
+        let restored =
+            CuckooTopK::<Vec<u8>>::from_bytes(&original.to_bytes(), 42).expect("round-trips");
+
+        assert_eq!(restored.width(), original.width());
+        assert_eq!(restored.depth(), original.depth());
+        assert_eq!(restored.decay(), original.decay());
+        assert_eq!(restored.top_items(), original.top_items());
+        assert_eq!(restored.max_kicks(), original.max_kicks());
+        assert_eq!(restored.list(), original.list());
+        for i in 0u32..200 {
+            let key = format!("key-{i}").into_bytes();
+            assert_eq!(
+                restored.count(&key),
+                original.count(&key),
+                "count mismatch for {key:?}"
+            );
+            assert_eq!(
+                restored.bucket_count(&key),
+                original.bucket_count(&key),
+                "bucket_count mismatch for {key:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_serialize_roundtrip_empty_sketch() {
+        let original = CuckooTopK::<Vec<u8>>::with_seed(10, 64, 4, 0.9, 7);
+        let restored =
+            CuckooTopK::<Vec<u8>>::from_bytes(&original.to_bytes(), 7).expect("round-trips");
+        assert_eq!(restored.list(), original.list());
+        assert!(restored.list().is_empty());
+    }
+
+    // Shared error paths are covered by the `ByteReader` tests in
+    // `serialization.rs`; the variant-wiring and `max_kicks` checks are here.
+
+    // Pins the wiring: another variant's payload must be rejected.
+    #[test]
+    fn test_deserialize_rejects_other_variant() {
+        let other = crate::TopK::<Vec<u8>>::with_seed(10, 64, 4, 0.9, 42).to_bytes();
+        let Err(err) = CuckooTopK::<Vec<u8>>::from_bytes(&other, 42) else {
+            panic!("another variant's payload must fail");
+        };
+        assert!(matches!(err, CuckooDeserializeError::WrongVariant { .. }));
+    }
+
+    #[test]
+    fn test_deserialize_rejects_zero_max_kicks() {
+        let mut bytes = CuckooTopK::<Vec<u8>>::with_seed(10, 64, 4, 0.9, 42).to_bytes();
+        // max_kicks is the 5th u64: header (14) + width/depth/decay/top_items (32).
+        let off = 14 + 32;
+        bytes[off..off + 8].copy_from_slice(&0u64.to_le_bytes());
+        let Err(err) = CuckooTopK::<Vec<u8>>::from_bytes(&bytes, 42) else {
+            panic!("zero max_kicks must fail");
+        };
+        assert!(matches!(
+            err,
+            CuckooDeserializeError::InvalidField {
+                field: "max_kicks",
+                ..
+            }
+        ));
+    }
+
+    /// Regression: a restored sketch must resume the RNG where the original
+    /// left off, or identical follow-up traffic makes them diverge (the
+    /// primary/replica full-sync case).
+    #[test]
+    fn test_serialize_preserves_rng_position_no_divergence() {
+        // Small width + high decay churn forces the decay path to consume RNG.
+        let mut original = CuckooTopK::<Vec<u8>>::with_seed(20, 16, 2, 0.9, 42);
+        for i in 0u32..500 {
+            original.add(&format!("warmup-{}", i % 40).into_bytes(), 3);
+        }
+
+        let mut restored =
+            CuckooTopK::<Vec<u8>>::from_bytes(&original.to_bytes(), 42).expect("round-trips");
+
+        // Feed identical follow-up traffic to both copies.
+        for i in 0u32..500 {
+            let key = format!("live-{}", i % 40).into_bytes();
+            original.add(&key, 3);
+            restored.add(&key, 3);
+        }
+
+        // Full state (incl. rng_state) is more sensitive than `list()` alone.
+        assert_eq!(
+            restored.to_bytes(),
+            original.to_bytes(),
+            "restored sketch diverged from original after identical traffic"
+        );
+    }
+
+    #[test]
+    fn test_serialize_appends_rng_state() {
+        let empty = CuckooTopK::<Vec<u8>>::with_seed(10, 64, 4, 0.9, 42);
+        let bytes = empty.to_bytes();
+        // Header (magic + variant + version + probe + 5 u64s) + lobbies + heavy + pq_len + rng state.
+        let header = MAGIC.len() + 2 + 8 * 6;
+        let cells = (64 + 64 * 4) * CELL_SIZE;
+        let pq_len = 8;
+        assert_eq!(bytes.len(), header + cells + pq_len + RNG_STATE_SIZE);
+    }
+
+    /// Regression: equal-count items must keep their order across a round-trip.
+    /// `a` is inserted first but has the lower count at snapshot time; count-order
+    /// serialization would flip the tie once follow-up traffic levels the counts.
+    #[test]
+    fn test_serialize_preserves_pq_tie_order() {
+        // Wide sketch so fingerprints don't collide and counts stay exact.
+        let mut original = CuckooTopK::<Vec<u8>>::with_seed(4, 1024, 4, 0.9, 42);
+        original.add(b"a".as_slice(), 10); // inserted first (lower sequence)
+        original.add(b"b".as_slice(), 20); // inserted second, higher count
+
+        let mut restored =
+            CuckooTopK::<Vec<u8>>::from_bytes(&original.to_bytes(), 42).expect("round-trips");
+
+        // Identical follow-up traffic levels the counts, forming a tie.
+        original.add(b"a".as_slice(), 10);
+        restored.add(b"a".as_slice(), 10);
+
+        let order =
+            |s: &CuckooTopK<Vec<u8>>| s.list().into_iter().map(|n| n.item).collect::<Vec<_>>();
+        assert_eq!(
+            order(&restored),
+            order(&original),
+            "equal-count items must keep their order across a round-trip"
+        );
+        assert_eq!(
+            restored.to_bytes(),
+            original.to_bytes(),
+            "restored sketch diverged from original after identical traffic"
+        );
     }
 }

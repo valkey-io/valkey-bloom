@@ -21,7 +21,7 @@ path = "src/lib.rs"
 
 
 [dependencies]
-rand = { version = "0.9.0", features = [ "small_rng" ] }
+fastrand = "2"
 ahash = "0.8.11"
 thiserror = "2.0.11"
 
@@ -32,6 +32,7 @@ debug = true
 criterion = "0.8.2"
 clap = { version = "4.5.19", features = ["derive"] }
 memmap2 = "0.9.5"
+rand = "0.9.0"
 rand_distr = "0.5"
 
 [[bench]]

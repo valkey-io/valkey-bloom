@@ -210,6 +210,23 @@ impl<T: Ord + Clone + Hash + PartialEq> TopKQueue<T> {
         items.into_iter().map(|(k, count, _)| (k, count))
     }
 
+    /// Iterate items in ascending insertion-`sequence` order.
+    ///
+    /// Serialization uses this so restore (re-`upsert` in this order) reassigns
+    /// sequences that preserve the count-tie ordering.
+    pub(crate) fn iter_by_sequence(&self) -> impl Iterator<Item = (&T, u64)> {
+        let mut items: Vec<_> = self
+            .items
+            .iter()
+            .map(|(k, (count, heap_idx))| {
+                let seq = self.heap[*heap_idx].1;
+                (k, *count, seq)
+            })
+            .collect();
+        items.sort_unstable_by_key(|(_, _, seq)| *seq);
+        items.into_iter().map(|(k, count, _)| (k, count))
+    }
+
     // Binary heap helper methods using Eytzinger layout (0-based indexing)
     fn parent(i: usize) -> usize {
         (i - 1) >> 1

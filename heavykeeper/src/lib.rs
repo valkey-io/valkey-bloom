@@ -5,13 +5,20 @@
 //! Shigang Chen, University of Florida; Lorna Uden, Staffordshire University; Xiaoming Li, Peking University
 
 mod heavykeeper;
-pub use heavykeeper::{TopK, TopKNode};
+pub use heavykeeper::{TopK, TopKDeserializeError, TopKNode};
 
 mod bucketed;
-pub use bucketed::{BucketedBuilderError, BucketedMergeError, BucketedNode, BucketedTopK};
+pub use bucketed::{
+    BucketedBuilderError, BucketedDeserializeError, BucketedMergeError, BucketedNode, BucketedTopK,
+};
 
 mod cuckoo;
-pub use cuckoo::{CuckooBuilderError, CuckooMergeError, CuckooNode, CuckooTopK};
+pub use cuckoo::{
+    CuckooBuilderError, CuckooDeserializeError, CuckooMergeError, CuckooNode, CuckooTopK,
+};
 
 mod hash_composition;
 mod priority_queue;
+
+mod serialization;
+pub use serialization::DeserializeError;
