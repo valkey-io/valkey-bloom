@@ -17,6 +17,9 @@ pub use cuckoo::{
     CuckooBuilderError, CuckooDeserializeError, CuckooMergeError, CuckooNode, CuckooTopK, Reallocator,
 };
 
+pub mod traits;
+pub use traits::{Counter, Fingerprint};
+
 mod hash_composition;
 mod priority_queue;
 
