@@ -17,6 +17,38 @@ if [ "$1" = "clean" ]; then
   exit 0
 fi
 
+# Ensure SERVER_VERSION environment variable is set
+if [ -z "$SERVER_VERSION" ]; then
+    echo "ERROR: SERVER_VERSION environment variable is not set. Defaulting to unstable."
+    export SERVER_VERSION="unstable"
+fi
+
+REPO_URL="https://github.com/valkey-io/valkey.git"
+
+MIN_SERVER_MAJOR="8"
+
+# Validate SERVER_VERSION against the upstream valkey release branches when the
+# remote is reachable. Capture git ls-remote explicitly (not inside a pipeline,
+# whose trailing commands would mask its failure) and check its exit status.
+# If the remote is unreachable (offline), warn and skip validation instead of
+# aborting: a cached binary at $BINARY_PATH (or the later git clone) is the real
+# source of truth for whether this version can actually be built.
+if ! REMOTE_REFS=$(git ls-remote --heads "$REPO_URL" 2>/dev/null); then
+  echo "WARNING: could not reach $REPO_URL to validate SERVER_VERSION; skipping version check" >&2
+else
+  RELEASE_VERSIONS=$(printf '%s\n' "$REMOTE_REFS" \
+    | sed -E 's#.*refs/heads/##' \
+    | grep -E '^[0-9]+\.[0-9]+$' \
+    | awk -F. -v M="$MIN_SERVER_MAJOR" '$1>=M' \
+    | sort -V)
+  VALID_VERSIONS=$(printf 'unstable\n%s\n' "$RELEASE_VERSIONS")
+  if ! printf '%s\n' "$VALID_VERSIONS" | grep -qxF "$SERVER_VERSION"; then
+    echo "ERROR: Unsupported version - $SERVER_VERSION"
+    echo "Valid versions are: $(printf '%s\n' "$VALID_VERSIONS" | sort -V | tr '\n' ' ')"
+    exit 1
+  fi
+fi
+
 echo "Running cargo and clippy format checks..."
 cargo fmt --check
 cargo clippy --profile release --all-targets -- -D clippy::all
@@ -24,17 +56,6 @@ cargo clippy --profile release --all-targets -- -D clippy::all
 
 echo "Running unit tests..."
 cargo test --features enable-system-alloc
-
-# Ensure SERVER_VERSION environment variable is set
-if [ -z "$SERVER_VERSION" ]; then
-    echo "ERROR: SERVER_VERSION environment variable is not set. Defaulting to unstable."
-    export SERVER_VERSION="unstable"
-fi
-
-if [ "$SERVER_VERSION" != "unstable" ] && [ "$SERVER_VERSION" != "8.0" ] && [ "$SERVER_VERSION" != "8.1" ] && [ "$SERVER_VERSION" != "9.0" ] && [ "$SERVER_VERSION" != "9.1" ]; then
-  echo "ERROR: Unsupported version - $SERVER_VERSION"
-  exit 1
-fi
 
 echo "Running cargo build release..."
 if [ "$SERVER_VERSION" == "8.0" ] ; then
@@ -44,7 +65,6 @@ else
 fi
 
 
-REPO_URL="https://github.com/valkey-io/valkey.git"
 BINARY_PATH="tests/build/binaries/$SERVER_VERSION/valkey-server"
 CACHED_VALKEY_PATH="tests/build/valkey"
 
