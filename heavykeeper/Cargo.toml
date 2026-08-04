@@ -1,0 +1,47 @@
+[package]
+name = "heavykeeper"
+version = "0.7.0"
+edition = "2021"
+authors = [ "Patrick McGleenon"]
+description = "HeavyKeeper is for finding Top-K elephant flows with high precision and low memory footprint."
+categories = ["data-structures", "algorithms"]
+exclude = [".github", "/data/*.dat" ]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/pmcgleenon/heavykeeper-rs"
+documentation = "https://docs.rs/heavykeeper"
+rust-version = "1.78.0"
+keywords = ["heavykeeper", "top-k", "streaming", "sketch", "data-structure"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "heavykeeper"
+path = "src/lib.rs"
+
+
+[dependencies]
+rand = { version = "0.9.0", features = [ "small_rng" ] }
+ahash = "0.8.11"
+thiserror = "2.0.11"
+
+[profile.release]
+debug = true
+
+[dev-dependencies]
+criterion = "0.8.2"
+clap = { version = "4.5.19", features = ["derive"] }
+memmap2 = "0.9.5"
+rand_distr = "0.5"
+
+[[bench]]
+name = "topk_add"
+harness = false
+
+[[bench]]
+name = "topk_list"
+harness = false
+
+[[bench]]
+name = "topk_vs_bucketed"
+harness = false
