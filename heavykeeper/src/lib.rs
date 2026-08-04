@@ -14,7 +14,7 @@ pub use bucketed::{
 
 mod cuckoo;
 pub use cuckoo::{
-    CuckooBuilderError, CuckooDeserializeError, CuckooMergeError, CuckooNode, CuckooTopK,
+    CuckooBuilderError, CuckooDeserializeError, CuckooMergeError, CuckooNode, CuckooTopK, Reallocator,
 };
 
 mod hash_composition;
