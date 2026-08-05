@@ -4,6 +4,10 @@ use crate::topk::data_type::TOPK_OBJECT_VERSION;
 use heavykeeper::CuckooTopK;
 use std::sync::atomic::Ordering;
 
+/// Cell storage widths for the TopK sketch: u32 fingerprint and counter
+/// halve per-cell memory versus the u64 default.
+type Sketch = CuckooTopK<Vec<u8>, u32, u32>;
+
 /// KeySpace Notification Events
 pub const RESERVE_EVENT: &str = "topk.reserve";
 pub const ADD_EVENT: &str = "topk.add";
@@ -46,7 +50,7 @@ pub struct TopKObject {
     depth: u32,
     decay: f64,
     seed: u64,
-    sketch: CuckooTopK<Vec<u8>>,
+    sketch: Sketch,
     num_items: u64,
 }
 
@@ -54,7 +58,7 @@ impl TopKObject {
     /// Build a fresh TopKObject. Called from the TOPK.RESERVE command path
     /// after the handler has parsed and validated all parameters.
     pub fn new_reserved(k: u32, width: u32, depth: u32, decay: f64, seed: u64) -> TopKObject {
-        let sketch = CuckooTopK::with_seed(k as usize, width as usize, depth as usize, decay, seed);
+        let sketch = Sketch::with_seed(k as usize, width as usize, depth as usize, decay, seed);
         let topk = TopKObject {
             k,
             width,
@@ -75,7 +79,7 @@ impl TopKObject {
         depth: u32,
         decay: f64,
         seed: u64,
-        sketch: CuckooTopK<Vec<u8>>,
+        sketch: Sketch,
         num_items: u64,
     ) -> TopKObject {
         let topk = TopKObject {
@@ -118,12 +122,11 @@ impl TopKObject {
     /// Bytes the sketch allocates up front.
     pub fn estimated_size(k: u32, width: u32, depth: u32) -> u64 {
         let (k, width, depth) = (k as u64, width as u64, depth as u64);
-        // Saturate: products can overflow u64 at u32::MAX, and wrapping would
-        // let an oversized sketch slip under the limit.
-        let heavy = width.saturating_mul(depth).saturating_mul(16); // heavy cells: width × depth × 16 bytes
+        // CuckooCell<u32,u32> = 8 bytes per cell (fingerprint + counter).
+        let heavy = width.saturating_mul(depth).saturating_mul(8);
         (std::mem::size_of::<TopKObject>() as u64) // wrapper struct
-            .saturating_add(width.saturating_mul(16)) // lobby cells: width × 16 bytes
-            .saturating_add(heavy)
+            .saturating_add(width.saturating_mul(8)) // lobby cells
+            .saturating_add(heavy) // heavy cells
             .saturating_add(1024 * 8) // decay table: 1024 entries × 8 bytes
             .saturating_add(k.saturating_mul(128)) // priority queue: ~128 bytes per k entry
     }
@@ -160,10 +163,10 @@ impl TopKObject {
     pub fn num_items(&self) -> u64 {
         self.num_items
     }
-    pub fn sketch(&self) -> &CuckooTopK<Vec<u8>> {
+    pub fn sketch(&self) -> &Sketch {
         &self.sketch
     }
-    pub fn sketch_mut(&mut self) -> &mut CuckooTopK<Vec<u8>> {
+    pub fn sketch_mut(&mut self) -> &mut Sketch {
         &mut self.sketch
     }
 
@@ -185,7 +188,7 @@ impl TopKObject {
     pub fn from_serialized_bytes(
         seed: u64,
         num_items: u64,
-        sketch: CuckooTopK<Vec<u8>>,
+        sketch: Sketch,
         validate_size_limit: bool,
     ) -> Result<TopKObject, &'static str> {
         let k = sketch.top_items() as u64;
@@ -273,8 +276,8 @@ impl TopKObject {
 
         let seed = u64::from_le_bytes(blob[1..9].try_into().expect("8 bytes"));
         let num_items = u64::from_le_bytes(blob[9..17].try_into().expect("8 bytes"));
-        let sketch = CuckooTopK::<Vec<u8>>::from_bytes(sketch_blob, seed)
-            .map_err(|_| DECODE_TOPK_OBJECT_FAILED)?;
+        let sketch =
+            Sketch::from_bytes(sketch_blob, seed).map_err(|_| DECODE_TOPK_OBJECT_FAILED)?;
         Self::from_serialized_bytes(seed, num_items, sketch, validate_size_limit)
     }
 
