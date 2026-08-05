@@ -19,8 +19,6 @@ use crate::priority_queue::TopKQueue;
 use crate::serialization::*;
 use crate::traits::{Counter, Fingerprint};
 
-const DECAY_LOOKUP_SIZE: usize = 1024;
-
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 struct CuckooCell<F: Fingerprint, C: Counter> {
@@ -135,13 +133,6 @@ impl<T: Ord> PartialOrd for CuckooNode<T> {
     }
 }
 
-fn precompute_decay_thresholds(decay: f64, num_entries: usize) -> Box<[u64]> {
-    (0..num_entries)
-        .map(|count| (decay.powf(count as f64) * u64::MAX as f64) as u64)
-        .collect::<Vec<_>>()
-        .into_boxed_slice()
-}
-
 #[inline]
 fn mix64(mut x: u64) -> u64 {
     x ^= x >> 30;
@@ -172,7 +163,6 @@ pub struct CuckooTopK<T: Ord + Clone + Hash, F: Fingerprint = u64, C: Counter = 
     decay: f64,
     lobbies: Box<[CuckooCell<F, C>]>,
     heavy: Box<[CuckooCell<F, C>]>,
-    decay_thresholds: Box<[u64]>,
     priority_queue: TopKQueue<T>,
     hasher: RandomState,
     rng: Rng,
@@ -256,7 +246,6 @@ impl<T: Ord + Clone + Hash, F: Fingerprint, C: Counter> CuckooTopK<T, F, C> {
             decay,
             lobbies: vec![CuckooCell::default(); width].into_boxed_slice(),
             heavy: vec![CuckooCell::default(); width * depth].into_boxed_slice(),
-            decay_thresholds: precompute_decay_thresholds(decay, DECAY_LOOKUP_SIZE),
             priority_queue: TopKQueue::with_capacity_and_hasher(k, hasher.clone()),
             hasher,
             rng,
@@ -427,8 +416,8 @@ impl<T: Ord + Clone + Hash, F: Fingerprint, C: Counter> CuckooTopK<T, F, C> {
 
     /// Estimated heap memory (in bytes) used by this sketch.
     ///
-    /// Sums the lobby and heavy cell arrays, the precomputed decay-threshold
-    /// table, and the priority queue's allocations, plus the heap each tracked
+    /// Sums the lobby and heavy cell arrays and the priority queue's
+    /// allocations, plus the heap each tracked
     /// item owns beyond its inline `size_of::<T>()`. `item_heap(t)` should
     /// return the bytes `t` points to (e.g. `String::capacity`); for a `T`
     /// that owns no heap, pass `|_| 0`.
@@ -438,7 +427,6 @@ impl<T: Ord + Clone + Hash, F: Fingerprint, C: Counter> CuckooTopK<T, F, C> {
     {
         self.lobbies.len() * std::mem::size_of::<CuckooCell<F, C>>()
             + self.heavy.len() * std::mem::size_of::<CuckooCell<F, C>>()
-            + self.decay_thresholds.len() * std::mem::size_of::<u64>()
             + self.priority_queue.mem_bytes(item_heap)
     }
 
@@ -599,15 +587,14 @@ impl<T: Ord + Clone + Hash, F: Fingerprint, C: Counter> CuckooTopK<T, F, C> {
     }
 
     /// Relocate the sketch's large heap allocations through `reallocator` (see
-    /// [`Reallocator`]): the `lobbies` and `heavy` bucket arrays, the decay
-    /// table, and the priority queue's vectors. Logical contents (counts,
+    /// [`Reallocator`]): the `lobbies` and `heavy` bucket arrays and the
+    /// priority queue's vectors. Logical contents (counts,
     /// tracked items, query results) are unchanged. Not panic-atomic: if
     /// `reallocator` panics partway through, the sketch may be left logically
     /// inconsistent.
     pub fn realloc_large_heap_allocated_objects<R: Reallocator>(&mut self, reallocator: &mut R) {
         realloc_large_heap_allocated_object(&mut self.lobbies, reallocator);
         realloc_large_heap_allocated_object(&mut self.heavy, reallocator);
-        realloc_large_heap_allocated_object(&mut self.decay_thresholds, reallocator);
         self.priority_queue
             .realloc_large_heap_allocated_objects(reallocator);
     }
@@ -801,20 +788,7 @@ impl<T: Ord + Clone + Hash, F: Fingerprint, C: Counter> CuckooTopK<T, F, C> {
     }
 
     fn decay_threshold(&self, count: u64) -> u64 {
-        if count < self.decay_thresholds.len() as u64 {
-            return self.decay_thresholds[count as usize];
-        }
-
-        let tbl = &self.decay_thresholds;
-        let last = tbl[tbl.len() - 1] as f64 / u64::MAX as f64;
-        let divisor = (tbl.len() - 1) as u64;
-        // q is u64 — use powf(q as f64) instead of powi(q as i32) which
-        // would truncate (not saturate) for q > i32::MAX and produce a
-        // negative exponent, sending threshold to ∞ for very-hot keys.
-        let q = (count / divisor) as f64;
-        let r = (count % divisor) as usize;
-        let rem_thr = tbl[r] as f64 / u64::MAX as f64;
-        ((last.powf(q) * rem_thr) * u64::MAX as f64) as u64
+        (self.decay.powf(count as f64) * u64::MAX as f64) as u64
     }
 
     fn update_priority_queue<Q>(&mut self, item: &Q, count: u64) -> (Option<T>, bool)
@@ -1121,14 +1095,13 @@ mod tests {
     }
 
     #[test]
-    fn test_mem_bytes_covers_cells_and_decay_table() {
+    fn test_mem_bytes_covers_cells() {
         let topk: CuckooTopK<Vec<u8>> = CuckooTopK::new(10, 64, 3, 0.9);
         let cell = std::mem::size_of::<CuckooCell<u64, u64>>();
         let lobbies = 64 * cell;
         let heavy = 64 * 3 * cell;
-        let decay = DECAY_LOOKUP_SIZE * std::mem::size_of::<u64>();
         // The fixed sketch arrays are exact; the priority queue adds more.
-        assert!(topk.mem_bytes(|_| 0) >= lobbies + heavy + decay);
+        assert!(topk.mem_bytes(|_| 0) >= lobbies + heavy);
     }
 
     #[test]

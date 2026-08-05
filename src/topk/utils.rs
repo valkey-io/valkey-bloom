@@ -113,7 +113,7 @@ impl TopKObject {
     }
 
     /// Estimated heap size of this object: wrapper struct + sketch internals
-    /// (cell arrays, decay table, priority queue) + per-item buffer capacity.
+    /// (cell arrays, priority queue) + per-item buffer capacity.
     /// The remaining undercount is allocator overhead and HashMap metadata.
     pub fn memory_usage(&self) -> usize {
         std::mem::size_of::<TopKObject>() + self.sketch.mem_bytes(|item| item.capacity())
@@ -127,7 +127,6 @@ impl TopKObject {
         (std::mem::size_of::<TopKObject>() as u64) // wrapper struct
             .saturating_add(width.saturating_mul(8)) // lobby cells
             .saturating_add(heavy) // heavy cells
-            .saturating_add(1024 * 8) // decay table: 1024 entries × 8 bytes
             .saturating_add(k.saturating_mul(128)) // priority queue: ~128 bytes per k entry
     }
 
