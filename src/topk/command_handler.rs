@@ -164,7 +164,7 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
 
     let seed = user_seed.unwrap_or_else(random_seed);
 
-    let topk = TopKObject::new_reserved(k, width, depth, decay, seed);
+    let topk = TopKObject::new_reserved(k, width, depth, decay, seed, true);
     match key.set_value(&TOPK_TYPE, topk) {
         Ok(()) => {
             let replicate_args = ReplicateArgs {

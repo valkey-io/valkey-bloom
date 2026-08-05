@@ -185,6 +185,20 @@ impl<T: Ord + Clone + Hash, F: Fingerprint, C: Counter> CuckooTopK<T, F, C> {
     /// `merge`-compatible. Parameters are not validated; use
     /// [`CuckooTopK::builder`] for a fallible, validated construction path.
     pub fn with_seed(k: usize, width: usize, depth: usize, decay: f64, seed: u64) -> Self {
+        Self::with_seed_and_linear(k, width, depth, decay, seed, true)
+    }
+
+    /// Like [`with_seed`](CuckooTopK::with_seed) but selects the priority-queue
+    /// lookup strategy: `linear` scans `item_store`, otherwise a hash table is
+    /// used.
+    pub fn with_seed_and_linear(
+        k: usize,
+        width: usize,
+        depth: usize,
+        decay: f64,
+        seed: u64,
+        linear: bool,
+    ) -> Self {
         let hasher = RandomState::with_seeds(seed, seed, seed, seed);
         Self::with_components(
             k,
@@ -194,7 +208,7 @@ impl<T: Ord + Clone + Hash, F: Fingerprint, C: Counter> CuckooTopK<T, F, C> {
             hasher,
             Rng::with_seed(seed),
             DEFAULT_MAX_CUCKOO_KICKS,
-            true,
+            linear,
         )
     }
 
