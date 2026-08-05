@@ -18,7 +18,7 @@ fn realloc_vec<E, R: Reallocator>(vec: &mut Vec<E>, reallocator: &mut R) {
 struct Slot<T> {
     item: T,
     count: u64,
-    sequence: u64,
+    sequence: u32,
     heap_pos: u32,
 }
 
@@ -29,7 +29,7 @@ pub(crate) struct TopKQueue<T> {
     heap: Vec<u32>,        // slot indices, min-heap ordered by count
     table: HashTable<u32>, // hash -> slot index into `item_store`
     capacity: usize,
-    sequence: u64,
+    sequence: u32,
     hasher: RandomState,
 }
 
@@ -192,7 +192,7 @@ impl<T: Ord + Clone + Hash + PartialEq> TopKQueue<T> {
 
             let slot_idx = self.item_store.len() as u32;
             let heap_pos = slot_idx;
-            self.sequence += 1;
+            self.sequence = self.sequence.wrapping_add(1);
 
             self.item_store.push(Slot {
                 item,
@@ -225,7 +225,7 @@ impl<T: Ord + Clone + Hash + PartialEq> TopKQueue<T> {
                 let old_item =
                     std::mem::replace(&mut self.item_store[min_slot_idx].item, item);
                 self.item_store[min_slot_idx].count = count;
-                self.sequence += 1;
+                self.sequence = self.sequence.wrapping_add(1);
                 self.item_store[min_slot_idx].sequence = self.sequence;
 
                 self.table.insert_unique(hash, min_slot_idx as u32, |&idx| {
