@@ -411,6 +411,11 @@ impl<T: Ord + Clone + Hash, F: Fingerprint, C: Counter> CuckooTopK<T, F, C> {
         self.top_items
     }
 
+    /// Whether the priority queue uses the linear-scan lookup strategy.
+    pub fn linear(&self) -> bool {
+        self.priority_queue.linear()
+    }
+
     /// Maximum number of cuckoo kicks attempted when relocating an evicted
     /// heavy slot. See [`DEFAULT_MAX_CUCKOO_KICKS`] for the default and
     /// trade-off.
@@ -861,6 +866,8 @@ impl<F: Fingerprint, C: Counter> CuckooTopK<Vec<u8>, F, C> {
         out.extend_from_slice(&self.decay.to_bits().to_le_bytes());
         out.extend_from_slice(&(self.top_items as u64).to_le_bytes());
         out.extend_from_slice(&(self.max_kicks as u64).to_le_bytes());
+        // Lookup strategy: 1 = linear scan, 0 = hash table.
+        out.push(self.linear() as u8);
 
         for cell in self.lobbies.iter().chain(self.heavy.iter()) {
             cell.fingerprint.to_le_bytes_into(&mut out);
@@ -892,6 +899,8 @@ impl<F: Fingerprint, C: Counter> CuckooTopK<Vec<u8>, F, C> {
                 detail: format!("must be >= 1, got {max_kicks}"),
             });
         }
+        // Lookup strategy: 1 = linear scan, 0 = hash table.
+        let linear = reader.take_u8("linear")? != 0;
 
         let expected_heavy =
             width
@@ -938,8 +947,17 @@ impl<F: Fingerprint, C: Counter> CuckooTopK<Vec<u8>, F, C> {
         // is sized by the unbounded `top_items` header, so a tampered stream
         // could force a huge reserve. Fine for restoring our own dumps (RDB); if
         // ever fed untrusted bytes, bound `top_items` first.
-        let mut sketch = Self::with_seed(top_items, width, depth, decay, seed);
-        sketch.max_kicks = max_kicks;
+        let hasher = RandomState::with_seeds(seed, seed, seed, seed);
+        let mut sketch = Self::with_components(
+            top_items,
+            width,
+            depth,
+            decay,
+            hasher,
+            Rng::with_seed(seed),
+            max_kicks,
+            linear,
+        );
         sketch.lobbies = lobbies;
         sketch.heavy = heavy;
 
@@ -1777,8 +1795,8 @@ mod tests {
     fn test_serialize_appends_rng_state() {
         let empty = CuckooTopK::<Vec<u8>>::with_seed(10, 64, 4, 0.9, 42);
         let bytes = empty.to_bytes();
-        // Header (magic + variant + version + probe + 5 u64s) + lobbies + heavy + pq_len + rng state.
-        let header = MAGIC.len() + 2 + 8 * 6;
+        // Header (magic + variant + version + probe + 5 u64s + linear byte) + lobbies + heavy + pq_len + rng state.
+        let header = MAGIC.len() + 2 + 8 * 6 + 1;
         let cells = (64 + 64 * 4) * cuckoo_cell_size::<u64, u64>();
         let pq_len = 8;
         assert_eq!(bytes.len(), header + cells + pq_len + RNG_STATE_SIZE);

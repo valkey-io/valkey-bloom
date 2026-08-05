@@ -78,6 +78,11 @@ impl<T: Ord + Clone + Hash + PartialEq> TopKQueue<T> {
         self.item_store.len()
     }
 
+    /// Whether this queue uses the linear-scan lookup strategy.
+    pub(crate) fn linear(&self) -> bool {
+        self.linear
+    }
+
     /// Returns the heap memory (in bytes) used by this queue's containers.
     ///
     /// Computed from the allocated *capacity* of the slots, heap vector,
