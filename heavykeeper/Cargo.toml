@@ -23,6 +23,7 @@ path = "src/lib.rs"
 [dependencies]
 fastrand = "2"
 ahash = "0.8.11"
+hashbrown = "0.17"
 thiserror = "2.0.11"
 
 [profile.release]
