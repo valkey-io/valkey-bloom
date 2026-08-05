@@ -23,22 +23,46 @@ struct Slot<T> {
 }
 
 /// A specialized priority queue for HeavyKeeper that maintains top-k items by count
+///
+/// - `linear = true` (default): linear scan over `item_store`. Better cache
+///   locality for small `k` and avoids hashing on the lookup path; the hash
+///   table is left unallocated.
+/// - `linear = false`: a `hashbrown` hash table maps items to slot indices for
+///   O(1) lookup, at the cost of the table's memory and per-op hashing.
 #[derive(Clone)]
 pub(crate) struct TopKQueue<T> {
     item_store: Vec<Slot<T>>,
     heap: Vec<u32>,        // slot indices, min-heap ordered by count
-    table: HashTable<u32>, // hash -> slot index into `item_store`
+    table: HashTable<u32>, // hash -> slot index into `item_store` (unused when `linear`)
+    linear: bool,
     capacity: usize,
     sequence: u32,
     hasher: RandomState,
 }
 
 impl<T: Ord + Clone + Hash + PartialEq> TopKQueue<T> {
+    /// Build a queue using the hash-table lookup strategy.
     pub(crate) fn with_capacity_and_hasher(capacity: usize, hasher: RandomState) -> Self {
+        Self::with_capacity_hasher_linear(capacity, hasher, false)
+    }
+
+    /// Build a queue, choosing the lookup strategy: `linear` scans `item_store`
+    /// and leaves the hash table unallocated; otherwise the hash table is used.
+    pub(crate) fn with_capacity_hasher_linear(
+        capacity: usize,
+        hasher: RandomState,
+        linear: bool,
+    ) -> Self {
         Self {
             item_store: Vec::with_capacity(capacity),
             heap: Vec::with_capacity(capacity + 1),
-            table: HashTable::with_capacity(capacity),
+            // Linear lookup never touches the table; leave it unallocated.
+            table: if linear {
+                HashTable::new()
+            } else {
+                HashTable::with_capacity(capacity)
+            },
+            linear,
             capacity,
             sequence: 0,
             hasher,
@@ -47,7 +71,7 @@ impl<T: Ord + Clone + Hash + PartialEq> TopKQueue<T> {
 
     #[allow(dead_code)]
     pub(crate) fn with_capacity(capacity: usize) -> Self {
-        Self::with_capacity_and_hasher(capacity, RandomState::new())
+        Self::with_capacity_hasher_linear(capacity, RandomState::new(), true)
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -164,9 +188,18 @@ impl<T: Ord + Clone + Hash + PartialEq> TopKQueue<T> {
     /// Returns `Some(evicted)` when a previously tracked item is displaced
     /// by this call, otherwise `None`.
     pub(crate) fn upsert(&mut self, item: T, count: u64) -> Option<T> {
-        let hash = self.hasher.hash_one(&item);
+        let hash = if self.linear {
+            0
+        } else {
+            self.hasher.hash_one(&item)
+        };
         // Fast path: update existing item
-        if let Some(slot_idx) = self.find_slot_with_hash(&item, hash) {
+        let existing = if self.linear {
+            self.find_slot_linear(&item)
+        } else {
+            self.find_slot_with_hash(&item, hash)
+        };
+        if let Some(slot_idx) = existing {
             let slot = &mut self.item_store[slot_idx];
             if count == slot.count {
                 return None;
@@ -202,9 +235,11 @@ impl<T: Ord + Clone + Hash + PartialEq> TopKQueue<T> {
             });
             self.heap.push(slot_idx);
 
-            self.table.insert_unique(hash, slot_idx, |&idx| {
-                self.hasher.hash_one(&self.item_store[idx as usize].item)
-            });
+            if !self.linear {
+                self.table.insert_unique(hash, slot_idx, |&idx| {
+                    self.hasher.hash_one(&self.item_store[idx as usize].item)
+                });
+            }
             self.sift_up(heap_pos as usize);
             return None;
         }
@@ -214,12 +249,14 @@ impl<T: Ord + Clone + Hash + PartialEq> TopKQueue<T> {
             let min_slot_idx = self.heap[0] as usize;
             let min_count = self.item_store[min_slot_idx].count;
             if count > min_count {
-                let old_hash = self.hasher.hash_one(&self.item_store[min_slot_idx].item);
-                if let Ok(entry) = self
-                    .table
-                    .find_entry(old_hash, |&idx| idx == min_slot_idx as u32)
-                {
-                    entry.remove();
+                if !self.linear {
+                    let old_hash = self.hasher.hash_one(&self.item_store[min_slot_idx].item);
+                    if let Ok(entry) = self
+                        .table
+                        .find_entry(old_hash, |&idx| idx == min_slot_idx as u32)
+                    {
+                        entry.remove();
+                    }
                 }
 
                 let old_item =
@@ -228,9 +265,11 @@ impl<T: Ord + Clone + Hash + PartialEq> TopKQueue<T> {
                 self.sequence = self.sequence.wrapping_add(1);
                 self.item_store[min_slot_idx].sequence = self.sequence;
 
-                self.table.insert_unique(hash, min_slot_idx as u32, |&idx| {
-                    self.hasher.hash_one(&self.item_store[idx as usize].item)
-                });
+                if !self.linear {
+                    self.table.insert_unique(hash, min_slot_idx as u32, |&idx| {
+                        self.hasher.hash_one(&self.item_store[idx as usize].item)
+                    });
+                }
                 self.sift_down(0);
                 return Some(old_item);
             }
@@ -274,8 +313,23 @@ impl<T: Ord + Clone + Hash + PartialEq> TopKQueue<T> {
         T: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
+        if self.linear {
+            return self.find_slot_linear(item);
+        }
         let hash = self.hasher.hash_one(item);
         self.find_slot_with_hash(item, hash)
+    }
+
+    /// Linear scan over `item_store`. Used when `linear` is set.
+    #[inline]
+    fn find_slot_linear<Q>(&self, item: &Q) -> Option<usize>
+    where
+        T: Borrow<Q>,
+        Q: Eq + ?Sized,
+    {
+        self.item_store
+            .iter()
+            .position(|s| s.item.borrow() == item)
     }
 
     #[inline]

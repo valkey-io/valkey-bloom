@@ -194,6 +194,7 @@ impl<T: Ord + Clone + Hash, F: Fingerprint, C: Counter> CuckooTopK<T, F, C> {
             hasher,
             Rng::with_seed(seed),
             DEFAULT_MAX_CUCKOO_KICKS,
+            true,
         )
     }
 
@@ -216,6 +217,7 @@ impl<T: Ord + Clone + Hash, F: Fingerprint, C: Counter> CuckooTopK<T, F, C> {
             hasher,
             Rng::with_seed(0),
             DEFAULT_MAX_CUCKOO_KICKS,
+            true,
         )
     }
 
@@ -224,6 +226,7 @@ impl<T: Ord + Clone + Hash, F: Fingerprint, C: Counter> CuckooTopK<T, F, C> {
         CuckooBuilder::new()
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn with_components(
         k: usize,
         width: usize,
@@ -232,6 +235,7 @@ impl<T: Ord + Clone + Hash, F: Fingerprint, C: Counter> CuckooTopK<T, F, C> {
         hasher: RandomState,
         rng: Rng,
         max_kicks: usize,
+        linear: bool,
     ) -> Self {
         let width_mask = if width > 1 && width.is_power_of_two() {
             width - 1
@@ -246,7 +250,7 @@ impl<T: Ord + Clone + Hash, F: Fingerprint, C: Counter> CuckooTopK<T, F, C> {
             decay,
             lobbies: vec![CuckooCell::default(); width].into_boxed_slice(),
             heavy: vec![CuckooCell::default(); width * depth].into_boxed_slice(),
-            priority_queue: TopKQueue::with_capacity_and_hasher(k, hasher.clone()),
+            priority_queue: TopKQueue::with_capacity_hasher_linear(k, hasher.clone(), linear),
             hasher,
             rng,
             min_pq_count: 0,
@@ -963,6 +967,7 @@ pub struct CuckooBuilder<T, F: Fingerprint = u64, C: Counter = u64> {
     seed: Option<u64>,
     hasher: Option<RandomState>,
     max_kicks: Option<usize>,
+    linear: Option<bool>,
     _phantom: std::marker::PhantomData<(T, F, C)>,
 }
 
@@ -982,6 +987,7 @@ impl<T: Ord + Clone + Hash, F: Fingerprint, C: Counter> CuckooBuilder<T, F, C> {
             seed: None,
             hasher: None,
             max_kicks: None,
+            linear: None,
             _phantom: std::marker::PhantomData,
         }
     }
@@ -1013,6 +1019,12 @@ impl<T: Ord + Clone + Hash, F: Fingerprint, C: Counter> CuckooBuilder<T, F, C> {
     /// Must be `>= 1`.
     pub fn max_kicks(mut self, n: usize) -> Self {
         self.max_kicks = Some(n);
+        self
+    }
+    /// Select the priority-queue lookup strategy. `true` (default) uses a
+    /// linear scan; `false` uses a hash table. See [`CuckooTopK`].
+    pub fn linear(mut self, linear: bool) -> Self {
+        self.linear = Some(linear);
         self
     }
 
@@ -1050,8 +1062,9 @@ impl<T: Ord + Clone + Hash, F: Fingerprint, C: Counter> CuckooBuilder<T, F, C> {
             }
         });
         let rng = Rng::with_seed(self.seed.unwrap_or(0));
+        let linear = self.linear.unwrap_or(true);
         Ok(CuckooTopK::with_components(
-            k, width, depth, decay, hasher, rng, max_kicks,
+            k, width, depth, decay, hasher, rng, max_kicks, linear,
         ))
     }
 }
@@ -1128,6 +1141,32 @@ mod tests {
         assert!(topk.contains(b"alpha".as_slice()));
         assert_eq!(topk.list()[0].item, b"alpha".to_vec());
         assert_eq!(topk.list()[0].count, 5);
+    }
+
+    #[test]
+    fn test_linear_and_hashmap_lookup_agree() {
+        // The lookup strategy must not change results: build one sketch with
+        // the default linear scan and one with the hash table, feed both the
+        // same stream, and require identical top-k lists.
+        let build = |linear: bool| -> CuckooTopK<u64> {
+            CuckooTopK::builder()
+                .k(16)
+                .width(256)
+                .depth(4)
+                .decay(0.9)
+                .seed(42)
+                .linear(linear)
+                .build()
+                .unwrap()
+        };
+        let mut lin = build(true);
+        let mut map = build(false);
+        for i in 0..5_000u64 {
+            let key = i % 200;
+            lin.add(&key, 1);
+            map.add(&key, 1);
+        }
+        assert_eq!(lin.list(), map.list());
     }
 
     #[test]
