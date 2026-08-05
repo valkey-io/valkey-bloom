@@ -238,3 +238,33 @@ pub fn cms_query(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
         }
     }
 }
+
+//Function that implements logic to handle the CMS.INFO command.
+pub fn cms_info(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    let args_count = args.len();
+    if args_count != 2 {
+        return Err(valkey_module::ValkeyError::WrongArity);
+    }
+
+    let key = &args[1];
+    let key_existing = ctx.open_key(key);
+    let cms = match key_existing.get_value::<CMSObject>(&CMS_TYPE) {
+        Ok(v) => v,
+        Err(_) => return Err(ValkeyError::WrongType),
+    };
+
+    match cms {
+        Some(cms) => {
+            let result = vec![
+                ValkeyValue::SimpleStringStatic("Width"),
+                ValkeyValue::Integer(cms.width as i64),
+                ValkeyValue::SimpleStringStatic("Depth"),
+                ValkeyValue::Integer(cms.depth as i64),
+                ValkeyValue::SimpleStringStatic("Count"),
+                ValkeyValue::Integer(cms.total() as i64),
+            ];
+            Ok(ValkeyValue::Array(result))
+        }
+        None => Err(ValkeyError::Str(utils::NOT_FOUND)),
+    }
+}

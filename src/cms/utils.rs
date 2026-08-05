@@ -38,8 +38,8 @@ impl CMSError {
 }
 
 pub struct CMSObject {
-    width: u64,
-    depth: u64,
+    pub width: u64,
+    pub depth: u64,
     cms: CMS,
 }
 
@@ -81,14 +81,6 @@ impl CMSObject {
         };
 
         Ok(obj)
-    }
-
-    pub fn width(&self) -> u64 {
-        self.width
-    }
-
-    pub fn depth(&self) -> u64 {
-        self.depth
     }
 
     pub fn total(&self) -> u64 {
