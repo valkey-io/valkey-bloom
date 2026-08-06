@@ -1,0 +1,30 @@
+name: Rust
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v6
+    - uses: dtolnay/rust-toolchain@stable
+    - name: Build
+      run: cargo build --verbose
+    - name: Build examples
+      run: cargo build --examples --verbose
+    - name: Run tests
+      run: cargo test --verbose
+    - name: clippy
+      run: cargo clippy --all --tests --all-features --no-deps
+    - name: doc
+      run: cargo test  --doc

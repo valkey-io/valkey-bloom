@@ -12,6 +12,7 @@ struct ReplicateArgs {
     depth: u32,
     decay: f64,
     seed: u64,
+    hashmap: bool,
 }
 
 /// The write operation being propagated to replicas and published as a keyspace event.
@@ -54,9 +55,15 @@ fn replicate_and_notify_events(ctx: &Context, key_name: &ValkeyString, op: Repli
                 std::ptr::null_mut(),
                 args.seed.to_string().as_bytes(),
             );
-            let cmd = vec![
+            let hashmap_str =
+                ValkeyString::create_from_slice(std::ptr::null_mut(), "HASHMAP".as_bytes());
+            let mut cmd = vec![
                 key_name, &k_val, &width_val, &depth_val, &decay_val, &seed_str, &seed_val,
             ];
+            // Replicate the lookup strategy so replicas build the same structure.
+            if args.hashmap {
+                cmd.push(&hashmap_str);
+            }
             ctx.replicate("TOPK.RESERVE", cmd.as_slice());
             ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::RESERVE_EVENT, key_name);
         }
@@ -74,20 +81,19 @@ fn replicate_and_notify_events(ctx: &Context, key_name: &ValkeyString, op: Repli
 /// Handle TOPK.RESERVE.
 ///
 /// Syntax:
-///     TOPK.RESERVE key topk [SEED seed] [width depth decay] [SEED seed]
+///     TOPK.RESERVE key topk [width depth decay] [SEED seed] [HASHMAP]
 ///
-/// Only `key` and `topk` are required.
-/// The SEED keyword is always optional and may appear either right after `topk` or at the very end (but not both).
-/// When the user does not supply a seed, we generate a random one on the primary.
+/// Only `key` and `topk` are required. Optional tokens may appear in any order
+/// after `topk` but each at most once:
+/// - `width depth decay` — sketch tuning parameters (defaults: 8 7 0.9).
+/// - `SEED seed` — deterministic seed for the hasher/RNG; random if omitted.
+/// - `HASHMAP` — use hash-table PQ lookup instead of the default linear scan.
 pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
     let argc = input_args.len();
-    // Valid arities:
-    //   3 = key topk
-    //   5 = key topk SEED <n>
-    //   6 = key topk width depth decay
-    //   8 = key topk width depth decay SEED <n>
-    //       key topk SEED <n> width depth decay
-    if argc != 3 && argc != 5 && argc != 6 && argc != 8 {
+    // Valid arities span `key topk` (3) through
+    // `key topk width depth decay SEED <n> HASHMAP` (9). The token loop below
+    // rejects malformed combinations, so only the outer bounds are checked here.
+    if !(3..=9).contains(&argc) {
         return Err(ValkeyError::WrongArity);
     }
 
@@ -104,6 +110,7 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
 
     let mut user_seed: Option<u64> = None;
     let mut sketch: Option<(u32, u32, f64)> = None;
+    let mut hashmap = false;
     while idx < argc {
         if is_seed_token(&input_args[idx]) {
             if user_seed.is_some() {
@@ -111,6 +118,12 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
             }
             idx += 1;
             user_seed = Some(parse_seed_value(input_args, idx, argc)?);
+            idx += 1;
+        } else if is_hashmap_token(&input_args[idx]) {
+            if hashmap {
+                return Err(ValkeyError::Str(utils::ERROR));
+            }
+            hashmap = true;
             idx += 1;
         } else {
             if sketch.is_some() {
@@ -164,7 +177,7 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
 
     let seed = user_seed.unwrap_or_else(random_seed);
 
-    let topk = TopKObject::new_reserved(k, width, depth, decay, seed);
+    let topk = TopKObject::new_reserved(k, width, depth, decay, seed, !hashmap);
     match key.set_value(&TOPK_TYPE, topk) {
         Ok(()) => {
             let replicate_args = ReplicateArgs {
@@ -173,6 +186,7 @@ pub fn topk_reserve(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult 
                 depth,
                 decay,
                 seed,
+                hashmap,
             };
             replicate_and_notify_events(ctx, key_name, ReplicationOp::Reserve(replicate_args));
             VALKEY_OK
@@ -468,6 +482,10 @@ pub fn topk_query(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyResult {
 /// Case-insensitive match for the literal SEED keyword.
 fn is_seed_token(arg: &ValkeyString) -> bool {
     arg.to_string_lossy().eq_ignore_ascii_case("SEED")
+}
+
+fn is_hashmap_token(arg: &ValkeyString) -> bool {
+    arg.to_string_lossy().eq_ignore_ascii_case("HASHMAP")
 }
 
 /// Parse the u64 value that must follow a SEED keyword.

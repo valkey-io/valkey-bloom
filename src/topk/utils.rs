@@ -4,6 +4,10 @@ use crate::topk::data_type::TOPK_OBJECT_VERSION;
 use heavykeeper::CuckooTopK;
 use std::sync::atomic::Ordering;
 
+/// Cell storage widths for the TopK sketch: u32 fingerprint and counter
+/// halve per-cell memory versus the u64 default.
+type Sketch = CuckooTopK<Vec<u8>, u32, u32>;
+
 /// KeySpace Notification Events
 pub const RESERVE_EVENT: &str = "topk.reserve";
 pub const ADD_EVENT: &str = "topk.add";
@@ -46,15 +50,30 @@ pub struct TopKObject {
     depth: u32,
     decay: f64,
     seed: u64,
-    sketch: CuckooTopK<Vec<u8>>,
+    sketch: Sketch,
     num_items: u64,
 }
 
 impl TopKObject {
     /// Build a fresh TopKObject. Called from the TOPK.RESERVE command path
-    /// after the handler has parsed and validated all parameters.
-    pub fn new_reserved(k: u32, width: u32, depth: u32, decay: f64, seed: u64) -> TopKObject {
-        let sketch = CuckooTopK::with_seed(k as usize, width as usize, depth as usize, decay, seed);
+    /// after the handler has parsed and validated all parameters. `linear`
+    /// selects the priority-queue lookup strategy (linear scan vs. hash table).
+    pub fn new_reserved(
+        k: u32,
+        width: u32,
+        depth: u32,
+        decay: f64,
+        seed: u64,
+        linear: bool,
+    ) -> TopKObject {
+        let sketch = Sketch::with_seed_and_linear(
+            k as usize,
+            width as usize,
+            depth as usize,
+            decay,
+            seed,
+            linear,
+        );
         let topk = TopKObject {
             k,
             width,
@@ -75,7 +94,7 @@ impl TopKObject {
         depth: u32,
         decay: f64,
         seed: u64,
-        sketch: CuckooTopK<Vec<u8>>,
+        sketch: Sketch,
         num_items: u64,
     ) -> TopKObject {
         let topk = TopKObject {
@@ -109,7 +128,7 @@ impl TopKObject {
     }
 
     /// Estimated heap size of this object: wrapper struct + sketch internals
-    /// (cell arrays, decay table, priority queue) + per-item buffer capacity.
+    /// (cell arrays, priority queue) + per-item buffer capacity.
     /// The remaining undercount is allocator overhead and HashMap metadata.
     pub fn memory_usage(&self) -> usize {
         std::mem::size_of::<TopKObject>() + self.sketch.mem_bytes(|item| item.capacity())
@@ -118,13 +137,11 @@ impl TopKObject {
     /// Bytes the sketch allocates up front.
     pub fn estimated_size(k: u32, width: u32, depth: u32) -> u64 {
         let (k, width, depth) = (k as u64, width as u64, depth as u64);
-        // Saturate: products can overflow u64 at u32::MAX, and wrapping would
-        // let an oversized sketch slip under the limit.
-        let heavy = width.saturating_mul(depth).saturating_mul(16); // heavy cells: width × depth × 16 bytes
+        // CuckooCell<u32,u32> = 8 bytes per cell (fingerprint + counter).
+        let heavy = width.saturating_mul(depth).saturating_mul(8);
         (std::mem::size_of::<TopKObject>() as u64) // wrapper struct
-            .saturating_add(width.saturating_mul(16)) // lobby cells: width × 16 bytes
-            .saturating_add(heavy)
-            .saturating_add(1024 * 8) // decay table: 1024 entries × 8 bytes
+            .saturating_add(width.saturating_mul(8)) // lobby cells
+            .saturating_add(heavy) // heavy cells
             .saturating_add(k.saturating_mul(128)) // priority queue: ~128 bytes per k entry
     }
 
@@ -157,13 +174,17 @@ impl TopKObject {
     pub fn seed(&self) -> u64 {
         self.seed
     }
+    /// Priority-queue lookup strategy: `true` = linear scan, `false` = hash table.
+    pub fn linear(&self) -> bool {
+        self.sketch.linear()
+    }
     pub fn num_items(&self) -> u64 {
         self.num_items
     }
-    pub fn sketch(&self) -> &CuckooTopK<Vec<u8>> {
+    pub fn sketch(&self) -> &Sketch {
         &self.sketch
     }
-    pub fn sketch_mut(&mut self) -> &mut CuckooTopK<Vec<u8>> {
+    pub fn sketch_mut(&mut self) -> &mut Sketch {
         &mut self.sketch
     }
 
@@ -185,7 +206,7 @@ impl TopKObject {
     pub fn from_serialized_bytes(
         seed: u64,
         num_items: u64,
-        sketch: CuckooTopK<Vec<u8>>,
+        sketch: Sketch,
         validate_size_limit: bool,
     ) -> Result<TopKObject, &'static str> {
         let k = sketch.top_items() as u64;
@@ -273,8 +294,8 @@ impl TopKObject {
 
         let seed = u64::from_le_bytes(blob[1..9].try_into().expect("8 bytes"));
         let num_items = u64::from_le_bytes(blob[9..17].try_into().expect("8 bytes"));
-        let sketch = CuckooTopK::<Vec<u8>>::from_bytes(sketch_blob, seed)
-            .map_err(|_| DECODE_TOPK_OBJECT_FAILED)?;
+        let sketch =
+            Sketch::from_bytes(sketch_blob, seed).map_err(|_| DECODE_TOPK_OBJECT_FAILED)?;
         Self::from_serialized_bytes(seed, num_items, sketch, validate_size_limit)
     }
 
@@ -291,14 +312,10 @@ impl TopKObject {
         let (evicted, inserted) = self.sketch.add_with_evicted(item, increment);
         let added = if inserted { item.len() } else { 0 };
         let removed = evicted.as_ref().map_or(0, Vec::len);
-        // The priority queue stores each item's bytes twice (HashMap key +
-        // item_store), so scale the byte delta by 2.
         if added >= removed {
-            metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
-                .fetch_add(2 * (added - removed), Ordering::Relaxed);
+            metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(added - removed, Ordering::Relaxed);
         } else {
-            metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES
-                .fetch_sub(2 * (removed - added), Ordering::Relaxed);
+            metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES.fetch_sub(removed - added, Ordering::Relaxed);
         }
         evicted
     }
@@ -341,7 +358,7 @@ mod tests {
     #[test]
     fn test_new_reserved_stores_params() {
         // The constructor should round-trip every parameter through the getters.
-        let topk = TopKObject::new_reserved(5, 50, 4, 0.9, 42);
+        let topk = TopKObject::new_reserved(5, 50, 4, 0.9, 42, true);
         assert_eq!(topk.k(), 5);
         assert_eq!(topk.width(), 50);
         assert_eq!(topk.depth(), 4);
@@ -351,7 +368,7 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_add_zero_increment_is_noop(seed: u64) {
-        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
+        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed, true);
         // A zero increment does no work and never evicts.
         assert_eq!(topk.add(b"apple", 0), None);
         assert!(topk.list().is_empty());
@@ -359,7 +376,7 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_add_no_eviction_until_full(seed: u64) {
-        let mut topk = TopKObject::new_reserved(2, 256, 4, DEFAULT_DECAY, seed);
+        let mut topk = TopKObject::new_reserved(2, 256, 4, DEFAULT_DECAY, seed, true);
         // Priority queue has room (k=2), so neither insert evicts.
         assert_eq!(topk.add(b"apple", 5), None);
         assert_eq!(topk.add(b"banana", 10), None);
@@ -368,7 +385,7 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_add_returns_evicted_item(seed: u64) {
-        let mut topk = TopKObject::new_reserved(2, 256, 4, DEFAULT_DECAY, seed);
+        let mut topk = TopKObject::new_reserved(2, 256, 4, DEFAULT_DECAY, seed, true);
         assert_eq!(topk.add(b"apple", 5), None);
         assert_eq!(topk.add(b"banana", 10), None);
         assert_eq!(topk.add(b"cherry", 20), Some(b"apple".to_vec()));
@@ -381,7 +398,7 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_add_low_count_does_not_displace_min(seed: u64) {
-        let mut topk = TopKObject::new_reserved(2, 256, 4, DEFAULT_DECAY, seed);
+        let mut topk = TopKObject::new_reserved(2, 256, 4, DEFAULT_DECAY, seed, true);
         topk.add(b"hot", 50);
         topk.add(b"warm", 30);
         // "cold" never beats the current minimum (30), so nothing is evicted.
@@ -390,7 +407,7 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_add_existing_item_accumulates_count(seed: u64) {
-        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
+        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed, true);
         topk.add(b"apple", 4);
         topk.add(b"apple", 6);
         let counts: std::collections::HashMap<Vec<u8>, u64> = topk.list().into_iter().collect();
@@ -399,7 +416,7 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_list_sorted_by_descending_count(seed: u64) {
-        let mut topk = TopKObject::new_reserved(5, 256, 4, DEFAULT_DECAY, seed);
+        let mut topk = TopKObject::new_reserved(5, 256, 4, DEFAULT_DECAY, seed, true);
         topk.add(b"apple", 10);
         topk.add(b"banana", 5);
         topk.add(b"cherry", 2);
@@ -417,7 +434,7 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_list_never_exceeds_k(seed: u64) {
-        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
+        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed, true);
         for (item, incr) in [
             (b"a".as_slice(), 10),
             (b"b".as_slice(), 9),
@@ -437,7 +454,7 @@ mod tests {
         case::mixed(b"item-1", b"item-2")
     )]
     fn test_add_and_list_with_non_alpha_items(item_a: &[u8], item_b: &[u8]) {
-        let mut topk = TopKObject::new_reserved(2, 256, 4, DEFAULT_DECAY, 42);
+        let mut topk = TopKObject::new_reserved(2, 256, 4, DEFAULT_DECAY, 42, true);
         topk.add(item_a, 10);
         topk.add(item_b, 5);
 
@@ -448,7 +465,7 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_count_reflects_added_increments(seed: u64) {
-        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
+        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed, true);
         // Untracked items report a count of zero before anything is added.
         assert_eq!(topk.count(b"apple"), 0);
         topk.add(b"apple", 10);
@@ -461,7 +478,7 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_count_accumulates_repeated_adds(seed: u64) {
-        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
+        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed, true);
         topk.add(b"apple", 4);
         topk.add(b"apple", 6);
         assert_eq!(topk.count(b"apple"), 10);
@@ -469,7 +486,7 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_count_never_exceeds_true_count(seed: u64) {
-        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
+        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed, true);
         for item in [b"a".as_slice(), b"b".as_slice(), b"c".as_slice()] {
             for _ in 0..20 {
                 topk.add(item, 1);
@@ -481,7 +498,7 @@ mod tests {
     #[test]
     fn test_count_matches_list_withcount() {
         // The count reported by count() agrees with the count surfaced by list().
-        let mut topk = TopKObject::new_reserved(5, 256, 4, DEFAULT_DECAY, 42);
+        let mut topk = TopKObject::new_reserved(5, 256, 4, DEFAULT_DECAY, 42, true);
         topk.add(b"apple", 10);
         topk.add(b"banana", 5);
         let counts: std::collections::HashMap<Vec<u8>, u64> = topk.list().into_iter().collect();
@@ -491,7 +508,7 @@ mod tests {
 
     #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
     fn test_query_tracked_item_is_true(seed: u64) {
-        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed);
+        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, seed, true);
         topk.add(b"apple", 10);
         topk.add(b"banana", 5);
         assert!(topk.query(b"apple"));
@@ -503,7 +520,7 @@ mod tests {
     fn test_query_evicted_item_is_false(seed: u64) {
         // An item displaced from the top-k by hotter items is no longer a
         // member, even though it may still have a residual sketch count.
-        let mut topk = TopKObject::new_reserved(2, 256, 4, DEFAULT_DECAY, seed);
+        let mut topk = TopKObject::new_reserved(2, 256, 4, DEFAULT_DECAY, seed, true);
         topk.add(b"apple", 5);
         topk.add(b"banana", 10);
         topk.add(b"cherry", 20);
@@ -515,7 +532,7 @@ mod tests {
     #[test]
     fn test_query_agrees_with_list() {
         // query() membership matches what list() reports.
-        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, 42);
+        let mut topk = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, 42, true);
         topk.add(b"apple", 10);
         topk.add(b"banana", 5);
         let listed: std::collections::HashSet<Vec<u8>> =
@@ -532,8 +549,8 @@ mod tests {
     fn test_seed() {
         // Two sketches built with the same seed are deterministic: identical
         // input produces identical Top-K output.
-        let mut a = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, 42);
-        let mut b = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, 42);
+        let mut a = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, 42, true);
+        let mut b = TopKObject::new_reserved(3, 256, 4, DEFAULT_DECAY, 42, true);
         for (item, incr) in [
             (b"apple".as_slice(), 7),
             (b"banana".as_slice(), 11),
@@ -546,9 +563,12 @@ mod tests {
         assert_eq!(a.list(), b.list());
     }
 
-    #[rstest(seed, case::seed_a(1), case::seed_b(42), case::seed_c(123456789))]
-    fn test_topk_encode_and_decode(seed: u64) {
-        let mut topk = TopKObject::new_reserved(5, 50, 4, 0.9, seed);
+    #[rstest]
+    fn test_topk_encode_and_decode(
+        #[values(1, 42, 123456789)] seed: u64,
+        #[values(true, false)] linear: bool,
+    ) {
+        let mut topk = TopKObject::new_reserved(5, 50, 4, 0.9, seed, linear);
         for (item, incr) in [
             (b"apple".as_slice(), 10),
             (b"banana".as_slice(), 7),
@@ -569,6 +589,9 @@ mod tests {
         assert_eq!(decoded.decay(), topk.decay());
         assert_eq!(decoded.seed(), topk.seed());
         assert_eq!(decoded.num_items(), topk.num_items());
+        // The lookup strategy must survive serialization.
+        assert_eq!(decoded.linear(), topk.linear());
+        assert_eq!(decoded.linear(), linear);
         assert_eq!(decoded.list(), topk.list());
         // The sketch bytes must match exactly so DEBUG DIGEST-VALUE agrees.
         assert_eq!(decoded.sketch().to_bytes(), topk.sketch().to_bytes());
@@ -577,7 +600,7 @@ mod tests {
     #[test]
     fn test_topk_encode_and_decode_empty_object() {
         // A freshly reserved object with no items round-trips too.
-        let topk = TopKObject::new_reserved(3, 16, 4, 0.9, 42);
+        let topk = TopKObject::new_reserved(3, 16, 4, 0.9, 42, true);
         let blob = topk.encode_object();
         let decoded = TopKObject::decode_object(&blob, false).expect("round trip should succeed");
         assert_eq!(decoded.num_items(), 0);
@@ -600,7 +623,7 @@ mod tests {
     #[test]
     fn test_topk_decode_when_unsupported_version_should_fail() {
         // A valid blob with a bumped version byte is rejected.
-        let topk = TopKObject::new_reserved(3, 16, 4, 0.9, 42);
+        let topk = TopKObject::new_reserved(3, 16, 4, 0.9, 42, true);
         let mut blob = topk.encode_object();
         blob[0] = TOPK_OBJECT_VERSION.wrapping_add(1);
         assert_eq!(
@@ -613,7 +636,7 @@ mod tests {
     fn test_topk_decode_when_wrong_seed_should_fail() {
         // The sketch header carries a hasher probe keyed by the seed, so decoding
         // with a seed that does not match the one baked into the blob fails.
-        let topk = TopKObject::new_reserved(3, 16, 4, 0.9, 42);
+        let topk = TopKObject::new_reserved(3, 16, 4, 0.9, 42, true);
         let mut blob = topk.encode_object();
         blob[1..9].copy_from_slice(&99u64.to_le_bytes());
         assert_eq!(
@@ -625,7 +648,7 @@ mod tests {
     #[test]
     fn test_topk_decode_when_size_exceeds_limit_should_fail() {
         // A normally-sized object passes the pre-allocation size check.
-        let topk = TopKObject::new_reserved(5, 50, 4, 0.9, 42);
+        let topk = TopKObject::new_reserved(5, 50, 4, 0.9, 42, true);
         assert!(TopKObject::decode_object(&topk.encode_object(), true).is_ok());
 
         // Tampered top_items (k) at sketch offset 38..46 (blob 55..63): rejected

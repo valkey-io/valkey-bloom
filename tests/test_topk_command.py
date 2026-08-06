@@ -38,6 +38,8 @@ class TestTopkCommand(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
             ('TOPK.RESERVE k1 5 50 4 1.5', '(0 < decay < 1)'),
             # SEED token in the trailing position must literally match.
             ('TOPK.RESERVE k1 5 50 4 0.9 NOTSEED 42', 'ERROR'),
+            # HASHMAP may appear at most once.
+            ('TOPK.RESERVE k1 5 HASHMAP HASHMAP', 'ERROR'),
             # seed value must parse as u64.
             ('TOPK.RESERVE k1 5 SEED abc', 'invalid seed'),
             ('TOPK.RESERVE k1 5 SEED -1', 'invalid seed'),
@@ -45,12 +47,16 @@ class TestTopkCommand(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
             # valid arity (5) but token at position 3 is not SEED.
             ('TOPK.RESERVE key 5 50 4', 'ERROR'),
             ('TOPK.RESERVE key 5 NOTSEED 42', 'ERROR'),
-            # wrong number of arguments (valid arities are 3, 5, 6, 8).
+            # wrong number of arguments (arity must be 3..=9).
             ('TOPK.RESERVE', "wrong number of arguments for 'TOPK.RESERVE' command"),
             ('TOPK.RESERVE key', "wrong number of arguments for 'TOPK.RESERVE' command"),
-            ('TOPK.RESERVE key 5 50', "wrong number of arguments for 'TOPK.RESERVE' command"),
+            # argc 4 is a valid length, so an incomplete triple is a content error.
+            ('TOPK.RESERVE key 5 50', 'ERROR'),
             ('TOPK.RESERVE key 5 50 4 0.9 SEED', "wrong number of arguments for 'TOPK.RESERVE' command"),
-            ('TOPK.RESERVE key 5 50 4 0.9 SEED 42 extra', "wrong number of arguments for 'TOPK.RESERVE' command"),
+            # a 10th token exceeds the arity ceiling.
+            ('TOPK.RESERVE key 5 50 4 0.9 SEED 42 HASHMAP extra', "wrong number of arguments for 'TOPK.RESERVE' command"),
+            # within arity but a stray non-keyword token after the triple is rejected.
+            ('TOPK.RESERVE key 5 50 4 0.9 SEED 42 extra', 'ERROR'),
             # SEED both before and after the sketch params is ambiguous.
             ('TOPK.RESERVE key 5 SEED 1 SEED 2', "wrong number of arguments for 'TOPK.RESERVE' command"),
             # key must already be reserved; TOPK.ADD does not auto-create.
@@ -127,6 +133,9 @@ class TestTopkCommand(SkipSeedParameterizationMixin, ValkeyBloomTestCaseBase):
             'TOPK.RESERVE tk5 10 200 5 0.5 SEED 42', # arity 8: tuning + trailing seed
             'TOPK.RESERVE tk6 10 SEED 42 200 5 0.5', # arity 8: leading seed
             'TOPK.RESERVE tk7 10 seed 42 200 5 0.5', # leading seed, lower-case
+            'TOPK.RESERVE tk8 5 HASHMAP',            # opt into hash-table lookup
+            'TOPK.RESERVE tk9 5 50 4 0.9 SEED 42 HASHMAP', # full tuning + hashmap
+            'TOPK.RESERVE tk10 5 hashmap',           # case-insensitive HASHMAP token
         ]
         for cmd in reserve_success_cases:
             assert self.client.execute_command(cmd) == b'OK'
