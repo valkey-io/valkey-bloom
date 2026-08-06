@@ -11,6 +11,7 @@ use crate::bloom::command_handler;
 use crate::bloom::data_type::BLOOM_TYPE;
 use crate::bloom::utils::valid_server_version;
 use valkey_module::ModuleOptions;
+use valkey_module_macros::command as valkey_command;
 use valkey_module_macros::info_command_handler;
 
 pub const MODULE_NAME: &str = "bf";
@@ -20,6 +21,26 @@ pub const MODULE_VERSION: i32 = 999999;
 // During release process the status will be set to rc1,rc2...rcN.
 // When the version is released the status will be "ga".
 pub const MODULE_RELEASE_STAGE: &str = "dev";
+
+fn set_command_acl_categories(ctx: &Context) {
+    use std::ffi::CString;
+    let commands_acl: &[(&str, &str)] = &[
+        ("BF.ADD", "fast write bloom"),
+        ("BF.MADD", "fast write bloom"),
+        ("BF.EXISTS", "fast read bloom"),
+        ("BF.MEXISTS", "fast read bloom"),
+        ("BF.CARD", "fast read bloom"),
+        ("BF.RESERVE", "fast write bloom"),
+        ("BF.INFO", "fast read bloom"),
+        ("BF.INSERT", "fast write bloom"),
+        ("BF.LOAD", "write bloom"),
+    ];
+    for (cmd_name, acl_cats) in commands_acl {
+        let cmd_cstring = CString::new(*cmd_name).expect("valid CString");
+        let acl_cstring = CString::new(*acl_cats).expect("valid CString");
+        ctx.set_acl_category(cmd_cstring.as_ptr(), acl_cstring.as_ptr());
+    }
+}
 
 fn initialize(ctx: &Context, _args: &[ValkeyString]) -> Status {
     ctx.set_module_options(ModuleOptions::HANDLE_IO_ERRORS);
@@ -36,6 +57,7 @@ fn initialize(ctx: &Context, _args: &[ValkeyString]) -> Status {
         );
         Status::Err
     } else {
+        set_command_acl_categories(ctx);
         Status::Ok
     }
 }
@@ -45,48 +67,165 @@ fn deinitialize(_ctx: &Context) -> Status {
 }
 
 /// Command handler for BF.EXISTS <key> <item>
+#[valkey_command({
+    name: "BF.EXISTS",
+    summary: "Determines if the bloom filter contains the specified item",
+    complexity: "O(N), where N is the number of hash functions used by the bloom filter.",
+    since: "1.0.0",
+    flags: [ReadOnly, Fast],
+    arity: 3,
+    key_spec: [{
+        begin_search: Index({ index: 1 }),
+        find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadOnly, Access],
+    }],
+})]
 fn bloom_exists_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     command_handler::bloom_filter_exists(ctx, &args, false)
 }
 
 /// Command handler for BF.MEXISTS <key> <item> [<item> ...]
+#[valkey_command({
+    name: "BF.MEXISTS",
+    summary: "Determines if the bloom filter contains one or more items",
+    complexity: "O(K * N), where N is the number of hash functions used by the bloom filter and K is the number of items",
+    since: "1.0.0",
+    flags: [ReadOnly, Fast],
+    arity: -3,
+    key_spec: [{
+        begin_search: Index({ index: 1 }),
+        find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadOnly, Access],
+    }],
+})]
 fn bloom_mexists_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     command_handler::bloom_filter_exists(ctx, &args, true)
 }
 
 /// Command handler for BF.ADD <key> <item>
+#[valkey_command({
+    name: "BF.ADD",
+    summary: "Add a single item to a bloom filter; creates the filter if it does not exist",
+    complexity: "O(N), where N is the number of hash functions used by the bloom filter.",
+    since: "1.0.0",
+    flags: [Write, DenyOOM, Fast],
+    arity: 3,
+    key_spec: [{
+        begin_search: Index({ index: 1 }),
+        find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadWrite, Insert],
+    }],
+})]
 fn bloom_add_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     command_handler::bloom_filter_add_value(ctx, &args, false)
 }
 
 /// Command handler for BF.MADD <key> <item> [<item> ...]
+#[valkey_command({
+    name: "BF.MADD",
+    summary: "Add one or more items to a bloom filter; creates the filter if it does not exist",
+    complexity: "O(N * K), where N is the number of hash functions used by the bloom filter and K is the number of items being added",
+    since: "1.0.0",
+    flags: [Write, DenyOOM, Fast],
+    arity: -3,
+    key_spec: [{
+        begin_search: Index({ index: 1 }),
+        find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadWrite, Insert],
+    }],
+})]
 fn bloom_madd_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     command_handler::bloom_filter_add_value(ctx, &args, true)
 }
 
 /// Command handler for BF.CARD <key>
+#[valkey_command({
+    name: "BF.CARD",
+    summary: "Returns the cardinality of a bloom filter",
+    complexity: "O(1)",
+    since: "1.0.0",
+    flags: [ReadOnly, Fast],
+    arity: 2,
+    key_spec: [{
+        begin_search: Index({ index: 1 }),
+        find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadOnly, Access],
+    }],
+})]
 fn bloom_card_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     command_handler::bloom_filter_card(ctx, &args)
 }
 
 /// Command handler for BF.RESERVE <key> <false_positive_rate> <capacity> [EXPANSION <expansion>] | [NONSCALING]
+#[valkey_command({
+    name: "BF.RESERVE",
+    summary: "Creates an empty bloom filter with the specified properties",
+    complexity: "O(1)",
+    since: "1.0.0",
+    flags: [Write, DenyOOM, Fast],
+    arity: -4,
+    key_spec: [{
+        begin_search: Index({ index: 1 }),
+        find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadWrite, Insert],
+    }],
+})]
 fn bloom_reserve_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     command_handler::bloom_filter_reserve(ctx, &args)
 }
 
 /// Command handler for BF.INFO <key> [CAPACITY | SIZE | FILTERS | ITEMS | EXPANSION | ERROR | MAXSCALEDCAPACITY]
+#[valkey_command({
+    name: "BF.INFO",
+    summary: "Returns usage information and properties of a specific bloom filter",
+    complexity: "O(1)",
+    since: "1.0.0",
+    flags: [ReadOnly, Fast],
+    arity: -2,
+    key_spec: [{
+        begin_search: Index({ index: 1 }),
+        find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadOnly, Access],
+    }],
+})]
 fn bloom_info_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     command_handler::bloom_filter_info(ctx, &args)
 }
 
 /// Command handler for:
 /// BF.INSERT <key> [ERROR <fp_error>] [CAPACITY <capacity>] [EXPANSION <expansion>] [NOCREATE] [NONSCALING] [VALIDATESCALETO <validatescaleto>] ITEMS <item> [<item> ...]
+#[valkey_command({
+    name: "BF.INSERT",
+    summary: "Creates a bloom filter with 0 or more items or adds items to an existing bloom filter",
+    complexity: "O(N * K), where N is the number of hash functions used by the bloom filter and K is the number of items being added",
+    since: "1.0.0",
+    flags: [Write, DenyOOM, Fast],
+    arity: -2,
+    key_spec: [{
+        begin_search: Index({ index: 1 }),
+        find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadWrite, Insert],
+    }],
+})]
 fn bloom_insert_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     command_handler::bloom_filter_insert(ctx, &args)
 }
 
 /// Command handler for:
 /// BF.LOAD <key> data
+#[valkey_command({
+    name: "BF.LOAD",
+    summary: "Restores a bloom filter from a dump payload in a single operation",
+    complexity: "O(N), where N is the capacity",
+    since: "1.0.0",
+    flags: [Write, DenyOOM],
+    arity: 3,
+    key_spec: [{
+        begin_search: Index({ index: 1 }),
+        find_keys: Range({ last_key: 1, steps: 1, limit: 0 }),
+        flags: [ReadWrite, Insert],
+    }],
+})]
 fn bloom_load_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     command_handler::bloom_filter_load(ctx, &args)
 }
@@ -113,17 +252,7 @@ valkey_module! {
     acl_categories: [
         "bloom",
     ]
-    commands: [
-        ["BF.ADD", bloom_add_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
-        ["BF.MADD", bloom_madd_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
-        ["BF.EXISTS", bloom_exists_command, "readonly fast", 1, 1, 1, "fast read bloom"],
-        ["BF.MEXISTS", bloom_mexists_command, "readonly fast", 1, 1, 1, "fast read bloom"],
-        ["BF.CARD", bloom_card_command, "readonly fast", 1, 1, 1, "fast read bloom"],
-        ["BF.RESERVE", bloom_reserve_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
-        ["BF.INFO", bloom_info_command, "readonly fast", 1, 1, 1, "fast read bloom"],
-        ["BF.INSERT", bloom_insert_command, "write fast deny-oom", 1, 1, 1, "fast write bloom"],
-        ["BF.LOAD", bloom_load_command, "write deny-oom", 1, 1, 1, "write bloom"]
-    ],
+    commands: [],
     configurations: [
         i64: [
             ["bloom-capacity", &*configs::BLOOM_CAPACITY, configs::BLOOM_CAPACITY_DEFAULT, configs::BLOOM_CAPACITY_MIN, configs::BLOOM_CAPACITY_MAX, ConfigurationFlags::DEFAULT, None],

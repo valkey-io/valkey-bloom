@@ -9,14 +9,24 @@ class TestBloomCommand(ValkeyBloomTestCaseBase):
         assert actual_arity == expected_arity, f"Arity mismatch for command '{command}'"
 
     def test_bloom_command_arity(self):
-        self.verify_command_arity('BF.EXISTS', -1)
-        self.verify_command_arity('BF.ADD', -1)
-        self.verify_command_arity('BF.MEXISTS', -1)
-        self.verify_command_arity('BF.MADD', -1)
-        self.verify_command_arity('BF.CARD', -1)
-        self.verify_command_arity('BF.RESERVE', -1)
-        self.verify_command_arity('BF.INFO', -1)
-        self.verify_command_arity('BF.INSERT', -1)
+        self.verify_command_arity('BF.EXISTS', 3)
+        self.verify_command_arity('BF.ADD', 3)
+        self.verify_command_arity('BF.MEXISTS', -3)
+        self.verify_command_arity('BF.MADD', -3)
+        self.verify_command_arity('BF.CARD', 2)
+        self.verify_command_arity('BF.RESERVE', -4)
+        self.verify_command_arity('BF.INFO', -2)
+        self.verify_command_arity('BF.INSERT', -2)
+
+    def test_bloom_command_keyspecs_present(self):
+        commands_with_keys = ['BF.ADD', 'BF.EXISTS', 'BF.INSERT', 'BF.RESERVE']
+        for command in commands_with_keys:
+            command_info = self.client.execute_command('COMMAND', 'INFO', command)
+            spec = command_info.get(command)
+            assert spec is not None, f"No command info returned for {command}"
+            key_specs = spec.get('key_specifications')
+            assert key_specs, f"Key specs missing for {command}"
+            assert len(key_specs) >= 1, f"Expected at least one key spec for {command}"
 
     def test_bloom_command_error(self):
         # test set up

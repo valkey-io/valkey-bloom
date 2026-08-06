@@ -178,8 +178,9 @@ class TestBloomReplication(ReplicationTestCase):
             except ResponseError as e:
                 pass
             primary_cmd_stats = self.client.info("Commandstats")['cmdstat_' + prefix]
-            assert primary_cmd_stats["calls"] == 1
-            assert primary_cmd_stats["failed_calls"] == 1
+            was_rejected = primary_cmd_stats.get("rejected_calls", 0) == 1
+            was_failed = primary_cmd_stats.get("calls", 0) == 1 and primary_cmd_stats.get("failed_calls", 0) == 1
+            assert was_rejected or was_failed
             assert ('cmdstat_' + prefix) not in self.replicas[0].client.info("Commandstats")
 
     def _find_new_items(self, key, count, start_offset=1000):
