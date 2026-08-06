@@ -60,8 +60,8 @@ pub unsafe extern "C" fn topk_free(value: *mut c_void) {
 
 /// # Safety
 /// Approximate memory usage for the MEMORY USAGE command. Reports the wrapper
-/// struct plus the sketch's heap allocations (lobby/heavy cell arrays, decay
-/// table, priority-queue containers, and the buffers of tracked items). See
+/// struct plus the sketch's heap allocations (lobby/heavy cell arrays,
+/// priority-queue containers, and the buffers of tracked items). See
 /// `TopKObject::memory_usage` for what the estimate still omits.
 pub unsafe extern "C" fn topk_mem_usage(value: *const c_void) -> usize {
     let v = &*value.cast::<TopKObject>();

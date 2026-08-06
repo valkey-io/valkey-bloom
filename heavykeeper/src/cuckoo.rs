@@ -848,11 +848,12 @@ impl<F: Fingerprint, C: Counter> CuckooTopK<Vec<u8>, F, C> {
     /// version: u8
     /// hasher_probe: u64  (SERIALIZE_HASHER_PROBE hashed with the sketch's hasher)
     /// width, depth, decay(bits), top_items, max_kicks: u64 each
+    /// linear: u8  (1 = linear-scan lookup, 0 = hash table)
     /// lobbies:  width        x (fingerprint: F, count: C)
     /// heavy:    width*depth  x (fingerprint: F, count: C)
     /// pq_len: u64
     /// pq:       pq_len       x (key_len: u64, key bytes, count: u64)
-    /// rng_state: 32 bytes
+    /// rng_state: 8 bytes
     /// ```
     ///
     /// Cells are written at the storage widths of `F` and `C`, so a stream
