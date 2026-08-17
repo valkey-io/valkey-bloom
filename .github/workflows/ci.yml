@@ -24,13 +24,13 @@ jobs:
     - name: Run cargo and clippy format check
       run: |
         cargo fmt --check
-        cargo clippy --profile release --all-targets
+        cargo clippy --all-targets
     - name: Release Build
       run: |
         if [ "${{ matrix.server_version }}" = "8.0" ]; then
-          cargo build --all --all-targets --release --features valkey_8_0
+          cargo build --release --features valkey_8_0
         else
-          cargo build --all --all-targets --release
+          cargo build --release
         fi
     - name: Run unit tests
       run: cargo test --features enable-system-alloc
@@ -70,9 +70,9 @@ jobs:
     - name: Run cargo and clippy format check
       run: |
         cargo fmt --check
-        cargo clippy --profile release --all-targets
+        cargo clippy --all-targets
     - name: Release Build
-      run: cargo build --all --all-targets --release
+      run: cargo build --release
     - name: Run unit tests
       run: cargo test --features enable-system-alloc
 
@@ -89,13 +89,13 @@ jobs:
     - name: Run cargo and clippy format check
       run: |
         cargo fmt --check
-        cargo clippy --profile release --all-targets
+        cargo clippy --all-targets
     - name: Release Build
       run: |
         if [ "${{ matrix.server_version }}" = "8.0" ]; then
-          cargo build --all --all-targets --release --features valkey_8_0
+          cargo build --release --features valkey_8_0
         else
-          cargo build --all --all-targets --release
+          cargo build --release
         fi
     - name: Run unit tests
       run: cargo test --features enable-system-alloc

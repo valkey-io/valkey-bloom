@@ -143,3 +143,24 @@ valkey_module! {
         module_args_as_configuration: true,
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::minimum_supported(8, 0, 0)]
+    #[case::newer_major(8, 1, 0)]
+    #[case::future_version(9, 0, 0)]
+    fn initialize_accepts_supported_server_versions(
+        #[case] major: u8,
+        #[case] minor: u8,
+        #[case] patch: u8,
+    ) {
+        let mut context = Context::test();
+        context.expect_get_server_version(major, minor, patch);
+
+        assert!(matches!(initialize(&context, &[]), Status::Ok));
+    }
+}
