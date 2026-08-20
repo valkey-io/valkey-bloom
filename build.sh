@@ -19,7 +19,7 @@ fi
 
 echo "Running cargo and clippy format checks..."
 cargo fmt --check
-cargo clippy --profile release --all-targets -- -D clippy::all
+cargo clippy --all-targets -- -D clippy::all
 
 
 echo "Running unit tests..."
@@ -38,9 +38,9 @@ fi
 
 echo "Running cargo build release..."
 if [ "$SERVER_VERSION" == "8.0" ] ; then
-    RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release --features valkey_8_0
+    RUSTFLAGS="-D warnings" cargo build --release --features valkey_8_0
 else
-    RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release
+    RUSTFLAGS="-D warnings" cargo build --release
 fi
 
 
