@@ -40,7 +40,6 @@ impl CMSError {
 pub struct CMSObject {
     width: u64,
     depth: u64,
-    total: u64,
     cms: CMS,
 }
 
@@ -56,12 +55,7 @@ impl CMSObject {
         }
 
         let cms = CMS::new_by_dimensions(width as usize, depth as usize)?;
-        let obj = CMSObject {
-            width,
-            depth,
-            total: 0,
-            cms,
-        };
+        let obj = CMSObject { width, depth, cms };
 
         Ok(obj)
     }
@@ -83,7 +77,6 @@ impl CMSObject {
         let obj = CMSObject {
             width: cms.sketch.width() as u64,
             depth: cms.sketch.depth() as u64,
-            total: 0,
             cms,
         };
 
@@ -99,15 +92,15 @@ impl CMSObject {
     }
 
     pub fn total(&self) -> u64 {
-        self.total
+        self.cms.sketch.total_count()
     }
 
-    pub fn increment_by(&mut self, item: &String, increment: u64) -> u64 {
+    pub fn increment_by(&mut self, item: &[u8], increment: u64) -> u64 {
         self.cms.increment_item(item, increment);
         self.cms.estimate_item(item)
     }
 
-    pub fn estimate(&self, item: &String) -> u64 {
+    pub fn estimate(&self, item: &[u8]) -> u64 {
         self.cms.estimate_item(item)
     }
 }
@@ -129,11 +122,11 @@ impl CMS {
         Ok(CMS { sketch: cms })
     }
 
-    pub fn increment_item(&mut self, item: &String, increment: u64) {
-        self.sketch.add(item.as_bytes(), increment)
+    pub fn increment_item(&mut self, item: &[u8], increment: u64) {
+        self.sketch.add(item, increment)
     }
 
-    pub fn estimate_item(&self, item: &String) -> u64 {
-        self.sketch.estimate(item.as_bytes())
+    pub fn estimate_item(&self, item: &[u8]) -> u64 {
+        self.sketch.estimate(item)
     }
 }

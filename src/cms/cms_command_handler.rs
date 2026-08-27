@@ -179,9 +179,9 @@ pub fn cms_increment_by(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult 
     }
 
     let mut i = 2;
-    let mut pairs: Vec<(&ValkeyString, &ValkeyString)> = Vec::new();
+    let mut pairs: Vec<(&[u8], &ValkeyString)> = Vec::new();
     while i < args_count {
-        let k = &args[i];
+        let k = args[i].as_slice();
         let v = &args[i + 1];
         pairs.push((k, v));
         i += 2
@@ -198,7 +198,7 @@ pub fn cms_increment_by(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult 
         None => Err(ValkeyError::nonexistent_key()),
         Some(v) => {
             for (item, increment) in pairs {
-                let item = &item.to_string_lossy();
+                let item = &item;
                 let parsed_value = &increment.to_string_lossy().parse::<u64>();
                 let value = match parsed_value {
                     Ok(v) => v,
@@ -234,7 +234,7 @@ pub fn cms_query(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
             let estimates: Vec<ValkeyValue> = args[2..]
                 .iter()
                 .map(|item| {
-                    let estimate = v.estimate(&item.to_string_lossy());
+                    let estimate = v.estimate(&item);
                     ValkeyValue::Integer(estimate as i64)
                 })
                 .collect();
