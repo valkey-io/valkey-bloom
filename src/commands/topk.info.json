@@ -1,0 +1,58 @@
+{
+    "TOPK.INFO": {
+        "summary": "Returns usage information and properties of a Top-K sketch. When called with a specific field name, returns only that field's value",
+        "complexity": "O(1)",
+        "group": "topk",
+        "module_since": "TBD",
+        "arity": -2,
+        "acl_categories": [
+            "READ",
+            "FAST",
+            "TOPK"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "field",
+                "type": "oneof",
+                "optional": true,
+                "arguments": [
+                    {
+                        "name": "k",
+                        "type": "pure-token",
+                        "token": "K"
+                    },
+                    {
+                        "name": "width",
+                        "type": "pure-token",
+                        "token": "WIDTH"
+                    },
+                    {
+                        "name": "depth",
+                        "type": "pure-token",
+                        "token": "DEPTH"
+                    },
+                    {
+                        "name": "decay",
+                        "type": "pure-token",
+                        "token": "DECAY"
+                    },
+                    {
+                        "name": "size",
+                        "type": "pure-token",
+                        "token": "SIZE"
+                    },
+                    {
+                        "name": "totalitemsadded",
+                        "type": "pure-token",
+                        "token": "TOTALITEMSADDED"
+                    }
+                ]
+            }
+        ]
+    }
+}

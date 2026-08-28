@@ -1,0 +1,26 @@
+{
+    "TOPK.LIST": {
+        "summary": "Returns the full list of items in a Top-K sketch",
+        "complexity": "O(k) where k is the value of top-k",
+        "group": "topk",
+        "module_since": "TBD",
+        "arity": -2,
+        "acl_categories": [
+            "READ",
+            "TOPK"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "token": "WITHCOUNT",
+                "name": "withcount",
+                "type": "pure-token",
+                "optional": true
+            }
+        ]
+    }
+}

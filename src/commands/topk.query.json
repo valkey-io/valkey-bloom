@@ -1,0 +1,26 @@
+{
+    "TOPK.QUERY": {
+        "summary": "Checks whether one or more items are currently in the Top-K list",
+        "complexity": "O(N) where N is the number of items",
+        "group": "topk",
+        "module_since": "TBD",
+        "arity": -3,
+        "acl_categories": [
+            "READ",
+            "FAST",
+            "TOPK"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "item",
+                "type": "string",
+                "multiple": true
+            }
+        ]
+    }
+}

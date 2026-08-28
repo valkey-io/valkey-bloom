@@ -1,0 +1,50 @@
+{
+    "TOPK.RESERVE": {
+        "summary": "Creates an empty Top-K sketch with the specified properties",
+        "complexity": "O(1)",
+        "group": "topk",
+        "module_since": "TBD",
+        "arity": -3,
+        "acl_categories": [
+            "FAST",
+            "WRITE",
+            "TOPK"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "topk",
+                "type": "integer"
+            },
+            {
+                "name": "params",
+                "type": "block",
+                "optional": true,
+                "arguments": [
+                    {
+                        "name": "width",
+                        "type": "integer"
+                    },
+                    {
+                        "name": "depth",
+                        "type": "integer"
+                    },
+                    {
+                        "name": "decay",
+                        "type": "float"
+                    }
+                ]
+            },
+            {
+                "token": "SEED",
+                "name": "seed",
+                "type": "integer",
+                "optional": true
+            }
+        ]
+    }
+}
