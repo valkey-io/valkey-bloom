@@ -29,18 +29,27 @@ class TestCMSCommand(ValkeyBloomTestCaseBase):
             ('CMS.INITBYPROB newsketch 0.01 0', 'probability rate should be between 0 and 1'),
             ('CMS.INITBYPROB newsketch 0.01 1', 'probability rate should be between 0 and 1'),
 
+            ('CMS.INCRBY sketch item abc', 'bad increment'),
+            ('CMS.INCRBY sketch item -1', 'bad increment'),
 
             # wrong number of arguments
-            ('CMS.INITBYDIM', 'wrong number of arguments for \'CMS.INITBYDIM\' command'),
-            ('CMS.INITBYDIM key', 'wrong number of arguments for \'CMS.INITBYDIM\' command'),
-            ('CMS.INITBYDIM key 1000', 'wrong number of arguments for \'CMS.INITBYDIM\' command'),
-            ('CMS.INITBYDIM key 1000 5 extra', 'wrong number of arguments for \'CMS.INITBYDIM\' command'),
+            ('CMS.INITBYDIM', "wrong number of arguments for 'CMS.INITBYDIM' command"),
+            ('CMS.INITBYDIM key', "wrong number of arguments for 'CMS.INITBYDIM' command"),
+            ('CMS.INITBYDIM key 1000', "wrong number of arguments for 'CMS.INITBYDIM' command"),
+            ('CMS.INITBYDIM key 1000 5 extra', "wrong number of arguments for 'CMS.INITBYDIM' command"),
 
-            ('CMS.INITBYPROB', 'wrong number of arguments for \'CMS.INITBYPROB\' command'),
-            ('CMS.INITBYPROB key', 'wrong number of arguments for \'CMS.INITBYPROB\' command'),
-            ('CMS.INITBYPROB key 0.01', 'wrong number of arguments for \'CMS.INITBYPROB\' command'),
-            ('CMS.INITBYPROB key 0.01 0.01 extra', 'wrong number of arguments for \'CMS.INITBYPROB\' command'),
+            ('CMS.INITBYPROB', "wrong number of arguments for 'CMS.INITBYPROB' command"),
+            ('CMS.INITBYPROB key', "wrong number of arguments for 'CMS.INITBYPROB' command"),
+            ('CMS.INITBYPROB key 0.01', "wrong number of arguments for 'CMS.INITBYPROB' command"),
+            ('CMS.INITBYPROB key 0.01 0.01 extra', "wrong number of arguments for 'CMS.INITBYPROB' command"),
 
+            ('CMS.INCRBY', "wrong number of arguments for 'CMS.INCRBY' command"),
+            ('CMS.INCRBY key', "wrong number of arguments for 'CMS.INCRBY' command"),
+            ('CMS.INCRBY key item', "wrong number of arguments for 'CMS.INCRBY' command"),
+            ('CMS.INCRBY key item 1 item2', "wrong number of arguments for 'CMS.INCRBY' command"),
+
+            ('CMS.QUERY', "wrong number of arguments for 'CMS.QUERY' command"),
+            ('CMS.QUERY key', "wrong number of arguments for 'CMS.QUERY' command"),
          
         ]
 
