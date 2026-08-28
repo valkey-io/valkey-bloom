@@ -256,11 +256,11 @@ pub fn cms_info(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     match cms {
         Some(cms) => {
             let result = vec![
-                ValkeyValue::SimpleStringStatic("Width"),
+                ValkeyValue::SimpleStringStatic("width"),
                 ValkeyValue::Integer(cms.width as i64),
-                ValkeyValue::SimpleStringStatic("Depth"),
+                ValkeyValue::SimpleStringStatic("depth"),
                 ValkeyValue::Integer(cms.depth as i64),
-                ValkeyValue::SimpleStringStatic("Count"),
+                ValkeyValue::SimpleStringStatic("count"),
                 ValkeyValue::Integer(cms.total() as i64),
             ];
             Ok(ValkeyValue::Array(result))
