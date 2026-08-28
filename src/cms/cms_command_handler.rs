@@ -179,10 +179,12 @@ pub fn cms_increment_by(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult 
     }
 
     let mut i = 2;
-    let mut pairs: Vec<(&[u8], &ValkeyString)> = Vec::new();
+    let mut pairs: Vec<(&[u8], u64)> = Vec::new();
     while i < args_count {
         let k = args[i].as_slice();
-        let v = &args[i + 1];
+        let v = args[i + 1]
+            .parse_unsigned_integer()
+            .map_err(|_| ValkeyError::Str(utils::BAD_INCREMENT))?;
         pairs.push((k, v));
         i += 2
     }
@@ -198,13 +200,7 @@ pub fn cms_increment_by(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult 
         None => Err(ValkeyError::nonexistent_key()),
         Some(v) => {
             for (item, increment) in pairs {
-                let item = &item;
-                let parsed_value = &increment.to_string_lossy().parse::<u64>();
-                let value = match parsed_value {
-                    Ok(v) => v,
-                    Err(_) => return Err(ValkeyError::Str(utils::BAD_INCREMENT)),
-                };
-                let count = v.increment_by(item, value.to_owned());
+                let count = v.increment_by(item, increment);
                 results.push(ValkeyValue::Integer(count as i64));
             }
             replicate_and_notify_events(ctx, key, Operation::Increment);
