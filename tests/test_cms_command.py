@@ -50,6 +50,12 @@ class TestCMSCommand(ValkeyBloomTestCaseBase):
 
             ('CMS.QUERY', "wrong number of arguments for 'CMS.QUERY' command"),
             ('CMS.QUERY key', "wrong number of arguments for 'CMS.QUERY' command"),
+            ('CMS.INFO', "wrong number of arguments for 'CMS.INFO' command"),
+            ('CMS.INFO key WIDTH WIDTH', "wrong number of arguments for 'CMS.INFO' command"),
+            ('CMS.INFO key NOTAPARAM', "invalid information value for 'CMS.INFO' command"),
+
+
+
          
         ]
 

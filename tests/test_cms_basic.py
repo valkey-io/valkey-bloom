@@ -33,7 +33,9 @@ class TestCMSBasic(ValkeyBloomTestCaseBase):
 
         #Check Info piece setup
         assert client.execute_command('CMS.INFO sketch1') == [b'width', 10, b'depth', 5, b'count', 2]
-        
+        assert client.execute_command('CMS.INFO sketch1 WIDTH') == [10]
+        assert client.execute_command('CMS.INFO sketch1 DEPTH') == [5]
+        assert client.execute_command('CMS.INFO sketch1 COUNT') == [2]
 
 
 

@@ -242,7 +242,8 @@ pub fn cms_query(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 //Function that implements logic to handle the CMS.INFO command.
 pub fn cms_info(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     let args_count = args.len();
-    if args_count != 2 {
+
+    if !(2..=3).contains(&args_count) {
         return Err(valkey_module::ValkeyError::WrongArity);
     }
 
@@ -254,7 +255,7 @@ pub fn cms_info(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     };
 
     match cms {
-        Some(cms) => {
+        Some(cms) if args_count == 2 => {
             let result = vec![
                 ValkeyValue::SimpleStringStatic("width"),
                 ValkeyValue::Integer(cms.width as i64),
@@ -265,6 +266,13 @@ pub fn cms_info(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
             ];
             Ok(ValkeyValue::Array(result))
         }
-        None => Err(ValkeyError::Str(utils::NOT_FOUND)),
+
+        Some(cms) if args_count == 3 => match args[2].to_string_lossy().to_uppercase().as_str() {
+            "WIDTH" => Ok(ValkeyValue::Integer(cms.width as i64)),
+            "DEPTH" => Ok(ValkeyValue::Integer(cms.depth as i64)),
+            "COUNT" => Ok(ValkeyValue::Integer(cms.total() as i64)),
+            _ => Err(ValkeyError::Str(utils::INVALID_INFO_VALUE)),
+        },
+        _ => Err(ValkeyError::Str(utils::NOT_FOUND)),
     }
 }
