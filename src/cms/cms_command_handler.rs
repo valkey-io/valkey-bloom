@@ -179,7 +179,7 @@ pub fn cms_increment_by(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult 
     }
 
     let mut i = 2;
-    let mut pairs: Vec<(&[u8], u64)> = Vec::new();
+    let mut pairs: Vec<(&[u8], u64)> = Vec::with_capacity(args_left / 2);
     while i < args_count {
         let k = args[i].as_slice();
         let v = args[i + 1]
@@ -195,7 +195,7 @@ pub fn cms_increment_by(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult 
         Err(_) => return Err(ValkeyError::WrongType),
     };
 
-    let mut results = Vec::new();
+    let mut results = Vec::with_capacity(args_left);
     match value {
         None => Err(ValkeyError::nonexistent_key()),
         Some(v) => {

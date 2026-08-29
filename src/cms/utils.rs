@@ -45,6 +45,7 @@ pub struct CMSObject {
 
 impl CMSObject {
     //TODO: Are there any MAX ranges that we should have for configuration?
+    /// Create a new CMSObject based on the size requirements given.
     pub fn new_by_dimension(width: u64, depth: u64) -> Result<CMSObject, CMSError> {
         if width < 1 {
             return Err(CMSError::InvalidWidth);
@@ -60,8 +61,8 @@ impl CMSObject {
         Ok(obj)
     }
 
-    //Error_tolerance is max variance of the count
-    // probability is the false positive rate
+    /// Create a new CMSObject based on the error tolerance, max variance of the count,
+    /// and probabiilty, probability of false positive rates, the caller is okay with.
     pub fn new_by_probability(
         error_tolerance: f64,
         probability: f64,
@@ -91,15 +92,19 @@ impl CMSObject {
         self.depth
     }
 
+    /// Returns the total number of increments that have been done to the keys in the sketch
     pub fn total(&self) -> u64 {
         self.cms.sketch.total_count()
     }
 
+    /// Increases the count for the item given by the amount of the increment.
+    /// Note that this currently has to call estimate to get the count back for that item.
     pub fn increment_by(&mut self, item: &[u8], increment: u64) -> u64 {
         self.cms.increment_item(item, increment);
         self.cms.estimate_item(item)
     }
 
+    /// Gives back the estimated count, or frequency, for the given item.
     pub fn estimate(&self, item: &[u8]) -> u64 {
         self.cms.estimate_item(item)
     }
