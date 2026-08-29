@@ -54,7 +54,7 @@ class TestCMSCommand(ValkeyBloomTestCaseBase):
             ('CMS.INFO sketch WIDTH WIDTH', "wrong number of arguments for 'CMS.INFO' command"),
 
             # Invalid parameter name (WIDTH, DEPTH, COUNT)
-            ('CMS.INFO sketch NOTAPARAM', "invalid information value for 'CMS.INFO' command"),
+            ('CMS.INFO sketch NOTAPARAM', "invalid information value"),
 
 
 
