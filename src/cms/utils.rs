@@ -12,6 +12,7 @@ pub const BAD_PROBABILITY: &str = "ERR bad probability";
 pub const PROBABILITY_RANGE: &str = "ERR probability rate should be between 0 and 1";
 pub const KEY_EXISTS: &str = "ERR Target key name already exists.";
 pub const BAD_INCREMENT: &str = "ERR bad increment";
+pub const INVALID_INFO_VALUE: &str = "ERR invalid information value";
 
 ///Keyspace Notification Events
 pub const INITBYPROB_EVENT: &str = "countminsketch.initbyprob";
@@ -38,8 +39,8 @@ impl CMSError {
 }
 
 pub struct CMSObject {
-    width: u64,
-    depth: u64,
+    pub width: u64,
+    pub depth: u64,
     cms: CMS,
 }
 
@@ -81,14 +82,6 @@ impl CMSObject {
         };
 
         Ok(obj)
-    }
-
-    pub fn width(&self) -> u64 {
-        self.width
-    }
-
-    pub fn depth(&self) -> u64 {
-        self.depth
     }
 
     pub fn total(&self) -> u64 {
