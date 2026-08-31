@@ -32,6 +32,9 @@ class TestCMSCommand(ValkeyBloomTestCaseBase):
             ('CMS.INCRBY sketch item abc', 'bad increment'),
             ('CMS.INCRBY sketch item -1', 'bad increment'),
 
+            ('CMS.MERGE dest 2 s1 s2 WEIGHTSS 1', 'invalid argument'),
+            ('CMS.MERGE dest 2 s1 s2 WEIGHTS a', 'invalid weight value'),
+
             # wrong number of arguments
             ('CMS.INITBYDIM', "wrong number of arguments for 'CMS.INITBYDIM' command"),
             ('CMS.INITBYDIM key', "wrong number of arguments for 'CMS.INITBYDIM' command"),
@@ -50,6 +53,12 @@ class TestCMSCommand(ValkeyBloomTestCaseBase):
 
             ('CMS.QUERY', "wrong number of arguments for 'CMS.QUERY' command"),
             ('CMS.QUERY key', "wrong number of arguments for 'CMS.QUERY' command"),
+
+            ('CMS.MERGE', "wrong number of arguments for 'CMS.MERGE' command"),
+            ('CMS.MERGE dest', "wrong number of arguments for 'CMS.MERGE' command"),
+            ('CMS.MERGE dest 2', "wrong number of arguments for 'CMS.MERGE' command"),
+            ('CMS.MERGE dest 2 s1', "wrong number of arguments for 'CMS.MERGE' command"),
+            ('CMS.MERGE dest 2 s1 s2 WEIGHTS', "wrong number of arguments for 'CMS.MERGE' command"),
          
         ]
 
