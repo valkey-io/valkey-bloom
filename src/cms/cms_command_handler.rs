@@ -295,16 +295,15 @@ pub fn cms_merge(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 
     let source_key_handles: Vec<ValkeyKey> =
         source_keys.iter().map(|key| ctx.open_key(key)).collect();
-    let sketches_result: Result<Vec<&CMSObject>, ValkeyError> = source_key_handles
+    let sketches = source_key_handles
         .iter()
         .map(|key_handle| {
             key_handle
                 .get_value::<CMSObject>(&CMS_TYPE)
                 .and_then(|opt| opt.ok_or_else(|| ValkeyError::Str("ERR key does not exist")))
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
 
-    let sketches: Vec<&CMSObject> = sketches_result?;
     let destination_sketch = ctx
         .open_key_writable(destination_key)
         .get_value::<CMSObject>(&CMS_TYPE)
