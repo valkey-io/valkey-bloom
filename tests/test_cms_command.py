@@ -77,11 +77,11 @@ class TestCMSCommand(ValkeyBloomTestCaseBase):
             ('CMS.INFO sketch NOTAPARAM', "invalid information value"),
 
 
-            ('CMS.MERGE', 'wrong number of arguments for \'CMS.MERGE\' command'),
-            ('CMS.MERGE dest', 'wrong number of arguments for \'CMS.MERGE\' command'),
-            ('CMS.MERGE dest 2', 'wrong number of arguments for \'CMS.MERGE\' command'),
-            ('CMS.MERGE dest 2 s1', 'wrong number of arguments for \'CMS.MERGE\' command'),
-            ('CMS.MERGE dest 2 s1 s2 WEIGHTS', 'wrong number of arguments for \'CMS.MERGE\' command'),
+            ('CMS.MERGE', "wrong number of arguments for 'CMS.MERGE' command"),
+            ('CMS.MERGE dest', "wrong number of arguments for 'CMS.MERGE' command"),
+            ('CMS.MERGE dest 2', "wrong number of arguments for 'CMS.MERGE' command"),
+            ('CMS.MERGE dest 2 s1', "wrong number of arguments for 'CMS.MERGE' command"),
+            ('CMS.MERGE dest 2 s1 s2 WEIGHTS', "wrong number of arguments for 'CMS.MERGE' command"),
          
         ]
 
