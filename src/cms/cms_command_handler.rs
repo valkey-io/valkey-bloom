@@ -256,7 +256,10 @@ pub fn cms_merge(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     //This must already be initialized.
     let destination_key = &args[1];
 
-    let number_of_keys_value = args[2].to_string_lossy().parse::<usize>()?;
+    let number_of_keys_value = args[2]
+        .to_string_lossy()
+        .parse::<usize>()
+        .map_err(|_| ValkeyError::Str("ERR invalid number of keys value"))?;
 
     //Indexes 3 -> 3 + N-1 are keys to merge
     let sketch_end_index = 3 + number_of_keys_value - 1;
@@ -285,8 +288,7 @@ pub fn cms_merge(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
         let weights: Vec<f64> = weights_args
             .map(|weight| {
                 weight
-                    .to_string_lossy()
-                    .parse::<f64>()
+                    .parse_float()
                     .map_err(|_| ValkeyError::Str("ERR invalid weight value"))
             })
             .collect::<Result<Vec<_>, _>>()?;
