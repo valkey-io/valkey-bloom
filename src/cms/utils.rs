@@ -108,6 +108,8 @@ impl CMSObject {
         self.cms.estimate_item(item)
     }
 
+    /// Merges the current CMS structure with a list of others as well as their weights.  Weights are applied to the paired structure via multiplication first.
+    /// The values in each index of each of the K arrays internally then are added together into a single CMS structure.  
     pub fn merge(&mut self, sketches_and_weights: &[(&CMSObject, f64)]) -> Result<(), CMSError> {
         //Pre-check this so dest is the same size as the others.
         if sketches_and_weights
