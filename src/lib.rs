@@ -114,6 +114,11 @@ fn cms_query_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     cms_command_handler::cms_query(ctx, args)
 }
 
+/// Command handler for CMS.MERGE <destination> <numkeys> <source> [<source> ...] [WEIGHTS <weight> [<weight> ...]]
+fn cms_merge_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    cms_command_handler::cms_merge(ctx, args)
+}
+
 ///
 /// Module Info
 ///
@@ -152,6 +157,7 @@ valkey_module! {
         ["CMS.INITBYPROB", cms_initbyprob_command, "write fast deny-oom", 1, 1, 1, "fast write cms"],
         ["CMS.INCRBY", cms_incrby_command, "write fast deny-oom", 1, 1, 1, "write cms"],
         ["CMS.QUERY", cms_query_command, "readonly fast", 1, 1, 1, "read cms"],
+        ["CMS.MERGE", cms_merge_command, "write deny-oom", 1, 1, 1, "write cms"],
     ],
     configurations: [
         i64: [

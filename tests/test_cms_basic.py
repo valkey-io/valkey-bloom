@@ -32,7 +32,6 @@ class TestCMSBasic(ValkeyBloomTestCaseBase):
         assert client.execute_command('CMS.QUERY sketch1 item1')[0] >= 1
 
 
-
     def test_basic_prob(self):
         client = self.server.get_new_client()
         module_loaded = False
@@ -54,6 +53,27 @@ class TestCMSBasic(ValkeyBloomTestCaseBase):
         #CMS guarantees that we have the frequency at LEAST the size of the increment for the item
         assert client.execute_command('CMS.QUERY sketch1 item1')[0] >= 1
 
+        
+    def test_merge(self):
+        client = self.server.get_new_client()
+        module_loaded = False
+        module_list_data = client.execute_command('MODULE LIST')      
+        for module in module_list_data:
+            if (module[b'name'] == b'bf'):
+                module_loaded = True
+                break
+        assert(module_loaded)
+        #Create the destination and sketches to be merged into the destination key
+        assert client.execute_command('CMS.INITBYDIM dest 10 5') == b'OK'
+        assert client.execute_command('CMS.INITBYDIM s1 10 5') == b'OK'
+        assert client.execute_command('CMS.INITBYDIM s2 10 5') == b'OK'
+        assert client.execute_command('CMS.INCRBY s1 a 1 b 2') == [1, 2]
+        assert client.execute_command('CMS.INCRBY s2 a 1 b 3') == [1, 3]
+        assert client.execute_command('CMS.MERGE dest 2 s1 s2') == b'OK'
+        assert client.execute_command('CMS.QUERY dest a') == [2]
+        assert client.execute_command('CMS.QUERY dest b') == [5]
+
+        
     def test_module_data_type(self):
         # Validate the name of the Module data type.
         client = self.server.get_new_client()
