@@ -114,6 +114,11 @@ fn cms_query_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     cms_command_handler::cms_query(ctx, args)
 }
 
+/// Command handler for CMS.INFO <key>
+fn cms_info_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    cms_command_handler::cms_info(ctx, args)
+}
+
 ///
 /// Module Info
 ///
@@ -152,6 +157,7 @@ valkey_module! {
         ["CMS.INITBYPROB", cms_initbyprob_command, "write fast deny-oom", 1, 1, 1, "fast write cms"],
         ["CMS.INCRBY", cms_incrby_command, "write fast deny-oom", 1, 1, 1, "write cms"],
         ["CMS.QUERY", cms_query_command, "readonly fast", 1, 1, 1, "read cms"],
+        ["CMS.INFO", cms_info_command, "readonly fast", 1, 1, 1, "fast read cms"],
     ],
     configurations: [
         i64: [
