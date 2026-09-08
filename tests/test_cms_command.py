@@ -67,7 +67,14 @@ class TestCMSCommand(ValkeyBloomTestCaseBase):
             ('CMS.MERGE dest 2', "wrong number of arguments for 'CMS.MERGE' command"),
             ('CMS.MERGE dest 2 s1', "wrong number of arguments for 'CMS.MERGE' command"),
             ('CMS.MERGE dest 2 s1 s2 WEIGHTS', "wrong number of arguments for 'CMS.MERGE' command"),
-         
+            ('CMS.INFO', "wrong number of arguments for 'CMS.INFO' command"),
+            ('CMS.INFO sketch WIDTH WIDTH', "wrong number of arguments for 'CMS.INFO' command"),
+
+            # Invalid parameter name (WIDTH, DEPTH, COUNT)
+            ('CMS.INFO sketch NOTAPARAM', "invalid information value"),
+
+
+
         ]
 
         for test_case in basic_error_test_cases:
