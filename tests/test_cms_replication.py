@@ -108,12 +108,19 @@ class TestCMSReplication(ReplicationTestCase):
             assert primary_cmd_stats["calls"] == expected_primary_calls
             assert ('cmdstat_' + prefix) not in self.replicas[0].client.info("Commandstats")
 
-        # Write commands with errors are not replicated.
-        invalid_bloom_write_cmds = [
+        # Reset the stats for the invalid write commands testing below
+        self.client.execute_command('FLUSHALL')
+        self.waitForReplicaToSyncUp(self.replicas[0])
+        self.client.execute_command('CONFIG RESETSTAT')
+        self.replicas[0].client.execute_command('CONFIG RESETSTAT')
+
+
+        # Write commands with errors are not replicated. (prefix, command)
+        invalid_write_cmds = [
             ('CMS.INITBYDIM', 'CMS.INITBYDIM key 10 5 5'),
-            ('CMS.INITBYPROB', 'CMS.INITBYPROB 0 0.1'),
+            ('CMS.INITBYPROB', 'CMS.INITBYPROB key 0 0.1'),
         ]
-        for test_case in invalid_bloom_write_cmds:
+        for test_case in invalid_write_cmds:
             prefix = test_case[0]
             cmd = test_case[1]
             try:
@@ -125,4 +132,5 @@ class TestCMSReplication(ReplicationTestCase):
             assert primary_cmd_stats["calls"] == 1
             assert primary_cmd_stats["failed_calls"] == 1
             assert ('cmdstat_' + prefix) not in self.replicas[0].client.info("Commandstats")
+
 
