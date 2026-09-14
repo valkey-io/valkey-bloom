@@ -68,7 +68,7 @@ class TestCMSReplication(ReplicationTestCase):
             assert self.client.execute_command('EXISTS key') == 1
             self.waitForReplicaToSyncUp(self.replicas[0])
             assert self.replicas[0].client.execute_command('EXISTS key') == 1
-            self.validate_cmd_stats(prefix, 'CMS.INITBYDIM', 1, 1)
+            self.validate_cmd_stats(prefix, prefix, 1, 1)
 
             # New item added to an existing bloom is replicated.
             item_add_cmd = test_case[2]
