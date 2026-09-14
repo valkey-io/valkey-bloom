@@ -74,9 +74,9 @@ class TestCMSReplication(ReplicationTestCase):
             item_add_cmd = test_case[2]
             expected_calls = test_case[3]
             self.client.execute_command(item_add_cmd)
-            assert self.client.execute_command('CMS.QUERY key item1') == 1
+            assert self.client.execute_command('CMS.QUERY key item1') == [1]
             self.waitForReplicaToSyncUp(self.replicas[0])
-            assert self.replicas[0].client.execute_command('CMS.QUERY key item1') == 1
+            assert self.replicas[0].client.execute_command('CMS.QUERY key item1') == [1]
 
             # cmd debug digest
             # TO BE IMPLEMENTED ONCE DIGEST IS IMPLEMENTED
