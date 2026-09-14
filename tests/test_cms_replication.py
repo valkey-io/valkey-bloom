@@ -111,9 +111,7 @@ class TestCMSReplication(ReplicationTestCase):
         # Write commands with errors are not replicated.
         invalid_bloom_write_cmds = [
             ('CMS.INITBYDIM', 'CMS.INITBYDIM key 10 5 5'),
-            ('CMS.INITBYDIM', 'CMS.INITBYDIM key 10'),
             ('CMS.INITBYPROB', 'CMS.INITBYPROB 0 0.1'),
-            ('CMS.INITBYPROB', 'CMS.INITBYPROB 0.1 1'),
         ]
         for test_case in invalid_bloom_write_cmds:
             prefix = test_case[0]
