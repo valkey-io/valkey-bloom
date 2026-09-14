@@ -119,6 +119,7 @@ class TestCMSReplication(ReplicationTestCase):
         invalid_write_cmds = [
             ('CMS.INITBYDIM', 'CMS.INITBYDIM key 10 5 5'),
             ('CMS.INITBYPROB', 'CMS.INITBYPROB key 0 0.1'),
+            ('CMS.INCRBY', 'CMS.INCRBY key item1 1 1'),
         ]
         for test_case in invalid_write_cmds:
             prefix = test_case[0]
