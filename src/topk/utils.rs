@@ -1,9 +1,14 @@
 use crate::configs;
 use crate::metrics;
 use crate::topk::data_type::TOPK_OBJECT_VERSION;
-use heavykeeper::CuckooTopK;
+use heavykeeper::{CuckooTopK, SmallKey};
 use std::sync::atomic::Ordering;
-type Sketch = CuckooTopK<Vec<u8>, u32, u32>;
+
+/// Cell storage widths for the TopK sketch: u32 fingerprint and counter
+/// halve per-cell memory versus the u64 default. Keys are `SmallKey`: 16
+/// bytes in the slot, items up to 15 bytes stored inline with no heap
+/// allocation, longer items spilled to the heap.
+type Sketch = CuckooTopK<SmallKey, u32, u32>;
 
 /// KeySpace Notification Events
 pub const RESERVE_EVENT: &str = "topk.reserve";
@@ -38,17 +43,13 @@ pub const EXCEEDS_MAX_TOPK_SIZE: &str = "ERR operation exceeds topk object memor
 pub const DECODE_TOPK_OBJECT_FAILED: &str = "ERR topk object decoding failed";
 pub const DECODE_UNSUPPORTED_VERSION: &str = "ERR topk object decoding failed. Unsupported version";
 
-/// TopKObject wraps the underlying CuckooTopK sketch together with the
-/// parameters used to construct it.
-///  (k, width, depth, decay, seed)
+/// TopKObject wraps the underlying CuckooTopK sketch together with the seed
+/// it was built from and the running item count. k, width, depth and decay
+/// are read from the sketch rather than duplicated here.
 pub struct TopKObject {
-    k: u32,
-    width: u32,
-    depth: u32,
-    decay: f64,
     seed: u64,
-    sketch: Sketch,
     num_items: u64,
+    sketch: Sketch,
 }
 
 impl TopKObject {
@@ -56,37 +57,15 @@ impl TopKObject {
     /// after the handler has parsed and validated all parameters.
     pub fn new_reserved(k: u32, width: u32, depth: u32, decay: f64, seed: u64) -> TopKObject {
         let sketch = Sketch::with_seed(k as usize, width as usize, depth as usize, decay, seed);
-        let topk = TopKObject {
-            k,
-            width,
-            depth,
-            decay,
-            seed,
-            sketch,
-            num_items: 0,
-        };
-        topk.topk_object_incr_metrics_on_new_create();
-        topk
+        Self::from_existing(seed, sketch, 0)
     }
 
     /// Create a new TopK object from existing data.
-    pub fn from_existing(
-        k: u32,
-        width: u32,
-        depth: u32,
-        decay: f64,
-        seed: u64,
-        sketch: Sketch,
-        num_items: u64,
-    ) -> TopKObject {
+    pub fn from_existing(seed: u64, sketch: Sketch, num_items: u64) -> TopKObject {
         let topk = TopKObject {
-            k,
-            width,
-            depth,
-            decay,
             seed,
-            sketch,
             num_items,
+            sketch,
         };
         topk.topk_object_incr_metrics_on_new_create();
         topk
@@ -96,36 +75,27 @@ impl TopKObject {
     /// contents (heavy/lobby cells and priority queue) and carries over the
     /// running item count.
     pub fn create_copy_from(src: &TopKObject) -> TopKObject {
-        let topk = TopKObject {
-            k: src.k,
-            width: src.width,
-            depth: src.depth,
-            decay: src.decay,
-            seed: src.seed,
-            sketch: src.sketch.clone(),
-            num_items: src.num_items,
-        };
-        topk.topk_object_incr_metrics_on_new_create();
-        topk
+        Self::from_existing(src.seed, src.sketch.clone(), src.num_items)
     }
 
     /// Estimated heap size of this object: wrapper struct + sketch internals
-    /// (cell arrays, decay table, priority queue) + per-item buffer capacity.
+    /// (cell arrays, priority queue) + the heap bytes of spilled items
+    /// (inline items cost nothing beyond their slot).
     /// The remaining undercount is allocator overhead and HashMap metadata.
     pub fn memory_usage(&self) -> usize {
-        std::mem::size_of::<TopKObject>() + self.sketch.mem_bytes(|item| item.capacity())
+        std::mem::size_of::<TopKObject>() + self.sketch.mem_bytes(|item| item.heap_bytes())
     }
 
-    /// Bytes the sketch allocates up front.
+    /// Bytes the sketch allocates up front. Delegates to the sketch's own
+    /// layout-derived estimate so the numbers can never drift from the real
+    /// `Sketch` instantiation (cell width, queue slot size).
     pub fn estimated_size(k: u32, width: u32, depth: u32) -> u64 {
-        let (k, width, depth) = (k as u64, width as u64, depth as u64);
-        // CuckooCell<u32,u32> = 8 bytes per cell (fingerprint + counter).
-        let heavy = width.saturating_mul(depth).saturating_mul(8);
         (std::mem::size_of::<TopKObject>() as u64) // wrapper struct
-            .saturating_add(width.saturating_mul(8)) // lobby cells
-            .saturating_add(heavy) // heavy cells
-            .saturating_add(1024 * 8) // decay table: 1024 entries × 8 bytes
-            .saturating_add(k.saturating_mul(128)) // priority queue: ~128 bytes per k entry
+            .saturating_add(Sketch::estimated_mem_bytes(
+                k as u64,
+                width as u64,
+                depth as u64,
+            ))
     }
 
     /// Whether these params fit within the configured topk-memory-usage-limit.
@@ -138,21 +108,23 @@ impl TopKObject {
     fn topk_object_incr_metrics_on_new_create(&self) {
         metrics::TOPK_NUM_OBJECTS.fetch_add(1, Ordering::Relaxed);
         metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(self.memory_usage(), Ordering::Relaxed);
-        metrics::TOPK_SUM_K_ACROSS_OBJECTS.fetch_add(self.k as u64, Ordering::Relaxed);
+        metrics::TOPK_SUM_K_ACROSS_OBJECTS.fetch_add(self.k() as u64, Ordering::Relaxed);
         metrics::TOPK_TOTAL_ITEMS_ADDED_ACROSS_OBJECTS.fetch_add(self.num_items, Ordering::Relaxed);
     }
 
+    /// The sketch validates these into u32 range on construction and load,
+    /// so the narrowing casts cannot truncate.
     pub fn k(&self) -> u32 {
-        self.k
+        self.sketch.top_items() as u32
     }
     pub fn width(&self) -> u32 {
-        self.width
+        self.sketch.width() as u32
     }
     pub fn depth(&self) -> u32 {
-        self.depth
+        self.sketch.depth() as u32
     }
     pub fn decay(&self) -> f64 {
-        self.decay
+        self.sketch.decay()
     }
     pub fn seed(&self) -> u64 {
         self.seed
@@ -207,15 +179,7 @@ impl TopKObject {
         if validate_size_limit && !Self::validate_size(k as u32, width as u32, depth as u32) {
             return Err(EXCEEDS_MAX_TOPK_SIZE);
         }
-        Ok(TopKObject::from_existing(
-            k as u32,
-            width as u32,
-            depth as u32,
-            decay,
-            seed,
-            sketch,
-            num_items,
-        ))
+        Ok(TopKObject::from_existing(seed, sketch, num_items))
     }
 
     /// Deserialize a byte array to TopK object. When `validate_size_limit` is
@@ -289,14 +253,21 @@ impl TopKObject {
         self.num_items = new_num_items;
         metrics::TOPK_TOTAL_ITEMS_ADDED_ACROSS_OBJECTS.fetch_add(delta, Ordering::Relaxed);
         let (evicted, inserted) = self.sketch.add_with_evicted(item, increment);
-        let added = if inserted { item.len() } else { 0 };
-        let removed = evicted.as_ref().map_or(0, Vec::len);
+        // Only spilled keys own heap bytes; inline keys live in the slot,
+        // which is already counted in the queue's structural bytes.
+        let added = if inserted {
+            SmallKey::heap_bytes_for_len(item.len())
+        } else {
+            0
+        };
+        let removed = evicted.as_ref().map_or(0, |e| e.heap_bytes());
         if added >= removed {
             metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(added - removed, Ordering::Relaxed);
         } else {
             metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES.fetch_sub(removed - added, Ordering::Relaxed);
         }
-        evicted
+        // A spilled key hands over its allocation; an inline key copies.
+        evicted.map(SmallKey::into_vec)
     }
 
     /// Return the estimated count for `item`, or 0 if it has no residual
@@ -310,12 +281,13 @@ impl TopKObject {
         self.sketch.contains_top_k(item)
     }
 
-    /// Return the Top-K items
+    /// Return the Top-K items. `into_vec` hands over a spilled key's
+    /// allocation and copies an inline key's 15 bytes or fewer.
     pub fn list(&self) -> Vec<(Vec<u8>, u64)> {
         self.sketch
             .list()
             .into_iter()
-            .map(|node| (node.item, node.count))
+            .map(|node| (node.item.into_vec(), node.count))
             .collect()
     }
 }
@@ -324,7 +296,7 @@ impl Drop for TopKObject {
     fn drop(&mut self) {
         metrics::TOPK_NUM_OBJECTS.fetch_sub(1, Ordering::Relaxed);
         metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES.fetch_sub(self.memory_usage(), Ordering::Relaxed);
-        metrics::TOPK_SUM_K_ACROSS_OBJECTS.fetch_sub(self.k as u64, Ordering::Relaxed);
+        metrics::TOPK_SUM_K_ACROSS_OBJECTS.fetch_sub(self.k() as u64, Ordering::Relaxed);
         metrics::TOPK_TOTAL_ITEMS_ADDED_ACROSS_OBJECTS.fetch_sub(self.num_items, Ordering::Relaxed);
     }
 }
@@ -615,6 +587,38 @@ mod tests {
         assert_eq!(
             TopKObject::decode_object(&blob, false).err(),
             Some(DECODE_TOPK_OBJECT_FAILED)
+        );
+    }
+
+    #[test]
+    fn test_memory_usage_charges_only_spilled_items() {
+        // Inline items (<= 15 bytes) live in the slot and add nothing;
+        // spilled items add exactly their length. The per-add gauge delta
+        // must agree with the full recount so Drop stays balanced.
+        let mut topk = TopKObject::new_reserved(4, 64, 4, DEFAULT_DECAY, 42);
+        let empty = topk.memory_usage();
+        let gauge_before = metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES.load(Ordering::Relaxed);
+
+        topk.add(b"255.255.255.255", 10); // 15 bytes: inline
+        topk.add(b"id:42", 9); // inline
+        assert_eq!(topk.memory_usage(), empty);
+
+        let long = b"a spilled key longer than fifteen bytes";
+        topk.add(long, 8);
+        assert_eq!(topk.memory_usage(), empty + long.len());
+
+        let gauge_after = metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES.load(Ordering::Relaxed);
+        assert_eq!(gauge_after - gauge_before, long.len());
+
+        // Evicting the spilled key (the min, count 8) gives its bytes back;
+        // the inline replacement costs nothing.
+        topk.add(b"hot", 100);
+        let evicted = topk.add(b"hotter", 200).expect("displaces the min");
+        assert_eq!(evicted, long);
+        assert_eq!(topk.memory_usage(), empty);
+        assert_eq!(
+            metrics::TOPK_OBJECT_TOTAL_MEMORY_BYTES.load(Ordering::Relaxed),
+            gauge_before
         );
     }
 
