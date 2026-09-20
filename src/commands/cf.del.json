@@ -1,0 +1,29 @@
+{
+    "CF.DEL": {
+        "summary": "Deletes one matching fingerprint",
+        "complexity": "O(L + F * B), where L is the item length, F the number of subfilters and B the bucket size",
+        "group": "cuckoo",
+        "module_since": "99.99.99",
+        "arity": 3,
+        "command_flags": [
+            "write",
+            "fast"
+        ],
+        "acl_categories": [
+            "WRITE",
+            "FAST",
+            "CUCKOO"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "item",
+                "type": "string"
+            }
+        ]
+    }
+}

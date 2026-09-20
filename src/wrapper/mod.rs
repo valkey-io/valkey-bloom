@@ -1,6 +1,7 @@
 use valkey_module::Context;
 
 pub mod bloom_callback;
+pub mod cuckoo_callback;
 
 /// Wrapper for the ValkeyModule_MustObeyClient function.
 /// Takes in an Context and returns true if the if commands are arriving
@@ -22,8 +23,11 @@ pub fn must_obey_client(ctx: &Context) -> bool {
 
     #[cfg(feature = "valkey_8_0")]
     {
-        // On Valkey 8.0, fall back to checking for replicated flag in the GetContextFlags API as a best effort.
+        // Valkey assigns CLIENT_ID_AOF (UINT64_MAX) to its AOF replay client.
+        // Identify that client directly; a server loading flag is not sufficient.
         ctx.get_flags()
             .contains(valkey_module::ContextFlags::REPLICATED)
+            || unsafe { valkey_module::raw::RedisModule_GetClientId.unwrap()(ctx.get_raw()) }
+                == u64::MAX
     }
 }

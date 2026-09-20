@@ -1,3 +1,5 @@
+import pytest
+
 from valkeytestframework.util.waiters import *
 from valkeytestframework.valkey_test_case import ValkeyAction
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
@@ -5,12 +7,16 @@ from valkeytestframework.conftest import resource_port_tracker
 
 class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
 
-    def test_basic_aofrewrite_and_restore(self):
+    @pytest.mark.parametrize('rdb_preamble', ['yes', 'no'])
+    def test_basic_aofrewrite_and_restore(self, rdb_preamble):
         client = self.server.get_new_client()
+        self.server.args['aof-use-rdb-preamble'] = rdb_preamble
+        client.config_set('aof-use-rdb-preamble', rdb_preamble)
         # Enable AOF before adding data
         client.config_set('appendonly', 'yes')
         # Wait for any initial AOF rewrite to complete
         wait_for_equal(lambda: client.info('persistence')['aof_rewrite_in_progress'], 0, timeout=30)
+        client.execute_command('BF.RESERVE', 'testSave', 0.01, 100000)
         bf_add_result_1 = client.execute_command('BF.ADD testSave item')
         assert bf_add_result_1 == 1
         bf_exists_result_1 = client.execute_command('BF.EXISTS testSave item')
@@ -31,6 +37,10 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         time.sleep(1)
         # Add appendonly to server args so it loads AOF on restart
         self.server.args['appendonly'] = 'yes'
+        if rdb_preamble == 'no':
+            # Command replay must obey the AOF client. Bloom's separate RDB
+            # callback intentionally has a different local-limit policy.
+            self.server.args['bf.bloom-memory-usage-limit'] = '1024'
         self.server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
         assert self.server.is_alive()
         restored_server_digest = client.execute_command('DEBUG', 'DIGEST')
@@ -44,7 +54,12 @@ class TestBloomAofRewrite(ValkeyBloomTestCaseBase):
         bf_exists_result_2 = client.execute_command('BF.EXISTS testSave item')
         assert bf_exists_result_2 == 1
         bf_info_result_2 = client.execute_command('BF.INFO testSave')
-        assert bf_info_result_2 == bf_info_result_1
+        expected_info = dict(zip(bf_info_result_1[::2], bf_info_result_1[1::2]))
+        if rdb_preamble == 'no':
+            # This field derives from the new local limit, not persisted data.
+            assert expected_info[b'Max scaled capacity'] > 0
+            expected_info[b'Max scaled capacity'] = 0
+        assert dict(zip(bf_info_result_2[::2], bf_info_result_2[1::2])) == expected_info
         client.execute_command('DEL testSave')
 
     def test_aofrewrite_bloomfilter_metrics(self):

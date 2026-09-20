@@ -1,0 +1,54 @@
+{
+    "CF.INSERTNX": {
+        "summary": "Adds items whose fingerprints are absent",
+        "complexity": "O(sum(L) + N * (F + I) * B + S), for N items of lengths L, F subfilters, I MAXITERATIONS, bucket size B and total new bucket allocation S",
+        "group": "cuckoo",
+        "module_since": "99.99.99",
+        "arity": -4,
+        "command_flags": [
+            "write",
+            "denyoom"
+        ],
+        "acl_categories": [
+            "WRITE",
+            "CUCKOO"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "capacity",
+                "type": "integer",
+                "token": "CAPACITY",
+                "optional": true
+            },
+            {
+                "name": "bucketsize",
+                "type": "integer",
+                "token": "BUCKETSIZE",
+                "optional": true
+            },
+            {
+                "name": "maxiterations",
+                "type": "integer",
+                "token": "MAXITERATIONS",
+                "optional": true
+            },
+            {
+                "name": "nocreate",
+                "type": "pure-token",
+                "token": "NOCREATE",
+                "optional": true
+            },
+            {
+                "name": "item",
+                "type": "string",
+                "token": "ITEMS",
+                "multiple": true
+            }
+        ]
+    }
+}

@@ -1,0 +1,48 @@
+{
+    "CF.RESERVE": {
+        "summary": "Creates an empty cuckoo filter",
+        "complexity": "O(S), where S is the number of allocated bucket bytes",
+        "group": "cuckoo",
+        "module_since": "99.99.99",
+        "arity": -3,
+        "command_flags": [
+            "write",
+            "fast",
+            "denyoom"
+        ],
+        "acl_categories": [
+            "WRITE",
+            "FAST",
+            "CUCKOO"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "capacity",
+                "type": "integer"
+            },
+            {
+                "name": "bucketsize",
+                "type": "integer",
+                "token": "BUCKETSIZE",
+                "optional": true
+            },
+            {
+                "name": "maxiterations",
+                "type": "integer",
+                "token": "MAXITERATIONS",
+                "optional": true
+            },
+            {
+                "name": "expansion",
+                "type": "integer",
+                "token": "EXPANSION",
+                "optional": true
+            }
+        ]
+    }
+}

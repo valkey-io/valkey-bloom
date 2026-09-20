@@ -1,0 +1,28 @@
+{
+    "CF.ADDNX": {
+        "summary": "Adds an item only when its fingerprint is absent",
+        "complexity": "O(L + (F + I) * B + S), where L is the item length, F the number of subfilters, I MAXITERATIONS, B the bucket size and S the new bucket allocation when scaling",
+        "group": "cuckoo",
+        "module_since": "99.99.99",
+        "arity": 3,
+        "command_flags": [
+            "write",
+            "denyoom"
+        ],
+        "acl_categories": [
+            "WRITE",
+            "CUCKOO"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "item",
+                "type": "string"
+            }
+        ]
+    }
+}

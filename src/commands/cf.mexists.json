@@ -1,0 +1,30 @@
+{
+    "CF.MEXISTS": {
+        "summary": "Tests whether each item may be present",
+        "complexity": "O(sum(L) + N * F * B), for N items of lengths L, F subfilters and bucket size B",
+        "group": "cuckoo",
+        "module_since": "99.99.99",
+        "arity": -3,
+        "command_flags": [
+            "readonly",
+            "fast"
+        ],
+        "acl_categories": [
+            "READ",
+            "FAST",
+            "CUCKOO"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "item",
+                "type": "string",
+                "multiple": true
+            }
+        ]
+    }
+}

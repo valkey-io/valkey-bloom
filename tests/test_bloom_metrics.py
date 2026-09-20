@@ -104,8 +104,8 @@ class TestBloomMetrics(ValkeyBloomTestCaseBase):
         # Verify that the metrics were updated correctly after copying
         self.verify_bloom_metrics(self.client.execute_command("INFO bf"), DEFAULT_BLOOM_FILTER_SIZE * 2, 2, 2, 2, DEFAULT_BLOOM_FILTER_CAPACITY * 2)
 
-        # Perform a FLUSHALL which should set all metrics data to 0
-        self.client.execute_command('FLUSHALL')
+        # Wait for object destruction as well as key removal before checking metrics.
+        self.client.execute_command('FLUSHALL SYNC')
         wait_for_equal(lambda: self.client.execute_command('DBSIZE'), 0)
         self.verify_bloom_metrics(self.client.execute_command("INFO bf"), 0, 0, 0, 0, 0)
 

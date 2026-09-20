@@ -239,9 +239,10 @@ class TestBloomBasic(ValkeyBloomTestCaseBase):
         assert client.execute_command('BF.ADD TEST_IDLE val3') == 1
         self.verify_bloom_filter_item_existence(client, 'TEST_IDLE', 'val3')
         self.verify_server_key_count(client, 1)
-        time.sleep(1)
         assert client.execute_command('OBJECT IDLETIME test_idle') == None
-        assert client.execute_command('OBJECT IDLETIME TEST_IDLE') > 0
+        # The server refreshes its idle clock on cron ticks, which can lag a
+        # one-second sleep under ASAN. OBJECT IDLETIME does not touch the key.
+        wait_for_equal(lambda: client.execute_command('OBJECT IDLETIME TEST_IDLE') > 0, True)
         # cmd ttl, expireat
         assert client.execute_command('BF.ADD TEST_EXP ITEM') == 1
         assert client.execute_command('TTL TEST_EXP') == -1

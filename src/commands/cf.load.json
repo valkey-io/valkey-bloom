@@ -1,0 +1,28 @@
+{
+    "CF.LOAD": {
+        "summary": "Restores a versioned cuckoo snapshot, including AOF rewrite snapshots",
+        "complexity": "O(S + F), where S is the snapshot size and F the number of subfilters",
+        "group": "cuckoo",
+        "module_since": "99.99.99",
+        "arity": 3,
+        "command_flags": [
+            "write",
+            "denyoom"
+        ],
+        "acl_categories": [
+            "WRITE",
+            "CUCKOO"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "snapshot",
+                "type": "string"
+            }
+        ]
+    }
+}

@@ -1,0 +1,72 @@
+{
+    "CF.INFO": {
+        "summary": "Returns cuckoo filter memory, occupancy, deletion count and configuration",
+        "complexity": "O(F), where F is the number of subfilters",
+        "group": "cuckoo",
+        "module_since": "99.99.99",
+        "arity": -2,
+        "command_flags": [
+            "readonly",
+            "fast"
+        ],
+        "acl_categories": [
+            "READ",
+            "FAST",
+            "CUCKOO"
+        ],
+        "arguments": [
+            {
+                "name": "key",
+                "type": "key",
+                "key_spec_index": 0
+            },
+            {
+                "name": "field",
+                "type": "oneof",
+                "optional": true,
+                "arguments": [
+                    {
+                        "name": "size",
+                        "type": "pure-token",
+                        "token": "SIZE"
+                    },
+                    {
+                        "name": "number_of_buckets",
+                        "type": "pure-token",
+                        "token": "NUMBER OF BUCKETS"
+                    },
+                    {
+                        "name": "number_of_items_inserted",
+                        "type": "pure-token",
+                        "token": "NUMBER OF ITEMS INSERTED"
+                    },
+                    {
+                        "name": "number_of_items_deleted",
+                        "type": "pure-token",
+                        "token": "NUMBER OF ITEMS DELETED"
+                    },
+                    {
+                        "name": "number_of_filters",
+                        "type": "pure-token",
+                        "token": "NUMBER OF FILTERS"
+                    },
+                    {
+                        "name": "bucket_size",
+                        "type": "pure-token",
+                        "token": "BUCKET SIZE"
+                    },
+                    {
+                        "name": "max_iterations",
+                        "type": "pure-token",
+                        "token": "MAX ITERATIONS"
+                    },
+                    {
+                        "name": "expansion_rate",
+                        "type": "pure-token",
+                        "token": "EXPANSION RATE"
+                    }
+                ]
+            }
+        ]
+    }
+}
