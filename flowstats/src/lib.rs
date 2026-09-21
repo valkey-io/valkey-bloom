@@ -94,12 +94,8 @@ pub mod prelude {
     #[cfg(feature = "frequency")]
     pub use crate::frequency::CountMinSketch;
 
-    #[cfg(all(feature = "frequency", feature = "std"))]
-    pub use crate::frequency::SpaceSaving;
 }
 
 #[cfg(feature = "frequency")]
 pub use frequency::CountMinSketch;
 
-#[cfg(all(feature = "frequency", feature = "std"))]
-pub use frequency::SpaceSaving;
