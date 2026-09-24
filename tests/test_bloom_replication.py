@@ -163,23 +163,33 @@ class TestBloomReplication(ReplicationTestCase):
         self.replicas[0].client.execute_command('CONFIG RESETSTAT')
 
         # Write commands with errors are not replicated.
+        # Write commands with errors are not replicated. The first two are arity
+        # mistakes, which the server now rejects before the module runs since the
+        # commands carry real arity metadata; the last two are rejected inside the
+        # module and count as failed calls instead.
         invalid_bloom_write_cmds = [
-            ('BF.ADD', 'BF.ADD key item1 item2'),
-            ('BF.MADD', 'BF.MADD key'),
-            ('BF.RESERVE', 'BF.RESERVE key 1.001 100000'),
-            ('BF.INSERT', 'BF.INSERT key CAPACITY 0 items item'),
+            ('BF.ADD', 'BF.ADD key item1 item2', 'server'),
+            ('BF.MADD', 'BF.MADD key', 'server'),
+            ('BF.RESERVE', 'BF.RESERVE key 1.001 100000', 'module'),
+            ('BF.INSERT', 'BF.INSERT key CAPACITY 0 items item', 'module'),
         ]
-        for test_case in invalid_bloom_write_cmds:
-            prefix = test_case[0]
-            cmd = test_case[1]
+        for prefix, cmd, error_at in invalid_bloom_write_cmds:
             try:
                 self.client.execute_command(cmd)
                 assert False
             except ResponseError as e:
                 pass
             primary_cmd_stats = self.client.info("Commandstats")['cmdstat_' + prefix]
-            assert primary_cmd_stats["calls"] == 1
-            assert primary_cmd_stats["failed_calls"] == 1
+            if error_at == 'server':
+                assert primary_cmd_stats.get("rejected_calls", 0) == 1, \
+                    f"{prefix}: expected the server to reject the bad arity, got {primary_cmd_stats}"
+                assert primary_cmd_stats.get("calls", 0) == 0, \
+                    f"{prefix}: a rejected command is never counted as called, got {primary_cmd_stats}"
+            else:
+                assert primary_cmd_stats.get("calls", 0) == 1, \
+                    f"{prefix}: expected one executed call, got {primary_cmd_stats}"
+                assert primary_cmd_stats.get("failed_calls", 0) == 1, \
+                    f"{prefix}: expected one failed call, got {primary_cmd_stats}"
             assert ('cmdstat_' + prefix) not in self.replicas[0].client.info("Commandstats")
 
     def _find_new_items(self, key, count, start_offset=1000):
