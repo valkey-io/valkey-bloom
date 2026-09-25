@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 // SPDX-FileCopyrightText: Copyright (c) 2025 flowstats Contributors
 // SPDX-FileContributor: https://github.com/vnvo/flowstats/blob/v0.1.2/src/lib.rs
 
@@ -11,10 +11,7 @@
 //!
 //! ## Features
 //!
-//! - **Cardinality Estimation**: Count distinct elements with HyperLogLog
 //! - **Frequency Estimation**: Track item frequencies with Count-Min Sketch
-//! - **Heavy Hitters**: Find top-K elements with Space-Saving
-//! - **Quantile Estimation**: Compute percentiles with t-digest
 //! - **Full Mergeability**: All sketches support distributed merge operations
 //! - **Error Bounds**: Formal guarantees on approximation accuracy
 //!
@@ -62,13 +59,7 @@
 //! ## Feature Flags
 //!
 //! Algorithm families (pick what you need):
-//! - `cardinality` (default): HyperLogLog for distinct counting
 //! - `frequency` (default): Count-Min Sketch, Space-Saving (tbd)
-//! - `quantiles` (default): t-digest for percentiles
-//! - `membership`: (default) Bloom filter
-//! - `sampling`: Reservoir and weighted sampling (tbd)
-//! - `sets`: Theta sketch for set operations (tbd)
-//! - `statistics`: Running moments, entropy (tbd)
 //! - `full`: Enable all algorithm families
 //!
 //! Platform features:

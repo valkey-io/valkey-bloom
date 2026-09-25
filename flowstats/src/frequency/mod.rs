@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 // SPDX-FileCopyrightText: Copyright (c) 2025 flowstats Contributors
 // SPDX-FileContributor: https://github.com/vnvo/flowstats/blob/v0.1.2/src/frequency/mod.rs
 
@@ -10,7 +10,6 @@
 //! # Algorithms
 //!
 //! - [`CountMinSketch`]: Classic count-min sketch with optional conservative update
-//! - [`SpaceSaving`]: Top-K / heavy hitters tracking
 //!
 //! # Example
 //!
