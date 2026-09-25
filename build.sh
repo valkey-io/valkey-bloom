@@ -19,11 +19,11 @@ fi
 
 echo "Running cargo and clippy format checks..."
 cargo fmt --check
-cargo clippy --profile release --all-targets -- -D clippy::all
+cargo clippy --locked --profile release --all-targets -- -D clippy::all
 
 
 echo "Running unit tests..."
-cargo test --features enable-system-alloc
+cargo test --locked --features enable-system-alloc
 
 # Ensure SERVER_VERSION environment variable is set
 if [ -z "$SERVER_VERSION" ]; then
@@ -38,9 +38,9 @@ fi
 
 echo "Running cargo build release..."
 if [ "$SERVER_VERSION" == "8.0" ] ; then
-    RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release --features valkey_8_0
+    RUSTFLAGS="-D warnings" cargo build --locked --all --all-targets --release --features valkey_8_0
 else
-    RUSTFLAGS="-D warnings" cargo build --all --all-targets  --release
+    RUSTFLAGS="-D warnings" cargo build --locked --all --all-targets --release
 fi
 
 

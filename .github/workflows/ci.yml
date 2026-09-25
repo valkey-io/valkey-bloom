@@ -24,16 +24,16 @@ jobs:
     - name: Run cargo and clippy format check
       run: |
         cargo fmt --check
-        cargo clippy --profile release --all-targets
+        cargo clippy --locked --profile release --all-targets
     - name: Release Build
       run: |
         if [ "${{ matrix.server_version }}" = "8.0" ]; then
-          cargo build --all --all-targets --release --features valkey_8_0
+          cargo build --locked --all --all-targets --release --features valkey_8_0
         else
-          cargo build --all --all-targets --release
+          cargo build --locked --all --all-targets --release
         fi
     - name: Run unit tests
-      run: cargo test --features enable-system-alloc
+      run: cargo test --locked --features enable-system-alloc
     - name: Make valkey-server binary
       run: |
         mkdir -p "tests/build/binaries/${{ matrix.server_version }}"
@@ -70,11 +70,11 @@ jobs:
     - name: Run cargo and clippy format check
       run: |
         cargo fmt --check
-        cargo clippy --profile release --all-targets
+        cargo clippy --locked --profile release --all-targets
     - name: Release Build
-      run: cargo build --all --all-targets --release
+      run: cargo build --locked --all --all-targets --release
     - name: Run unit tests
-      run: cargo test --features enable-system-alloc
+      run: cargo test --locked --features enable-system-alloc
 
   asan-build:
     runs-on: ubuntu-latest
@@ -89,16 +89,16 @@ jobs:
     - name: Run cargo and clippy format check
       run: |
         cargo fmt --check
-        cargo clippy --profile release --all-targets
+        cargo clippy --locked --profile release --all-targets
     - name: Release Build
       run: |
         if [ "${{ matrix.server_version }}" = "8.0" ]; then
-          cargo build --all --all-targets --release --features valkey_8_0
+          cargo build --locked --all --all-targets --release --features valkey_8_0
         else
-          cargo build --all --all-targets --release
+          cargo build --locked --all --all-targets --release
         fi
     - name: Run unit tests
-      run: cargo test --features enable-system-alloc
+      run: cargo test --locked --features enable-system-alloc
     - name: Make Valkey-server binary with asan
       run: |
         mkdir -p "tests/build/binaries/${{ matrix.server_version }}"
