@@ -216,10 +216,7 @@ impl BloomObject {
 
     /// Returns whether the bloom object is of a valid size or not.
     pub fn validate_size(bytes: usize) -> bool {
-        if bytes > configs::BLOOM_MEMORY_LIMIT_PER_OBJECT.load(Ordering::Relaxed) as usize {
-            return false;
-        }
-        true
+        bytes <= configs::BLOOM_MEMORY_LIMIT_PER_OBJECT.load(Ordering::Relaxed) as usize
     }
 
     /// Returns the Bloom object's free_effort.
