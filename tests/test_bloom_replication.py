@@ -162,7 +162,6 @@ class TestBloomReplication(ReplicationTestCase):
         self.client.execute_command('CONFIG RESETSTAT')
         self.replicas[0].client.execute_command('CONFIG RESETSTAT')
 
-        # Write commands with errors are not replicated.
         # Write commands with errors are not replicated. The first two are arity
         # mistakes, which the server now rejects before the module runs since the
         # commands carry real arity metadata; the last two are rejected inside the
