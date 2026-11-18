@@ -9,14 +9,67 @@ class TestBloomCommand(ValkeyBloomTestCaseBase):
         assert actual_arity == expected_arity, f"Arity mismatch for command '{command}'"
 
     def test_bloom_command_arity(self):
-        self.verify_command_arity('BF.EXISTS', -1)
-        self.verify_command_arity('BF.ADD', -1)
-        self.verify_command_arity('BF.MEXISTS', -1)
-        self.verify_command_arity('BF.MADD', -1)
-        self.verify_command_arity('BF.CARD', -1)
-        self.verify_command_arity('BF.RESERVE', -1)
-        self.verify_command_arity('BF.INFO', -1)
-        self.verify_command_arity('BF.INSERT', -1)
+        self.verify_command_arity('BF.EXISTS', 3)
+        self.verify_command_arity('BF.ADD', 3)
+        self.verify_command_arity('BF.MEXISTS', -3)
+        self.verify_command_arity('BF.MADD', -3)
+        self.verify_command_arity('BF.CARD', 2)
+        self.verify_command_arity('BF.RESERVE', -4)
+        self.verify_command_arity('BF.INFO', -2)
+        self.verify_command_arity('BF.INSERT', -2)
+        self.verify_command_arity('BF.LOAD', 3)
+
+    # Every bloom filter command takes exactly one key: the <key> argument at index 1,
+    # described by a range of (0, 1, 0), the same way SET is described.
+    # See https://valkey.io/topics/key-specs/
+    # Each entry: the expected key spec flags, plus the arguments that follow the key
+    # in a sample call (COMMAND GETKEYS checks the command's arity).
+    BLOOM_KEYSPECS = {
+        'BF.ADD': ({'RW', 'insert'}, ['item']),
+        'BF.MADD': ({'RW', 'insert'}, ['item']),
+        'BF.EXISTS': ({'RO', 'access'}, ['item']),
+        'BF.MEXISTS': ({'RO', 'access'}, ['item']),
+        'BF.CARD': ({'RO', 'access'}, []),
+        'BF.RESERVE': ({'RW', 'insert'}, ['0.01', '1000']),
+        'BF.INFO': ({'RO', 'access'}, []),
+        'BF.INSERT': ({'RW', 'insert'}, []),
+        'BF.LOAD': ({'RW', 'insert'}, ['payload']),
+    }
+
+    @staticmethod
+    def as_key_spec_map(value):
+        # COMMAND INFO returns maps as flat key/value lists over RESP2 and as maps over RESP3.
+        if isinstance(value, dict):
+            return {(key.decode() if isinstance(key, bytes) else key): val for key, val in value.items()}
+        assert isinstance(value, list) and len(value) % 2 == 0, f"Unexpected key spec map: {value!r}"
+        return {
+            (value[i].decode() if isinstance(value[i], bytes) else value[i]): value[i + 1]
+            for i in range(0, len(value), 2)
+        }
+
+    @staticmethod
+    def as_string_set(values):
+        return {value.decode() if isinstance(value, bytes) else value for value in values}
+
+    def test_bloom_command_keyspecs(self):
+        for command, (expected_flags, sample_args) in self.BLOOM_KEYSPECS.items():
+            # GETKEYS proves the key spec extracts the filter key and nothing else, which
+            # covers the begin_search index and the find_keys range. It is sent as a
+            # single string because valkey-py runs its COMMAND parser on split arguments,
+            # and that parser does not understand GETKEYS replies.
+            request = ' '.join(['COMMAND', 'GETKEYS', command, 'k', *sample_args])
+            keys = self.client.execute_command(request)
+            assert keys == [b'k'], f"{command} GETKEYS returned {keys}, expected [b'k']"
+
+            info = self.client.execute_command('COMMAND', 'INFO', command)[command]
+            assert (info['first_key_pos'], info['last_key_pos'], info['step_count']) == (1, 1, 1), \
+                f"{command} legacy key positions wrong: {info}"
+
+            specs = info['key_specifications']
+            assert len(specs) == 1, f"{command} expected 1 key spec, got {len(specs)}"
+            flags = self.as_string_set(self.as_key_spec_map(specs[0])['flags'])
+            assert flags == expected_flags, \
+                f"{command} flags {sorted(flags)}, expected {sorted(expected_flags)}"
 
     def test_bloom_command_error(self):
         # test set up
