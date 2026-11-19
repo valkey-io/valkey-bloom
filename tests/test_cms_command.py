@@ -34,6 +34,9 @@ class TestCMSCommand(ValkeyBloomTestCaseBase):
 
             ('CMS.MERGE dest 2 s1 s2 WEIGHTSS 1', 'invalid argument'),
             ('CMS.MERGE dest 2 s1 s2 WEIGHTS a', 'invalid weight value'),
+            # weights count must match the number of source keys
+            ('CMS.MERGE dest 2 s1 s2 WEIGHTS 1', 'number of source keys and weights does not match'),
+            ('CMS.MERGE dest 2 s1 s2 WEIGHTS 1 2 3', 'number of source keys and weights does not match'),
 
             # wrong number of arguments
             ('CMS.INITBYDIM', "wrong number of arguments for 'CMS.INITBYDIM' command"),

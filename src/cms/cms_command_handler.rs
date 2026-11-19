@@ -303,7 +303,7 @@ pub fn cms_merge(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     };
 
     //Guard against number of source keys and weights mismatching.
-    if source_keys.len() != passed_in_weights.len() {
+    if source_keys.len() != passed_in_weights.len() && !passed_in_weights.is_empty() {
         return Err(ValkeyError::Str(
             "ERR number of source keys and weights does not match",
         ));
