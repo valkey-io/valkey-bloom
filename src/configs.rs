@@ -60,6 +60,39 @@ lazy_static! {
         ValkeyGILGuard::new(ValkeyString::create(None, TIGHTENING_RATIO_DEFAULT));
 }
 
+/// Cuckoo Filter Configurations
+pub const CUCKOO_CAPACITY_DEFAULT: i64 = 1000;
+pub const CUCKOO_CAPACITY_MIN: i64 = 1;
+pub const CUCKOO_CAPACITY_MAX: i64 = i64::MAX;
+
+pub const CUCKOO_BUCKET_SIZE_DEFAULT: i64 = 4;
+pub const CUCKOO_BUCKET_SIZE_MIN: i64 = 1;
+pub const CUCKOO_BUCKET_SIZE_MAX: i64 = 255;
+
+pub const CUCKOO_MAX_KICKS_DEFAULT: i64 = 512;
+pub const CUCKOO_MAX_KICKS_MIN: i64 = 1;
+pub const CUCKOO_MAX_KICKS_MAX: i64 = 65535;
+
+pub const CUCKOO_EXPANSION_DEFAULT: i64 = 1;
+pub const CUCKOO_EXPANSION_MIN: u32 = 1;
+pub const CUCKOO_EXPANSION_MAX: u32 = u32::MAX;
+
+pub const CUCKOO_MEMORY_LIMIT_PER_OBJECT_DEFAULT: i64 = 128 * 1024 * 1024;
+pub const CUCKOO_MEMORY_LIMIT_PER_OBJECT_MIN: i64 = 0;
+pub const CUCKOO_MEMORY_LIMIT_PER_OBJECT_MAX: i64 = i64::MAX;
+
+pub const CUCKOO_DEFRAG_DEFAULT: bool = true;
+
+lazy_static! {
+    pub static ref CUCKOO_CAPACITY: AtomicI64 = AtomicI64::new(CUCKOO_CAPACITY_DEFAULT);
+    pub static ref CUCKOO_BUCKET_SIZE: AtomicI64 = AtomicI64::new(CUCKOO_BUCKET_SIZE_DEFAULT);
+    pub static ref CUCKOO_MAX_KICKS: AtomicI64 = AtomicI64::new(CUCKOO_MAX_KICKS_DEFAULT);
+    pub static ref CUCKOO_EXPANSION: AtomicI64 = AtomicI64::new(CUCKOO_EXPANSION_DEFAULT);
+    pub static ref CUCKOO_MEMORY_LIMIT_PER_OBJECT: AtomicI64 =
+        AtomicI64::new(CUCKOO_MEMORY_LIMIT_PER_OBJECT_DEFAULT);
+    pub static ref CUCKOO_DEFRAG: AtomicBool = AtomicBool::new(CUCKOO_DEFRAG_DEFAULT);
+}
+
 /// Constants
 // Max number of filters allowed within a bloom object.
 pub const BLOOM_NUM_FILTERS_PER_OBJECT_LIMIT_MAX: i32 = i32::MAX;

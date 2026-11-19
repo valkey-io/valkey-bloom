@@ -10,6 +10,15 @@ lazy_static! {
     pub static ref BLOOM_CAPACITY_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
     pub static ref BLOOM_DEFRAG_HITS: AtomicU64 = AtomicU64::new(0);
     pub static ref BLOOM_DEFRAG_MISSES: AtomicU64 = AtomicU64::new(0);
+
+    // Cuckoo filter metrics
+    pub static ref CUCKOO_NUM_OBJECTS: AtomicU64 = AtomicU64::new(0);
+    pub static ref CUCKOO_OBJECT_TOTAL_MEMORY_BYTES: AtomicUsize = AtomicUsize::new(0);
+    pub static ref CUCKOO_NUM_FILTERS_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
+    pub static ref CUCKOO_NUM_ITEMS_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
+    pub static ref CUCKOO_CAPACITY_ACROSS_OBJECTS: AtomicU64 = AtomicU64::new(0);
+    pub static ref CUCKOO_DEFRAG_HITS: AtomicU64 = AtomicU64::new(0);
+    pub static ref CUCKOO_DEFRAG_MISSES: AtomicU64 = AtomicU64::new(0);
 }
 
 pub fn bloom_info_handler(ctx: &InfoContext) -> ValkeyResult<()> {
@@ -52,6 +61,53 @@ pub fn bloom_info_handler(ctx: &InfoContext) -> ValkeyResult<()> {
         .field(
             "bloom_defrag_misses",
             BLOOM_DEFRAG_MISSES.load(Ordering::Relaxed).to_string(),
+        )?
+        .build_section()?
+        .build_info()?;
+
+    Ok(())
+}
+
+pub fn cuckoo_info_handler(ctx: &InfoContext) -> ValkeyResult<()> {
+    ctx.builder()
+        .add_section("cuckoo_core_metrics")
+        .field(
+            "cuckoo_total_memory_bytes",
+            CUCKOO_OBJECT_TOTAL_MEMORY_BYTES
+                .load(Ordering::Relaxed)
+                .to_string(),
+        )?
+        .field(
+            "cuckoo_num_objects",
+            CUCKOO_NUM_OBJECTS.load(Ordering::Relaxed).to_string(),
+        )?
+        .field(
+            "cuckoo_num_filters_across_objects",
+            CUCKOO_NUM_FILTERS_ACROSS_OBJECTS
+                .load(Ordering::Relaxed)
+                .to_string(),
+        )?
+        .field(
+            "cuckoo_num_items_across_objects",
+            CUCKOO_NUM_ITEMS_ACROSS_OBJECTS
+                .load(Ordering::Relaxed)
+                .to_string(),
+        )?
+        .field(
+            "cuckoo_capacity_across_objects",
+            CUCKOO_CAPACITY_ACROSS_OBJECTS
+                .load(Ordering::Relaxed)
+                .to_string(),
+        )?
+        .build_section()?
+        .add_section("cuckoo_defrag_metrics")
+        .field(
+            "cuckoo_defrag_hits",
+            CUCKOO_DEFRAG_HITS.load(Ordering::Relaxed).to_string(),
+        )?
+        .field(
+            "cuckoo_defrag_misses",
+            CUCKOO_DEFRAG_MISSES.load(Ordering::Relaxed).to_string(),
         )?
         .build_section()?
         .build_info()?;
