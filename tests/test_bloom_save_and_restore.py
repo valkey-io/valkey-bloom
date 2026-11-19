@@ -1,4 +1,5 @@
 import os
+import pytest
 from valkey import ResponseError
 from valkey_bloom_test_case import ValkeyBloomTestCaseBase
 from valkey_test_case import ValkeyServerHandle
@@ -69,6 +70,22 @@ class TestBloomSaveRestore(ValkeyBloomTestCaseBase):
 
         assert curr_item_count_1 == count
 
+    def test_forkless_save_and_restore(self):
+        if not self.client.execute_command('CONFIG GET forkless-policy'):
+            pytest.skip("Server does not support forkless save")
+        args = {"enable-debug-command": "yes", "loadmodule": os.getenv('MODULE_PATH'),
+                "forkless-infrastructure-enabled": "yes", "forkless-policy": "prefer-forkless"}
+        server, client = self.create_server(testdir=self.testdir, server_path=self.server_path, args=args)
+        self.create_bloom_filters_and_add_items(client, number_of_bf=5)
+        digest = client.execute_command('DEBUG DIGEST')
+
+        client.execute_command('BGSAVE')
+        server.wait_for_save_done()
+        assert client.info('persistence')['rdb_last_bgsave_type'] == 'forkless'
+
+        server.restart(remove_rdb=False, remove_nodes_conf=False, connect_client=True)
+        wait_for_equal(lambda: server.is_rdb_done_loading(), True)
+        assert client.execute_command('DEBUG DIGEST') == digest
 
     def test_restore_failed_large_bloom_filter(self):
         client = self.server.get_new_client()

@@ -10,7 +10,7 @@ pub mod wrapper;
 use crate::bloom::command_handler;
 use crate::bloom::data_type::BLOOM_TYPE;
 use crate::bloom::utils::valid_server_version;
-use valkey_module::ModuleOptions;
+use valkey_module::{raw, ModuleOptions};
 use valkey_module_macros::info_command_handler;
 
 pub const MODULE_NAME: &str = "bf";
@@ -22,10 +22,15 @@ pub const MODULE_VERSION: i32 = 999999;
 pub const MODULE_RELEASE_STAGE: &str = "dev";
 
 fn initialize(ctx: &Context, _args: &[ValkeyString]) -> Status {
-    ctx.set_module_options(ModuleOptions::HANDLE_IO_ERRORS);
     let ver = ctx
         .get_server_version()
         .expect("Unable to get server version!");
+    let mut options = ModuleOptions::HANDLE_IO_ERRORS;
+    // Forkless save exists from Valkey 9.2.
+    if (ver.major, ver.minor) >= (9, 2) {
+        options |= ModuleOptions::from_bits_retain(raw::VALKEYMODULE_OPTIONS_HANDLE_FORKLESS as _);
+    }
+    ctx.set_module_options(options);
     if !valid_server_version(ver) {
         ctx.log_warning(
             format!(
