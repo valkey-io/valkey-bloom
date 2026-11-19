@@ -207,7 +207,7 @@ pub fn bloom_filter_add_value(
     let filter_name = &input_args[curr_cmd_idx];
     curr_cmd_idx += 1;
     // If the filter does not exist, create one
-    let filter_key = ctx.open_key_writable(filter_name);
+    let filter_key = ctx.open_key_writable(filter_name)?;
     let value = match filter_key.get_value::<BloomObject>(&BLOOM_TYPE) {
         Ok(v) => v,
         Err(_) => {
@@ -426,7 +426,7 @@ pub fn bloom_filter_reserve(ctx: &Context, input_args: &[ValkeyString]) -> Valke
         }
     }
     // If the filter does not exist, create one
-    let filter_key = ctx.open_key_writable(filter_name);
+    let filter_key = ctx.open_key_writable(filter_name)?;
     let value = match filter_key.get_value::<BloomObject>(&BLOOM_TYPE) {
         Ok(v) => v,
         Err(_) => {
@@ -650,7 +650,7 @@ pub fn bloom_filter_insert(ctx: &Context, input_args: &[ValkeyString]) -> Valkey
         }
     }
     // If the filter does not exist, create one
-    let filter_key = ctx.open_key_writable(filter_name);
+    let filter_key = ctx.open_key_writable(filter_name)?;
     let value = match filter_key.get_value::<BloomObject>(&BLOOM_TYPE) {
         Ok(v) => v,
         Err(_) => {
@@ -839,7 +839,7 @@ pub fn bloom_filter_load(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
     idx += 1;
     let value = &input_args[idx];
     // find filter
-    let filter_key = ctx.open_key_writable(filter_name);
+    let filter_key = ctx.open_key_writable(filter_name)?;
 
     let filter = match filter_key.get_value::<BloomObject>(&BLOOM_TYPE) {
         Ok(v) => v,
