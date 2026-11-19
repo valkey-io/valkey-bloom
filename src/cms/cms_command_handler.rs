@@ -55,7 +55,6 @@ fn replicate_and_notify_events(ctx: &Context, key_name: &ValkeyString, operation
             ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::INCR_EVENT, key_name);
         }
         Operation::Merge => {
-            //TODO::How should this replication be done, and why vs verbatim
             ctx.replicate_verbatim();
             ctx.notify_keyspace_event(NotifyEvent::GENERIC, utils::MERGE_EVENT, key_name);
         }
@@ -248,8 +247,10 @@ pub fn cms_query(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 
 /// Function that implements logic to handle the CMS.MERGE command.
 pub fn cms_merge(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    // CMS.MERGE dest numkeys src [src ...] [WEIGHTS ...]
+    // Minimum is the command name, destination, numkeys and one source key.
     let args_count = args.len();
-    if args_count < 5 {
+    if args_count < 4 {
         return Err(ValkeyError::WrongArity);
     }
 
@@ -259,11 +260,17 @@ pub fn cms_merge(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     let number_of_keys_value = args[2]
         .to_string_lossy()
         .parse::<usize>()
-        .map_err(|_| ValkeyError::Str("ERR invalid number of keys value"))?;
+        .ok()
+        .filter(|n| *n > 0)
+        .ok_or(ValkeyError::Str("ERR invalid number of keys value"))?;
 
-    //Indexes 3 -> 3 + N-1 are keys to merge
-    let sketch_end_index = 3 + number_of_keys_value - 1;
-    //Up to non inclusive grab 3 up to sketch_end_index
+    //Indexes 3 -> 3 + N-1 are keys to merge. Guard against overflow and against
+    //a numkeys value that claims more keys than were actually supplied.
+    let sketch_end_index = number_of_keys_value
+        .checked_add(2)
+        .filter(|end| *end < args_count)
+        .ok_or(ValkeyError::WrongArity)?;
+
     let source_keys: Vec<&ValkeyString> = args[3..=sketch_end_index].iter().collect();
 
     //Then Parse the optional WEIGHTS section of the command.  WEIGHTS is at sketch_end + 1
@@ -295,6 +302,13 @@ pub fn cms_merge(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
         weights
     };
 
+    //Guard against number of source keys and weights mismatching.
+    if source_keys.len() != passed_in_weights.len() {
+        return Err(ValkeyError::Str(
+            "ERR number of source keys and weights does not match",
+        ));
+    }
+
     let source_key_handles: Vec<ValkeyKey> =
         source_keys.iter().map(|key| ctx.open_key(key)).collect();
     let sketches = source_key_handles
@@ -302,14 +316,14 @@ pub fn cms_merge(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
         .map(|key_handle| {
             key_handle
                 .get_value::<CMSObject>(&CMS_TYPE)
-                .and_then(|opt| opt.ok_or_else(|| ValkeyError::Str("ERR key does not exist")))
+                .and_then(|opt| opt.ok_or(ValkeyError::Str("ERR key does not exist")))
         })
         .collect::<Result<Vec<_>, _>>()?;
 
     let destination_sketch = ctx
         .open_key_writable(destination_key)
         .get_value::<CMSObject>(&CMS_TYPE)
-        .and_then(|opt| opt.ok_or_else(|| ValkeyError::Str("ERR key does not exist")))?;
+        .and_then(|opt| opt.ok_or(ValkeyError::Str("ERR key does not exist")))?;
 
     let sketches_with_weights: Vec<(&CMSObject, f64)> = sketches
         .into_iter()
@@ -324,9 +338,7 @@ pub fn cms_merge(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     //Impl note:  We do not handle the weights yet in the called function, as the lib-source needs to change.
     destination_sketch
         .merge(&sketches_with_weights)
-        .map_err(|_| {
-            ValkeyError::Str("ERR destination key is not of the same width and/or depth")
-        })?;
+        .map_err(|e| ValkeyError::Str(e.as_str()))?;
 
     replicate_and_notify_events(ctx, destination_key, Operation::Merge);
     VALKEY_OK
