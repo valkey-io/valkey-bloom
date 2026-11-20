@@ -173,7 +173,7 @@ pub fn cms_increment_by(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult 
     let key = &args[1];
 
     let args_left = args_count - 2;
-    let is_even = args_left % 2 == 0;
+    let is_even = args_left.is_multiple_of(2);
     if !is_even {
         return Err(ValkeyError::WrongArity);
     }
@@ -231,7 +231,7 @@ pub fn cms_query(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
             let estimates: Vec<ValkeyValue> = args[2..]
                 .iter()
                 .map(|item| {
-                    let estimate = v.estimate(&item);
+                    let estimate = v.estimate(item);
                     ValkeyValue::Integer(estimate as i64)
                 })
                 .collect();
