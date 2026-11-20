@@ -1,0 +1,66 @@
+[package]
+name = "flowstats"
+version = "0.1.2"
+edition = "2021"
+rust-version = "1.75.0"
+authors = ["Vahid Negahdari <vahid.negahdari@gmail.com>"]
+description = "Collection of stream analytics algorithms: cardinality, quantiles, frequency, sampling, and more"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/vnvo/flowstats"
+documentation = "https://docs.rs/flowstats"
+readme = "README.md"
+keywords = ["streaming", "algorithms", "hyperloglog", "sketch", "probabilistic"]
+categories = ["algorithms", "data-structures", "science"]
+
+[features]
+default = [
+    "std",
+    "cardinality",
+    "quantiles",
+    "frequency",
+    "membership",
+    "sampling",
+    "statistics",
+]
+
+# All algorithms
+full = [
+    "cardinality",
+    "quantiles",
+    "frequency",
+    "membership",
+    "sampling",
+    "statistics",
+]
+
+cardinality = []
+quantiles = []
+frequency = []
+membership = []
+sampling = []
+statistics = []
+
+# Platform features
+std = []
+serde = ["dep:serde"]
+
+[dependencies]
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+serde = { version = "1.0", features = ["derive"], optional = true }
+libm = "0.2"
+
+[dev-dependencies]
+criterion = "0.5"
+rand = "0.9"
+
+[[bench]]
+name = "benchmarks"
+harness = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
