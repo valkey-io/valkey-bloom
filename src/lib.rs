@@ -164,7 +164,6 @@ valkey_module! {
         ["CMS.QUERY", cms_query_command, "readonly fast", 1, 1, 1, "read cms"],
         ["CMS.INFO", cms_info_command, "readonly fast", 1, 1, 1, "fast read cms"],
         ["CMS.MERGE", cms_merge_command, "write deny-oom", 1, 1, 1, "write cms"],
-        ["CMS.INFO", cms_info_command, "readonly fast", 1, 1, 1, "fast read cms"],
     ],
     configurations: [
         i64: [
