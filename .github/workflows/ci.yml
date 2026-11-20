@@ -3,13 +3,6 @@ name: ci
 on:
   push:
   pull_request:
-  # All versions run at 6:00 UTC every day.
-  schedule:
-    - cron: '0 6 * * *'
-  workflow_dispatch:
-
-permissions:
-  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,39 +11,12 @@ env:
   TEST_FRAMEWORK_DIR: tests/build/valkeytestframework
 
 jobs:
-  get-versions:
-    runs-on: ubuntu-latest
-    outputs:
-      versions: ${{ steps.discover.outputs.versions }}
-    steps:
-    - name: Discover valkey server versions
-      id: discover
-      shell: bash
-      env:
-        MIN_SERVER_MAJOR: '8'
-      run: |
-        branches=$(git ls-remote --heads "$VALKEY_REPO_URL" \
-          | sed 's#.*refs/heads/##' \
-          | grep -E '^[0-9]+\.[0-9]+$' \
-          | awk -F. -v M="$MIN_SERVER_MAJOR" '$1>=M' \
-          | sort -V )
-        [ -n "$branches" ] || { echo "ERROR: no Valkey release branches found" >&2; exit 1; }
-        if [ "$GITHUB_EVENT_NAME" = "schedule" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-          selected="$branches"
-        else
-          selected=$(printf '%s\n' $branches | tail -n 1)
-        fi
-        json=$(printf '%s\n' unstable $selected | jq -R . | jq -sc .)
-        echo "Event: $GITHUB_EVENT_NAME -> versions: $json"
-        echo "versions=$json" >> "$GITHUB_OUTPUT"
-
   build-ubuntu-latest:
-    needs: get-versions
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        server_version: ${{ fromJSON(needs.get-versions.outputs.versions) }}
+        server_version: ['unstable', '8.0', '8.1']
     steps:
     - uses: actions/checkout@v4
     - name: Set the server version for python integration tests
@@ -85,9 +51,9 @@ jobs:
         mv valkey-test-framework/src/* ${{ env.TEST_FRAMEWORK_DIR }}/
         rm -rf valkey-test-framework
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v3
       with:
-        python-version: '3.x'
+        python-version: '3.8'
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
@@ -111,12 +77,11 @@ jobs:
       run: cargo test --features enable-system-alloc
 
   asan-build:
-    needs: get-versions
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        server_version: ${{ fromJSON(needs.get-versions.outputs.versions) }}
+        server_version: ['unstable', '8.0', '8.1']
     steps:
     - uses: actions/checkout@v4
     - name: Set the server version for python integration tests
@@ -152,9 +117,9 @@ jobs:
         mv valkey-test-framework/src/* ${{ env.TEST_FRAMEWORK_DIR }}/
         rm -rf valkey-test-framework
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v3
       with:
-        python-version: '3.x'
+        python-version: '3.8'
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
