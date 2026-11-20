@@ -216,7 +216,10 @@ impl BloomObject {
 
     /// Returns whether the bloom object is of a valid size or not.
     pub fn validate_size(bytes: usize) -> bool {
-        bytes <= configs::BLOOM_MEMORY_LIMIT_PER_OBJECT.load(Ordering::Relaxed) as usize
+        if bytes > configs::BLOOM_MEMORY_LIMIT_PER_OBJECT.load(Ordering::Relaxed) as usize {
+            return false;
+        }
+        true
     }
 
     /// Returns the Bloom object's free_effort.
@@ -439,14 +442,6 @@ impl BloomObject {
 
         metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_add(
             self.bloom_object_memory_usage(),
-            std::sync::atomic::Ordering::Relaxed,
-        );
-    }
-
-    pub fn decrement_metrics_on_defrag(&self, predefrag_filters_capacity: usize) {
-        metrics::BLOOM_OBJECT_TOTAL_MEMORY_BYTES.fetch_sub(
-            (predefrag_filters_capacity - self.num_filters())
-                * std::mem::size_of::<Box<BloomFilter>>(),
             std::sync::atomic::Ordering::Relaxed,
         );
     }
