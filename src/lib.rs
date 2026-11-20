@@ -124,11 +124,6 @@ fn cms_merge_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     cms_command_handler::cms_merge(ctx, args)
 }
 
-/// Command handler for CMS.INFO <key>
-fn cms_info_command(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
-    cms_command_handler::cms_info(ctx, args)
-}
-
 ///
 /// Module Info
 ///

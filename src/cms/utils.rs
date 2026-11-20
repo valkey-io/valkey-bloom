@@ -14,7 +14,6 @@ pub const KEY_EXISTS: &str = "ERR Target key name already exists.";
 pub const BAD_INCREMENT: &str = "ERR bad increment";
 pub const INVALID_INFO_VALUE: &str = "ERR invalid information value";
 pub const MERGE_FAILURE: &str = "ERR width / depth is not equal across sketches";
-pub const INVALID_INFO_VALUE: &str = "ERR invalid information value";
 
 ///Keyspace Notification Events
 pub const INITBYPROB_EVENT: &str = "countminsketch.initbyprob";
