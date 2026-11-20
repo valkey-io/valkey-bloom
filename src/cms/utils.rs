@@ -102,6 +102,7 @@ impl CMSObject {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 struct CMS {
     sketch: CountMinSketch,
 }
