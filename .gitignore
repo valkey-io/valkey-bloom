@@ -6,3 +6,4 @@ __pycache__
 test-data
 .attach_pid*
 src/commands/commands
+docs/*

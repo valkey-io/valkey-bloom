@@ -881,3 +881,175 @@ pub fn bloom_filter_load(ctx: &Context, input_args: &[ValkeyString]) -> ValkeyRe
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[test]
+    fn bloom_add_rejects_missing_item() {
+        let context = Context::test();
+
+        assert_error(
+            bloom_filter_add_value(&context, &test_args(&["BF.ADD", "filter"]), false),
+            "Wrong Arity",
+        );
+    }
+
+    #[test]
+    fn bloom_exists_rejects_missing_item() {
+        let context = Context::test();
+
+        assert_error(
+            bloom_filter_exists(&context, &test_args(&["BF.EXISTS", "filter"]), false),
+            "Wrong Arity",
+        );
+    }
+
+    #[test]
+    fn bloom_card_rejects_invalid_arity() {
+        let context = Context::test();
+
+        assert_error(
+            bloom_filter_card(&context, &test_args(&["BF.CARD"])),
+            "Wrong Arity",
+        );
+    }
+
+    #[rstest]
+    #[case::missing_item(&["BF.MADD", "filter"])]
+    #[case::too_many_arguments(&["BF.ADD", "filter", "item", "extra"])]
+    fn bloom_add_rejects_invalid_arity(#[case] args: &[&str]) {
+        let context = Context::test();
+
+        assert_error(
+            bloom_filter_add_value(&context, &test_args(args), args[0] == "BF.MADD"),
+            "Wrong Arity",
+        );
+    }
+
+    #[rstest]
+    #[case::missing_item(&["BF.MEXISTS", "filter"])]
+    #[case::too_many_arguments(&["BF.EXISTS", "filter", "item", "extra"])]
+    fn bloom_exists_rejects_invalid_arity(#[case] args: &[&str]) {
+        let context = Context::test();
+
+        assert_error(
+            bloom_filter_exists(&context, &test_args(args), args[0] == "BF.MEXISTS"),
+            "Wrong Arity",
+        );
+    }
+
+    #[rstest]
+    #[case::zero_error_rate(
+        &["BF.RESERVE", "filter", "0", "100"],
+        utils::ERROR_RATE_RANGE
+    )]
+    #[case::zero_capacity(
+        &["BF.RESERVE", "filter", "0.01", "0"],
+        utils::CAPACITY_LARGER_THAN_0
+    )]
+    #[case::invalid_expansion(
+        &["BF.RESERVE", "filter", "0.01", "100", "EXPANSION", "0"],
+        utils::BAD_EXPANSION
+    )]
+    #[case::invalid_option(
+        &["BF.RESERVE", "filter", "0.01", "100", "UNKNOWN"],
+        utils::ERROR
+    )]
+    #[case::non_numeric_error_rate(
+        &["BF.RESERVE", "filter", "invalid", "100"],
+        utils::BAD_ERROR_RATE
+    )]
+    #[case::negative_capacity(
+        &["BF.RESERVE", "filter", "0.01", "-1"],
+        utils::BAD_CAPACITY
+    )]
+    fn bloom_reserve_rejects_invalid_arguments(
+        #[case] args: &[&str],
+        #[case] expected_error: &str,
+    ) {
+        let context = Context::test();
+
+        assert_error(
+            bloom_filter_reserve(&context, &test_args(args)),
+            expected_error,
+        );
+    }
+
+    #[test]
+    fn bloom_insert_rejects_missing_key() {
+        let context = Context::test();
+
+        assert_error(
+            bloom_filter_insert(&context, &test_args(&["BF.INSERT"])),
+            "Wrong Arity",
+        );
+    }
+
+    #[rstest]
+    #[case::missing_key(&["BF.INFO"])]
+    #[case::too_many_arguments(&["BF.INFO", "filter", "CAPACITY", "extra"])]
+    fn bloom_info_rejects_invalid_arity(#[case] args: &[&str]) {
+        let context = Context::test();
+
+        assert_error(bloom_filter_info(&context, &test_args(args)), "Wrong Arity");
+    }
+
+    #[rstest]
+    #[case::missing_payload(&["BF.LOAD", "filter"])]
+    #[case::too_many_arguments(&["BF.LOAD", "filter", "payload", "extra"])]
+    fn bloom_load_rejects_invalid_arity(#[case] args: &[&str]) {
+        let context = Context::test();
+
+        assert_error(bloom_filter_load(&context, &test_args(args)), "Wrong Arity");
+    }
+
+    #[rstest]
+    #[case::missing_option_value(&["BF.INSERT", "filter", "ERROR"], "Wrong Arity")]
+    #[case::invalid_seed_length(
+        &["BF.INSERT", "filter", "SEED", "too-short"],
+        utils::INVALID_SEED
+    )]
+    #[case::unknown_argument(
+        &["BF.INSERT", "filter", "UNKNOWN"],
+        utils::UNKNOWN_ARGUMENT
+    )]
+    #[case::items_without_item(&["BF.INSERT", "filter", "ITEMS"], "Wrong Arity")]
+    #[case::zero_error_rate(
+        &["BF.INSERT", "filter", "ERROR", "0"],
+        utils::ERROR_RATE_RANGE
+    )]
+    #[case::zero_capacity(
+        &["BF.INSERT", "filter", "CAPACITY", "0"],
+        utils::CAPACITY_LARGER_THAN_0
+    )]
+    #[case::invalid_expansion(
+        &["BF.INSERT", "filter", "EXPANSION", "0"],
+        utils::BAD_EXPANSION
+    )]
+    #[case::zero_validate_scale_to(
+        &["BF.INSERT", "filter", "VALIDATESCALETO", "0"],
+        utils::CAPACITY_LARGER_THAN_0
+    )]
+    fn bloom_insert_rejects_invalid_arguments(#[case] args: &[&str], #[case] expected_error: &str) {
+        let context = Context::test();
+
+        assert_error(
+            bloom_filter_insert(&context, &test_args(args)),
+            expected_error,
+        );
+    }
+
+    fn test_args(args: &[&str]) -> Vec<ValkeyString> {
+        args.iter().map(|arg| ValkeyString::test(*arg)).collect()
+    }
+
+    fn assert_error(result: ValkeyResult, expected: &str) {
+        match result {
+            Err(error) => assert_eq!(error.to_string(), expected),
+            Ok(value) => panic!("expected error {expected:?}, got {value:?}"),
+        }
+    }
+}
